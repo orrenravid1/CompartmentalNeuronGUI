@@ -161,6 +161,8 @@ def neuron_process(data_pipe, cmd_pipe, swc_path):
     secs = load_swc_model(swc_path)
     for sec in secs:
         sec.insert("hh" if "dendrite" not in sec.name() else "pas")
+        if 'soma' not in sec.name():
+            sec.nseg = 10
     meta = build_morphology_meta(secs)
 
     name2sec = {sec.name(): sec for sec in secs}
@@ -265,9 +267,22 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         data_child.close(); cmd_child.close()
 
     def keyPressEvent(self, ev):
-        if ev.key()==Qt.Key.Key_Space:
+        if ev.key() == Qt.Key.Key_Space:
+            # 1) send reset
             self.cmd_parent.send("reset")
-        super().keyPressEvent(ev)
+
+            # 2) flush any queued data so the next sample is truly from t=0
+            while self.data_parent.poll():
+                self.data_parent.recv()
+
+            # 3) clear your buffers & curve
+            self.trace_t.clear()
+            self.trace_v.clear()
+            self.plot2d.clear()
+            self.trace = self.plot2d.plot(pen='b')
+            vb = self.plot2d.getPlotItem().getViewBox()
+            vb.enableAutoRange(x=True, y=False)
+
 
     def _on_mouse_press(self, ev):
         self._mouse_start = ev.pos
@@ -294,7 +309,8 @@ class MorphologyViewer(QtWidgets.QMainWindow):
     
     def select(self, sec_name, xloc):
         self.selected = (sec_name, xloc)
-        self.trace_t, self.trace_v = [], []
+        self.trace_t.clear()
+        self.trace_v.clear()
         self.plot2d.setTitle(f"Voltage for {sec_name}@{xloc:.3f}")
 
     def _poll(self):

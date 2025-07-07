@@ -2,29 +2,29 @@
 import sys
 import os
 import numpy as np
+import threading
 import multiprocessing as mp
-from multiprocessing import Pipe, Process
+from multiprocessing.managers import BaseManager
 
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import Qt
 from vispy import use
-# ─── VisPy + PyQt6 backend ────────────────────────────────────────────────
 use(app='pyqt6', gl='gl+')
 from vispy import scene, app as vispy_app
 from vispy.scene.cameras import TurntableCamera
 from scipy.spatial.transform import Rotation
 import pyqtgraph as pg
 
-# replace with your actual import path
+from neuron import h
 from src.vispyutils.cappedcylindercollection import CappedCylinderCollection
 
-
+# ─────────────────────────────────────────────────────────────────────────────
 def build_morphology_meta(secs):
     """Build per-cylinder metadata from a dict name→h.Section."""
     t_neurite = np.array([0.7,0.7,0.7,1.0], dtype=np.float32)
-    name_to_sec = {sec.name(): sec for sec in secs}
     meta = []
-    for sec_name, sec in name_to_sec.items():
+    for sec in secs:
+        name = sec.name()
         pts = np.array([[sec.x3d(i), sec.y3d(i), sec.z3d(i)]
                         for i in range(int(sec.n3d()))], dtype=np.float32)
         if len(pts) < 2:
@@ -39,9 +39,9 @@ def build_morphology_meta(secs):
                 continue
             mid = 0.5*(p0 + p1)
             rad = 0.5*(sec.diam3d(i) + sec.diam3d(i+1))
-            z  = np.array([0,0,1], dtype=np.float32)
-            dn = (p1 - p0) / L
-            ax = np.cross(z, dn)
+            z   = np.array([0,0,1], dtype=np.float32)
+            dn  = (p1 - p0) / L
+            ax  = np.cross(z, dn)
             if np.linalg.norm(ax) < 1e-6:
                 R = np.eye(3, dtype=np.float32)
             else:
@@ -56,53 +56,112 @@ def build_morphology_meta(secs):
                 'length':      L,
                 'orientation': R,
                 'color':       t_neurite,
-                'sec_name':    sec_name,
+                'sec_name':    name,
                 'xloc':        xloc
             })
     return meta
 
-
 def load_swc_model(swc_path):
-    """Import an SWC file into NEURON and return a list of Sections."""
-    from neuron import h
+    """Import an SWC into NEURON and return Sections."""
     h.load_file("stdlib.hoc")
     h.load_file("import3d.hoc")
-    r = h.Import3d_SWC_read()
-    r.input(swc_path)
-    gui = h.Import3d_GUI(r, False)
-    gui.instantiate(None)
+    r = h.Import3d_SWC_read(); r.input(swc_path)
+    gui = h.Import3d_GUI(r, False); gui.instantiate(None)
     return list(h.allsec())
 
+# ─────────────────────────────────────────────────────────────────────────────
+class NeuronSim:
+    """Encapsulates NEURON sim: morphology, recorders, IClamps, stepping."""
+    def __init__(self, swc_path):
+        secs = load_swc_model(swc_path)
+        for sec in secs:
+            mech = "pas" if "dendrite" in sec.name() else "hh"
+            sec.insert(mech)
+        self.meta = build_morphology_meta(secs)
 
+        # record time
+        h.dt = 0.1
+        self.tvec = h.Vector(); self.tvec.record(h._ref_t)
+
+        # record voltages
+        self.vs = []
+        name2sec = {sec.name(): sec for sec in secs}
+        for m in self.meta:
+            sec = name2sec[m['sec_name']]
+            vec = h.Vector(); vec.record(sec(m['xloc'])._ref_v)
+            self.vs.append(vec)
+
+        # persist IClamps
+        self.iclamps = []
+        soma = next(sec for sec in secs if 'soma' in sec.name().lower())
+        for d,du,a in [(2,10,1),(20,10,1),(40,10,1),(60,20,1)]:
+            icl = h.IClamp(soma(0.5))
+            icl.delay, icl.dur, icl.amp = d, du, a
+            self.iclamps.append(icl)
+
+        h.finitialize(-65.0)
+
+    def step(self, n=1):
+        for _ in range(n):
+            h.fadvance()
+
+    def get_time(self):
+        return float(self.tvec[-1])
+
+    def get_voltages(self):
+        return np.array([vec[-1] for vec in self.vs], dtype=np.float32)
+
+    def get_meta(self):
+        return self.meta
+
+# Set up our Manager
+class NeuronManager(BaseManager): pass
+NeuronManager.register('NeuronSim', NeuronSim)
+
+# ─────────────────────────────────────────────────────────────────────────────
+class SimWorker(QtCore.QObject):
+    """Runs sim.step in a QThread and emits data_ready."""
+    data_ready = QtCore.pyqtSignal(float, np.ndarray)
+    error      = QtCore.pyqtSignal(Exception)
+
+    @QtCore.pyqtSlot(int)
+    def step_and_fetch(self, n_steps):
+        try:
+            sim.step(n_steps)
+            t  = sim.get_time()
+            vs = sim.get_voltages()
+            self.data_ready.emit(t, vs)
+        except Exception as e:
+            self.error.emit(e)
+
+# ─────────────────────────────────────────────────────────────────────────────
 class MorphologyManager:
-    """Handles all VisPy instancing, picking and color‐mapping."""
+    """Encapsulates VisPy instancing, picking and color updates."""
     def __init__(self, view):
         self.view = view
-        self.meta = None
+        self.meta = []
         self.collection = None
         self.id_colors = None
-        self.id_colors_caps = None
+        self.id_caps   = None
         self.orig_side = None
-        self.orig_cap = None
+        self.orig_cap  = None
 
     @staticmethod
     def make_id_color(i):
         cid = i+1
-        return np.array([
-            (cid        & 0xFF)/255.0,
-            ((cid >> 8) & 0xFF)/255.0,
-            ((cid >> 16)& 0xFF)/255.0,
-            1.0
-        ], dtype=np.float32)
+        return np.array([ (cid&0xFF)/255.0,
+                          ((cid>>8)&0xFF)/255.0,
+                          ((cid>>16)&0xFF)/255.0,
+                          1.0 ], dtype=np.float32)
 
     def set_morphology(self, meta):
         self.meta = meta
         N = len(meta)
-        pos  = np.stack([m['position']    for m in meta], axis=0)
+        pos  = np.stack([m['position']    for m in meta])
         rad  = np.array([m['radius']      for m in meta], dtype=np.float32)
         ht   = np.array([m['length']      for m in meta], dtype=np.float32)
-        ori  = np.stack([m['orientation'] for m in meta], axis=0)
-        cols = np.stack([m['color']       for m in meta], axis=0)
+        ori  = np.stack([m['orientation'] for m in meta])
+        cols = np.stack([m['color']       for m in meta])
 
         self.collection = CappedCylinderCollection(
             positions=pos, radii=rad, heights=ht,
@@ -110,128 +169,70 @@ class MorphologyManager:
             cylinder_segments=32, disk_slices=32,
             parent=self.view.scene
         )
-        # disable lighting so we can override colors
         self.collection._side_mesh.shading = None
         self.collection._cap_mesh.shading  = None
 
-        # picking colors
-        self.id_colors      = np.stack([self.make_id_color(i) for i in range(N)], axis=0)
-        self.id_colors_caps = np.vstack([self.id_colors, self.id_colors])
+        self.id_colors = np.stack([self.make_id_color(i) for i in range(N)])
+        self.id_caps   = np.vstack([self.id_colors, self.id_colors])
         self.orig_side = self.collection._side_mesh.instance_colors.copy()
         self.orig_cap  = self.collection._cap_mesh.instance_colors.copy()
 
-    def pick(self, x_fb, y_fb, canvas):
-        """Return (sec_name, xloc) under the given framebuffer coords, or None."""
-        if self.collection is None or self.meta is None:
+    def pick(self, xf, yf, canvas):
+        if self.collection is None:
             return None
-        # render ID‐pass
         self.collection._side_mesh.instance_colors = self.id_colors
-        self.collection._cap_mesh.instance_colors  = self.id_colors_caps
-        img = canvas.render(region=(x_fb, y_fb, 1, 1), size=(1,1), alpha=False)
-        # restore
+        self.collection._cap_mesh.instance_colors  = self.id_caps
+        img = canvas.render(region=(xf,yf,1,1), size=(1,1), alpha=False)
         self.collection._side_mesh.instance_colors = self.orig_side
         self.collection._cap_mesh.instance_colors  = self.orig_cap
         canvas.update()
 
         pix = img[0,0]
-        if pix.dtype != np.uint8:
-            pix = np.round(pix*255).astype(int)
-        cid = int(pix[0]) | (int(pix[1])<<8) | (int(pix[2])<<16)
+        if pix.dtype!=np.uint8: pix=np.round(pix*255).astype(int)
+        cid = int(pix[0])|(int(pix[1])<<8)|(int(pix[2])<<16)
         idx = cid-1 if cid>0 else None
         if idx is None or not (0<=idx<len(self.meta)):
             return None
         m = self.meta[idx]
         return m['sec_name'], m['xloc']
 
-    def update_colors(self, data, map_fn):
-        """Apply map_fn to data array, build RGBA buffer, and set colors."""
-        norm = map_fn(data)
-        new_cols = np.zeros((len(data),4), dtype=np.float32)
-        new_cols[:,0] = norm
-        new_cols[:,1] = 0.2
-        new_cols[:,2] = 1.0 - norm
-        new_cols[:,3] = 1.0
-        self.collection.set_colors(new_cols)
+    def update_colors(self, vs):
+        norm = np.clip((vs+80)/130,0,1)
+        cols = np.zeros((len(vs),4),dtype=np.float32)
+        cols[:,0] = norm; cols[:,1]=0.2; cols[:,2]=1-norm; cols[:,3]=1
+        self.collection.set_colors(cols)
 
-
-def neuron_process(data_pipe, cmd_pipe, swc_path):
-    """Worker process that loads morphology, simulates, and streams (t, v)."""
-    from neuron import h
-
-    secs = load_swc_model(swc_path)
-    for sec in secs:
-        sec.insert("hh" if "dendrite" not in sec.name() else "pas")
-    meta = build_morphology_meta(secs)
-
-    name2sec = {sec.name(): sec for sec in secs}
-    refs = [(name2sec[m['sec_name']], m['xloc']) for m in meta]
-    N = len(refs)
-
-    h.dt = 0.01
-    vt = h.Vector(); vt.record(h._ref_t)
-    vs = []
-    for sec,xloc in refs:
-        v = h.Vector(); v.record(sec(xloc)._ref_v)
-        vs.append(v)
-
-    soma = next(sec for sec in secs if 'soma' in sec.name().lower())
-    iclamps = []
-    for d,du,a in [(2,10,1),(20,10,1),(40,10,1),(60,20,1)]:
-        icl=h.IClamp(soma(0.5)); icl.delay, icl.dur, icl.amp = d,du,a
-        iclamps.append(icl)
-
-    h.finitialize(-65.0)
-    try:
-        while True:
-            h.fadvance()
-            # reset?
-            while cmd_pipe.poll():
-                if cmd_pipe.recv()=="reset":
-                    h.finitialize(-65.0)
-            t = float(vt[-1])
-            arr = np.fromiter((v[-1] for v in vs), np.float32, count=N)
-            data_pipe.send((t, arr))
-    finally:
-        data_pipe.close(); cmd_pipe.close()
-
-
-class MorphologyViewer(QtWidgets.QMainWindow):
-    def __init__(self, swc_path):
+# ─────────────────────────────────────────────────────────────────────────────
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(self, swc):
         super().__init__()
-        self.setWindowTitle("Morphology + Voltage")
+        self.setWindowTitle("Integrated RPC + GUI")
 
-        # VisPy 3D scene setup
-        self.canvas3d = scene.SceneCanvas(keys='interactive',
-                                          bgcolor='white', show=False)
+        # start Manager and get proxy
+        self.manager = NeuronManager()
+        self.manager.start()
+        global sim
+        sim = self.manager.NeuronSim(swc)
+
+        # VisPy setup
+        self.canvas3d = scene.SceneCanvas(keys='interactive', bgcolor='white', show=False)
         self.view     = self.canvas3d.central_widget.add_view()
         self.view.camera = TurntableCamera(fov=60, distance=200,
-                                           elevation=30, azimuth=30,
-                                           translate_speed=100, up='+z')
+                                           elevation=30, azimuth=30)
 
-        # manager instantiation
-        self.morph_mgr = MorphologyManager(self.view)
+        # geometry
+        self.mmgr = MorphologyManager(self.view)
+        self.mmgr.set_morphology(sim.get_meta())
 
-        # load once in parent, set up geometry
-        secs = load_swc_model(swc_path)
-        meta = build_morphology_meta(secs)
-        self.morph_mgr.set_morphology(meta)
-
-        # selection state
+        # click selection
+        self.selected = None
         self.DRAG_THRESHOLD = 5
-        self.canvas3d.events.mouse_press .connect(self._on_mouse_press)
-        self.canvas3d.events.mouse_release.connect(self._on_mouse_release)
+        self.canvas3d.events.mouse_press .connect(self._press)
+        self.canvas3d.events.mouse_release.connect(self._release)
 
-        # 2D plot
-        self.plot2d = pg.PlotWidget(title="Voltage for segment")
-        self.plot2d.setLabel('bottom','Time','ms')
-        self.plot2d.setLabel('left','Voltage','mV')
-        self.plot2d.setBackground('w')
-        self.trace_t, self.trace_v = [], []
-        self.trace = self.plot2d.plot(pen='b')
-        vb = self.plot2d.getPlotItem().getViewBox()
-        vb.setRange(yRange=(-80,50), padding=0)
-        vb.enableAutoRange(x=True, y=False)
-        vb.setLimits(yMin=-80, yMax=50)
+        # plot
+        self.plot2d = pg.PlotWidget(title="Voltage")
+        self.trace  = self.plot2d.plot(pen='b')
 
         # layout
         w  = QtWidgets.QWidget()
@@ -239,105 +240,65 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         hb.addWidget(self.canvas3d.native)
         hb.addWidget(self.plot2d)
         self.setCentralWidget(w)
-        self.resize(1200,600)
+        self.resize(1000,600)
 
-        self.select(meta[0]['sec_name'], 0.5)
+        # worker thread
+        self.thread = QtCore.QThread(self)
+        self.worker = SimWorker()
+        self.worker.moveToThread(self.thread)
+        self.worker.data_ready.connect(self._update)
+        self.worker.error.connect(lambda e: print("Error:",e))
+        self.thread.start()
 
-        # multiprocessing setup
-        self.data_parent, data_child = Pipe()
-        self.cmd_parent,  cmd_child  = Pipe()
-        self.worker = Process(
-            target=neuron_process,
-            args=(data_child, cmd_child, swc_path),
-            daemon=True
-        )
-        self._child_pipes = (data_child, cmd_child)
-        QtCore.QTimer.singleShot(0, self._start_worker)
-
-        # polling timer
+        # timer @60Hz
         self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self._poll)
-        self.timer.start(1000//30)
+        self.timer.timeout.connect(lambda: self.worker.step_and_fetch(1))
+        self.timer.start(1000//60)
 
-    def _start_worker(self):
-        self.worker.start()
-        data_child, cmd_child = self._child_pipes
-        data_child.close(); cmd_child.close()
+    def _press(self, ev):
+        self._p0 = ev.pos
 
-    def keyPressEvent(self, ev):
-        if ev.key()==Qt.Key.Key_Space:
-            self.cmd_parent.send("reset")
-        super().keyPressEvent(ev)
-
-    def _on_mouse_press(self, ev):
-        self._mouse_start = ev.pos
-
-    def _on_mouse_release(self, ev):
-        if getattr(self, '_mouse_start', None) is None:
-            return
-        dx = ev.pos[0]-self._mouse_start[0]
-        dy = ev.pos[1]-self._mouse_start[1]
-        self._mouse_start = None
-        if dx*dx+dy*dy > self.DRAG_THRESHOLD**2:
-            return
-
-        # compute fb coords
-        x,y = ev.pos
-        w,h = self.canvas3d.size
-        ps  = self.canvas3d.pixel_scale
-        xf = int(x*ps); yf = int((h-y-1)*ps)
-
-        picked = self.morph_mgr.pick(xf, yf, self.canvas3d)
+    def _release(self, ev):
+        if not hasattr(self,'_p0'): return
+        dx = ev.pos[0]-self._p0[0]; dy = ev.pos[1]-self._p0[1]
+        del self._p0
+        if dx*dx+dy*dy > self.DRAG_THRESHOLD**2: return
+        x,y = ev.pos; w,h=self.canvas3d.size; ps=self.canvas3d.pixel_scale
+        xf=int(x*ps); yf=int((h-y-1)*ps)
+        picked = self.mmgr.pick(xf,yf,self.canvas3d)
         if picked:
-            sec_name, xloc = picked
-            self.select(sec_name, xloc)
-    
-    def select(self, sec_name, xloc):
-        self.selected = (sec_name, xloc)
-        self.trace_t, self.trace_v = [], []
-        self.plot2d.setTitle(f"Voltage for {sec_name}@{xloc:.3f}")
+            self.selected = picked
+            self.trace.clear()
+            self.plot2d.setTitle(f"Voltage for {picked[0]}@{picked[1]:.3f}")
 
-    def _poll(self):
-        try:
-            last = None
-            while self.data_parent.poll():
-                last = self.data_parent.recv()
-            if last:
-                t, v = last
-                # update 3D colors
-                self.morph_mgr.update_colors(v, lambda arr: np.clip((arr+80)/130,0,1))
-
-                if self.selected:
-                    sec_name, sel_xloc = self.selected
-                    # find all indices in that section
-                    candidates = [
-                        (i, abs(m['xloc'] - sel_xloc))
-                        for i, m in enumerate(self.morph_mgr.meta)
-                        if m['sec_name'] == sec_name
-                    ]
-                    if candidates:
-                        # pick the one with minimal |xloc - sel_xloc|
-                        idx = min(candidates, key=lambda x: x[1])[0]
-                        self.trace_t.append(t)
-                        self.trace_v.append(v[idx])
-                        if len(self.trace_t) > 5000:
-                            self.trace_t.pop(0)
-                            self.trace_v.pop(0)
-                        self.trace.setData(self.trace_t, self.trace_v)
-                        self.plot2d.update()
-        except (EOFError, OSError):
-            self.timer.stop()
+    @QtCore.pyqtSlot(float, np.ndarray)
+    def _update(self, t, vs):
+        # 3D colors
+        self.mmgr.update_colors(vs)
+        self.canvas3d.update()
+        # 2D trace
+        if self.selected:
+            sec,xloc = self.selected
+            # find nearest
+            cand = [(i,abs(m['xloc']-xloc)) for i,m in enumerate(self.mmgr.meta)
+                    if m['sec_name']==sec]
+            if cand:
+                idx = min(cand, key=lambda x:x[1])[0]
+                self.trace.setData(self.trace.xData+[t], self.trace.yData+[vs[idx]], clear=False)
+                self.plot2d.update()
 
     def closeEvent(self, ev):
-        if self.worker.is_alive():
-            self.worker.terminate(); self.worker.join()
         self.timer.stop()
+        self.thread.quit(); self.thread.wait()
+        sim = None
+        self.manager.shutdown()
         super().closeEvent(ev)
 
-
+# ─────────────────────────────────────────────────────────────────────────────
 if __name__=="__main__":
     mp.set_start_method('spawn', force=True)
+    swc = os.path.join("res","m3s4s4t-vp-sup.CNG.swc")
     app = QtWidgets.QApplication(sys.argv)
-    viewer = MorphologyViewer(os.path.join("res","m3s4s4t-vp-sup.CNG.swc"))
-    viewer.show()
+    w   = MainWindow(swc)
+    w.show()
     vispy_app.run()
