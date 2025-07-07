@@ -2,7 +2,6 @@
 import sys
 import os
 import numpy as np
-import threading
 import multiprocessing as mp
 from multiprocessing.managers import BaseManager
 
@@ -20,7 +19,6 @@ from src.vispyutils.cappedcylindercollection import CappedCylinderCollection
 
 # ─────────────────────────────────────────────────────────────────────────────
 def build_morphology_meta(secs):
-    """Build per-cylinder metadata from a dict name→h.Section."""
     t_neurite = np.array([0.7,0.7,0.7,1.0], dtype=np.float32)
     meta = []
     for sec in secs:
@@ -47,7 +45,7 @@ def build_morphology_meta(secs):
             else:
                 ax /= np.linalg.norm(ax)
                 ang = np.arccos(np.clip(np.dot(z, dn), -1,1))
-                R = Rotation.from_rotvec(ax*ang).as_matrix().astype(np.float32)
+                R   = Rotation.from_rotvec(ax*ang).as_matrix().astype(np.float32)
             midlen = cum[i] + 0.5*d[i]
             xloc   = float(midlen / total)
             meta.append({
@@ -62,7 +60,6 @@ def build_morphology_meta(secs):
     return meta
 
 def load_swc_model(swc_path):
-    """Import an SWC into NEURON and return Sections."""
     h.load_file("stdlib.hoc")
     h.load_file("import3d.hoc")
     r = h.Import3d_SWC_read(); r.input(swc_path)
@@ -71,7 +68,6 @@ def load_swc_model(swc_path):
 
 # ─────────────────────────────────────────────────────────────────────────────
 class NeuronSim:
-    """Encapsulates NEURON sim: morphology, recorders, IClamps, stepping."""
     def __init__(self, swc_path):
         secs = load_swc_model(swc_path)
         for sec in secs:
@@ -79,11 +75,9 @@ class NeuronSim:
             sec.insert(mech)
         self.meta = build_morphology_meta(secs)
 
-        # record time
         h.dt = 0.1
         self.tvec = h.Vector(); self.tvec.record(h._ref_t)
 
-        # record voltages
         self.vs = []
         name2sec = {sec.name(): sec for sec in secs}
         for m in self.meta:
@@ -91,7 +85,6 @@ class NeuronSim:
             vec = h.Vector(); vec.record(sec(m['xloc'])._ref_v)
             self.vs.append(vec)
 
-        # persist IClamps
         self.iclamps = []
         soma = next(sec for sec in secs if 'soma' in sec.name().lower())
         for d,du,a in [(2,10,1),(20,10,1),(40,10,1),(60,20,1)]:
@@ -109,25 +102,24 @@ class NeuronSim:
         return float(self.tvec[-1])
 
     def get_voltages(self):
-        return np.array([vec[-1] for vec in self.vs], dtype=np.float32)
+        return np.array([v[-1] for v in self.vs], dtype=np.float32)
 
     def get_meta(self):
         return self.meta
 
-# Set up our Manager
+# register with manager
 class NeuronManager(BaseManager): pass
 NeuronManager.register('NeuronSim', NeuronSim)
 
 # ─────────────────────────────────────────────────────────────────────────────
 class SimWorker(QtCore.QObject):
-    """Runs sim.step in a QThread and emits data_ready."""
     data_ready = QtCore.pyqtSignal(float, np.ndarray)
     error      = QtCore.pyqtSignal(Exception)
 
     @QtCore.pyqtSlot(int)
-    def step_and_fetch(self, n_steps):
+    def step_and_fetch(self, n):
         try:
-            sim.step(n_steps)
+            sim.step(n)
             t  = sim.get_time()
             vs = sim.get_voltages()
             self.data_ready.emit(t, vs)
@@ -136,7 +128,6 @@ class SimWorker(QtCore.QObject):
 
 # ─────────────────────────────────────────────────────────────────────────────
 class MorphologyManager:
-    """Encapsulates VisPy instancing, picking and color updates."""
     def __init__(self, view):
         self.view = view
         self.meta = []
@@ -177,29 +168,40 @@ class MorphologyManager:
         self.orig_side = self.collection._side_mesh.instance_colors.copy()
         self.orig_cap  = self.collection._cap_mesh.instance_colors.copy()
 
-    def pick(self, xf, yf, canvas):
-        if self.collection is None:
-            return None
-        self.collection._side_mesh.instance_colors = self.id_colors
-        self.collection._cap_mesh.instance_colors  = self.id_caps
-        img = canvas.render(region=(xf,yf,1,1), size=(1,1), alpha=False)
-        self.collection._side_mesh.instance_colors = self.orig_side
-        self.collection._cap_mesh.instance_colors  = self.orig_cap
-        canvas.update()
+    def pick(self, x_fb, y_fb, canvas):
+        # 1) swap in the ID‐colors
+        side = self.collection._side_mesh
+        cap  = self.collection._cap_mesh
+        old_side = side.instance_colors
+        old_cap  = cap.instance_colors
+        side.instance_colors = self.id_colors
+        cap.instance_colors  = self.id_caps
 
+        # 2) do an OFF‐SCREEN render (this does *not* modify the displayed canvas)
+        img = canvas.render(region=(x_fb, y_fb, 1,1),
+                            size=(1,1),
+                            alpha=False)
+
+        # 3) restore the real colors (still off‐screen—no update())
+        side.instance_colors = old_side
+        cap.instance_colors  = old_cap
+
+        # 4) decode your pick ID from img:
         pix = img[0,0]
-        if pix.dtype!=np.uint8: pix=np.round(pix*255).astype(int)
-        cid = int(pix[0])|(int(pix[1])<<8)|(int(pix[2])<<16)
+        if pix.dtype != np.uint8:
+            pix = np.round(pix*255).astype(int)
+        cid = int(pix[0]) | (int(pix[1])<<8) | (int(pix[2])<<16)
         idx = cid-1 if cid>0 else None
-        if idx is None or not (0<=idx<len(self.meta)):
+        if idx is None or not (0 <= idx < len(self.meta)):
             return None
         m = self.meta[idx]
         return m['sec_name'], m['xloc']
 
+
     def update_colors(self, vs):
         norm = np.clip((vs+80)/130,0,1)
         cols = np.zeros((len(vs),4),dtype=np.float32)
-        cols[:,0] = norm; cols[:,1]=0.2; cols[:,2]=1-norm; cols[:,3]=1
+        cols[:,0]=norm; cols[:,1]=0.2; cols[:,2]=1-norm; cols[:,3]=1
         self.collection.set_colors(cols)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -208,8 +210,8 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("Integrated RPC + GUI")
 
-        # start Manager and get proxy
-        self.manager = NeuronManager()
+        # start manager, create sim proxy
+        self.manager = NeuronManager(address=('localhost',0), authkey=b'neu')
         self.manager.start()
         global sim
         sim = self.manager.NeuronSim(swc)
@@ -230,9 +232,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.canvas3d.events.mouse_press .connect(self._press)
         self.canvas3d.events.mouse_release.connect(self._release)
 
-        # plot
-        self.plot2d = pg.PlotWidget(title="Voltage")
-        self.trace  = self.plot2d.plot(pen='b')
+       # 2D plot
+        self.plot2d = pg.PlotWidget(title="Voltage for segment")
+        self.plot2d.setLabel('bottom','Time','ms')
+        self.plot2d.setLabel('left','Voltage','mV')
+        self.plot2d.setBackground('w')
+        self.trace_t, self.trace_v = [], []
+        self.trace = self.plot2d.plot(pen='b')
+        vb = self.plot2d.getPlotItem().getViewBox()
+        vb.setRange(yRange=(-80,50), padding=0)
+        vb.enableAutoRange(x=True, y=False)
+        vb.setLimits(yMin=-80, yMax=50)
 
         # layout
         w  = QtWidgets.QWidget()
@@ -247,10 +257,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker = SimWorker()
         self.worker.moveToThread(self.thread)
         self.worker.data_ready.connect(self._update)
-        self.worker.error.connect(lambda e: print("Error:",e))
+        self.worker.error     .connect(lambda e: print("Worker error:",e))
         self.thread.start()
 
-        # timer @60Hz
+        # timer at 60 Hz
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(lambda: self.worker.step_and_fetch(1))
         self.timer.start(1000//60)
@@ -262,30 +272,32 @@ class MainWindow(QtWidgets.QMainWindow):
         if not hasattr(self,'_p0'): return
         dx = ev.pos[0]-self._p0[0]; dy = ev.pos[1]-self._p0[1]
         del self._p0
-        if dx*dx+dy*dy > self.DRAG_THRESHOLD**2: return
+        if dx*dx+dy*dy>self.DRAG_THRESHOLD**2: return
         x,y = ev.pos; w,h=self.canvas3d.size; ps=self.canvas3d.pixel_scale
-        xf=int(x*ps); yf=int((h-y-1)*ps)
+        xf, yf = int(x*ps), int((h-y-1)*ps)
         picked = self.mmgr.pick(xf,yf,self.canvas3d)
         if picked:
             self.selected = picked
+            self.trace_t.clear(); self.trace_v.clear()
             self.trace.clear()
             self.plot2d.setTitle(f"Voltage for {picked[0]}@{picked[1]:.3f}")
 
     @QtCore.pyqtSlot(float, np.ndarray)
     def _update(self, t, vs):
-        # 3D colors
+        # 3D
         self.mmgr.update_colors(vs)
         self.canvas3d.update()
-        # 2D trace
+        # 2D
         if self.selected:
-            sec,xloc = self.selected
-            # find nearest
-            cand = [(i,abs(m['xloc']-xloc)) for i,m in enumerate(self.mmgr.meta)
+            sec, sel_x = self.selected
+            cand = [(i,abs(m['xloc']-sel_x)) for i,m in enumerate(self.mmgr.meta)
                     if m['sec_name']==sec]
             if cand:
                 idx = min(cand, key=lambda x:x[1])[0]
-                self.trace.setData(self.trace.xData+[t], self.trace.yData+[vs[idx]], clear=False)
-                self.plot2d.update()
+                self.trace_t.append(t); self.trace_v.append(vs[idx])
+                if len(self.trace_t)>5000:
+                    self.trace_t.pop(0); self.trace_v.pop(0)
+                self.trace.setData(self.trace_t, self.trace_v, clear=False)
 
     def closeEvent(self, ev):
         self.timer.stop()
@@ -294,7 +306,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.manager.shutdown()
         super().closeEvent(ev)
 
-# ─────────────────────────────────────────────────────────────────────────────
 if __name__=="__main__":
     mp.set_start_method('spawn', force=True)
     swc = os.path.join("res","m3s4s4t-vp-sup.CNG.swc")
