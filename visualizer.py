@@ -117,28 +117,32 @@ class MorphologyManager:
         # picking colors
         self.id_colors      = np.stack([self.make_id_color(i) for i in range(N)], axis=0)
         self.id_colors_caps = np.vstack([self.id_colors, self.id_colors])
-        self.orig_side = self.collection._side_mesh.instance_colors.copy()
-        self.orig_cap  = self.collection._cap_mesh.instance_colors.copy()
 
     def pick(self, x_fb, y_fb, canvas):
-        """Return (sec_name, xloc) under the given framebuffer coords, or None."""
-        if self.collection is None or self.meta is None:
-            return None
-        # render ID‐pass
-        self.collection._side_mesh.instance_colors = self.id_colors
-        self.collection._cap_mesh.instance_colors  = self.id_colors_caps
-        img = canvas.render(region=(x_fb, y_fb, 1, 1), size=(1,1), alpha=False)
-        # restore
-        self.collection._side_mesh.instance_colors = self.orig_side
-        self.collection._cap_mesh.instance_colors  = self.orig_cap
-        canvas.update()
+        # 1) swap in the ID‐colors
+        side = self.collection._side_mesh
+        cap  = self.collection._cap_mesh
+        old_side = side.instance_colors
+        old_cap  = cap.instance_colors
+        side.instance_colors = self.id_colors
+        cap.instance_colors  = self.id_colors_caps
 
+        # 2) do an OFF‐SCREEN render (this does *not* modify the displayed canvas)
+        img = canvas.render(region=(x_fb, y_fb, 1,1),
+                            size=(1,1),
+                            alpha=False)
+
+        # 3) restore the real colors (still off‐screen—no update())
+        side.instance_colors = old_side
+        cap.instance_colors  = old_cap
+
+        # 4) decode your pick ID from img:
         pix = img[0,0]
         if pix.dtype != np.uint8:
             pix = np.round(pix*255).astype(int)
         cid = int(pix[0]) | (int(pix[1])<<8) | (int(pix[2])<<16)
         idx = cid-1 if cid>0 else None
-        if idx is None or not (0<=idx<len(self.meta)):
+        if idx is None or not (0 <= idx < len(self.meta)):
             return None
         m = self.meta[idx]
         return m['sec_name'], m['xloc']
@@ -159,6 +163,7 @@ def neuron_process(data_pipe, cmd_pipe, swc_path):
     from neuron import h
 
     secs = load_swc_model(swc_path)
+    print("Num secs = ", len(secs))
     for sec in secs:
         sec.insert("hh" if "dendrite" not in sec.name() else "pas")
         if 'soma' not in sec.name():
@@ -169,7 +174,7 @@ def neuron_process(data_pipe, cmd_pipe, swc_path):
     refs = [(name2sec[m['sec_name']], m['xloc']) for m in meta]
     N = len(refs)
 
-    h.dt = 0.01
+    h.dt = 0.2
     vt = h.Vector(); vt.record(h._ref_t)
     vs = []
     for sec,xloc in refs:
@@ -332,11 +337,14 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                         if m['sec_name'] == sec_name
                     ]
                     if candidates:
+                        if self.trace_t and t < self.trace_t[-1]:
+                            self.trace_t.clear()
+                            self.trace_v.clear()
                         # pick the one with minimal |xloc - sel_xloc|
                         idx = min(candidates, key=lambda x: x[1])[0]
                         self.trace_t.append(t)
                         self.trace_v.append(v[idx])
-                        if len(self.trace_t) > 5000:
+                        if len(self.trace_t) > 1000:
                             self.trace_t.pop(0)
                             self.trace_v.pop(0)
                         self.trace.setData(self.trace_t, self.trace_v)
@@ -354,6 +362,6 @@ class MorphologyViewer(QtWidgets.QMainWindow):
 if __name__=="__main__":
     mp.set_start_method('spawn', force=True)
     app = QtWidgets.QApplication(sys.argv)
-    viewer = MorphologyViewer(os.path.join("res","m3s4s4t-vp-sup.CNG.swc"))
+    viewer = MorphologyViewer(os.path.join("res","Animal_2_Basal_2.CNG.swc"))
     viewer.show()
     vispy_app.run()

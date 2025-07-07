@@ -133,7 +133,7 @@ class MorphologyManager:
         self.meta = []
         self.collection = None
         self.id_colors = None
-        self.id_caps   = None
+        self.id_colors_caps   = None
         self.orig_side = None
         self.orig_cap  = None
 
@@ -164,7 +164,7 @@ class MorphologyManager:
         self.collection._cap_mesh.shading  = None
 
         self.id_colors = np.stack([self.make_id_color(i) for i in range(N)])
-        self.id_caps   = np.vstack([self.id_colors, self.id_colors])
+        self.id_colors_caps   = np.vstack([self.id_colors, self.id_colors])
         self.orig_side = self.collection._side_mesh.instance_colors.copy()
         self.orig_cap  = self.collection._cap_mesh.instance_colors.copy()
 
@@ -175,7 +175,7 @@ class MorphologyManager:
         old_side = side.instance_colors
         old_cap  = cap.instance_colors
         side.instance_colors = self.id_colors
-        cap.instance_colors  = self.id_caps
+        cap.instance_colors  = self.id_colors_caps
 
         # 2) do an OFF‐SCREEN render (this does *not* modify the displayed canvas)
         img = canvas.render(region=(x_fb, y_fb, 1,1),
@@ -308,7 +308,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 if __name__=="__main__":
     mp.set_start_method('spawn', force=True)
-    swc = os.path.join("res","m3s4s4t-vp-sup.CNG.swc")
+    swc = os.path.join("res","Animal_2_Basal_2.CNG.swc")
     app = QtWidgets.QApplication(sys.argv)
     w   = MainWindow(swc)
     w.show()
