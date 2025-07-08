@@ -16,5 +16,6 @@ A repository to create a new interactive 3d GUI for compartmental neuron modelin
 2. You can rotate around by clicking and dragging LMB
 3. You can move around by pressing Shift and clicking and dragging LMB
 4. You can zoom either with the scroll wheel or clicking and dragging RMB
+5. Press Spacebar to restart the simulation.
 ## Goal:
 Provide a generic way for someone to swap out their compartmental neuron simulator, simulation setup, and add their own widgets and interactions to their visualization.
