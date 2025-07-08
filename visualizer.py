@@ -176,10 +176,10 @@ def neuron_process(data_pipe, cmd_pipe, swc_path):
 
     h.dt = 0.2
     vt = h.Vector(); vt.record(h._ref_t)
-    vs = []
-    for sec,xloc in refs:
-        v = h.Vector(); v.record(sec(xloc)._ref_v)
-        vs.append(v)
+    pvs = h.PtrVector(N)
+    vs = h.Vector(N)
+    for i, (sec,xloc) in enumerate(refs):
+        pvs.pset(i, sec(xloc)._ref_v)
 
     soma = next(sec for sec in secs if 'soma' in sec.name().lower())
     iclamps = []
@@ -196,7 +196,8 @@ def neuron_process(data_pipe, cmd_pipe, swc_path):
                 if cmd_pipe.recv()=="reset":
                     h.finitialize(-65.0)
             t = float(vt[-1])
-            arr = np.fromiter((v[-1] for v in vs), np.float32, count=N)
+            pvs.gather(vs)
+            arr = vs.as_numpy()
             data_pipe.send((t, arr))
     finally:
         data_pipe.close(); cmd_pipe.close()
@@ -264,7 +265,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         # polling timer
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._poll)
-        self.timer.start(1000//30)
+        self.timer.start(1000//60)
 
     def _start_worker(self):
         self.worker.start()
