@@ -7,6 +7,7 @@ from multiprocessing import Pipe, Process
 
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import Qt
+
 from vispy import use
 # ─── VisPy + PyQt6 backend ────────────────────────────────────────────────
 use(app='pyqt6', gl='gl+')
@@ -361,8 +362,10 @@ class MorphologyViewer(QtWidgets.QMainWindow):
 
 
 if __name__=="__main__":
+    print("Loading morphology visualizer...")
     mp.set_start_method('spawn', force=True)
     app = QtWidgets.QApplication(sys.argv)
-    viewer = MorphologyViewer(os.path.join("res","Animal_2_Basal_2.CNG.swc"))
+    swc_path = os.path.join("res","Animal_2_Basal_2.CNG.swc")
+    viewer = MorphologyViewer(swc_path)
     viewer.show()
     vispy_app.run()

@@ -3,7 +3,7 @@ A repository to create a new interactive 3d GUI for compartmental neuron modelin
 <img width="902" alt="image" src="https://github.com/user-attachments/assets/fbdfcc50-5547-4f87-ae4d-48f3e3c653cd" />
 
 ## Instructions
-1. Install the relevant packages
+1. Install the relevant packages from requirements.txt via `pip install -r requirements.txt`
 2. Run `python visualizer.py`
 3. You can swap out the swc file being used by simply adding your swc file path instead of the one being used at the bottom of the file.
 4. The demo will run a NEURON simulation where we load the morphology, add Hodgkin Huxley and passive dynamics, apply a number of current clamps over an 80 ms period
@@ -19,3 +19,6 @@ A repository to create a new interactive 3d GUI for compartmental neuron modelin
 5. Press Spacebar to restart the simulation.
 ## Goal:
 Provide a generic way for someone to swap out their compartmental neuron simulator, simulation setup, and add their own widgets and interactions to their visualization.
+
+# Known issues:
+- PyOpenGL has a [known bug](https://github.com/mcfletch/pyopengl/issues/149) affecting Instanced Rendering when using `numpy>=2.3` so currently need to use `numpy<2.3` for things to work. But a [fix](https://github.com/mcfletch/pyopengl/pull/150) is in progress.
