@@ -117,12 +117,13 @@ def build_morphology_meta(secs):
     }
 
 
-def neuron_process(data_pipe, cmd_pipe, swc_path):
+def neuron_process(data_pipe, cmd_pipe):
     """Worker process: send geometry meta, then simulate & stream (t, v)."""
     from neuron import h
 
     t0 = time.perf_counter()
     
+    swc_path = os.path.join("res","Animal_2_Basal_2.CNG.swc")
     secs = load_swc_model(swc_path)
 
     elapsed = time.perf_counter() - t0
@@ -250,7 +251,7 @@ class MorphologyManager:
 
 
 class MorphologyViewer(QtWidgets.QMainWindow):
-    def __init__(self, swc_path):
+    def __init__(self):
         super().__init__()
         self.setWindowTitle("Morphology + Voltage")
         self.statusBar().showMessage("Loading morphology…")
@@ -293,7 +294,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         # start worker
         self.worker = Process(
             target=neuron_process,
-            args=(self.data_child, self.cmd_child, swc_path)
+            args=(self.data_child, self.cmd_child)
         )
         QtCore.QTimer.singleShot(0, self._start_worker)
 
@@ -395,8 +396,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
 
 if __name__=="__main__":
     mp.set_start_method('spawn', force=True)
-    swc_path = os.path.join("res","Animal_2_Basal_2.CNG.swc")
     app = QtWidgets.QApplication(sys.argv)
-    w = MorphologyViewer(swc_path)
+    w = MorphologyViewer()
     w.show()
     vispy_app.run()
