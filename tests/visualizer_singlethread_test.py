@@ -18,7 +18,7 @@ import pyqtgraph as pg
 
 # replace with your actual import path
 from src.vispyutils.cappedcylindercollection import CappedCylinderCollection
-from src.neuronutils.swc_utils import load_swc_model
+from src.neuronutils.swc_utils import load_swc_neuron
 
 
 def build_morphology_meta(secs):
@@ -150,7 +150,7 @@ def neuron_process(data_pipe, cmd_pipe, swc_path):
 
     print("Loading swc model...")
     # load & insert
-    secs = load_swc_model(swc_path)
+    secs = load_swc_neuron(swc_path)
     print ("Loaded swc model.")
     for sec in secs:
         sec.insert("hh" if "dendrite" not in sec.name() else "pas")

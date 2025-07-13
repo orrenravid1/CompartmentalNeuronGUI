@@ -1,0 +1,19 @@
+# Cell VA11 taken from NeuroML file c302_D_Full/cells/VA11_D.cell.nml converted to SWC
+# Using pyNeuroML v1.3.15
+# For group: soma_group, found 1 NeuroML segments, resulting in 2 SWC lines
+# For group: dendrite_group, found 4 NeuroML segments, resulting in 5 SWC lines
+# For group: axon_group, found 6 NeuroML segments, resulting in 7 SWC lines
+1 1 -1.55 312.35 -26.249998 2.0506095 -1 
+2 1 -1.55 312.35 -26.249998 2.0506095 1 
+3 3 -1.55 312.35 -26.249998 0.353553385 2 
+4 3 -1.55 313.8 -26.249998 0.353553385 3 
+5 3 -1.5 322.6 -26.050001 0.25 4 
+6 3 -1.4499999 348.9 -23.15 0.21213202 5 
+7 3 -1.4499999 350.8 -22.75 0.21213202 6 
+8 2 -1.55 312.35 -26.249998 0.353553385 2 
+9 2 -1.55 310.9 -26.249998 0.353553385 8 
+10 2 -1.55 305.9 -26.1 0.320156215 9 
+11 2 -1.5 289.19998 -25.5 0.282842725 10 
+12 2 -1.4499999 283.3 -25.0 0.25 11 
+13 2 -1.4499999 256.3 -21.5 0.25 12 
+14 2 -1.4499999 253.4 -21.05 0.21213202 13 
