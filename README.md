@@ -1,5 +1,5 @@
 # CompartmentalNeuronGUI
-A repository to create a new interactive 3d GUI for compartmental neuron modeling tools like NEURON, Jaxley, and MOOSE.
+A repository to create a new interactive 3d GUI for compartmental neuron modeling tools like NEURON, Jaxley, Arbor, and MOOSE.
 <img width="902" alt="image" src="https://github.com/user-attachments/assets/fbdfcc50-5547-4f87-ae4d-48f3e3c653cd" />
 
 ## Instructions
