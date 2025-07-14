@@ -3,11 +3,12 @@ A repository to create a new interactive 3d GUI for compartmental neuron modelin
 <img width="902" alt="image" src="https://github.com/user-attachments/assets/fbdfcc50-5547-4f87-ae4d-48f3e3c653cd" />
 
 ## Instructions
-1. Install the relevant packages from requirements.txt via `pip install -r requirements.txt`
-2. Run `python visualizer.py`
-3. You can swap out the swc file being used by simply adding your swc file path instead of the one being used at the bottom of the file.
-4. The demo will run a NEURON simulation where we load the morphology, add Hodgkin Huxley and passive dynamics, apply a number of current clamps over an 80 ms period
-5.
+1. Install neuron via `pip install neuron` on Unix or via an exe for Windows here: [https://www.neuron.yale.edu/neuron/download](https://www.neuron.yale.edu/neuron/download)
+2. Install the relevant packages from requirements.txt via `pip install -r requirements.txt`
+3. Run `python visualizer.py`
+4. You can swap out the swc file being used by simply adding your swc file path instead of the one being used at the bottom of the file.
+5. The demo will run a NEURON simulation where we load the morphology, add Hodgkin Huxley and passive dynamics, apply a number of current clamps over an 80 ms period
+6.
     a. You can update the experimental setup currently in the `neuron_process` method, though it has not been modularized yet to make things straightforward.
 
     b. The easy things to change currently are changing the mechanisms being added and point processes: IClamps, etc.
