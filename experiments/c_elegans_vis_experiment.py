@@ -14,8 +14,8 @@ from vispy import scene, app as vispy_app
 from vispy.scene.cameras import TurntableCamera
 import pyqtgraph as pg
 
-from src.vispyutils.cappedcylindercollection import CappedCylinderCollection
-from src.neuronutils.swc_utils import load_swc_multi
+from compneurovis.vispyutils.cappedcylindercollection import CappedCylinderCollection
+from compneurovis.neuronutils.swc_utils import load_swc_multi
 
 
 def build_morphology_meta(secs):
@@ -122,7 +122,7 @@ def neuron_process(data_pipe, cmd_pipe):
 
     t0 = time.perf_counter()
     
-    swc_path = os.path.join("res","celegans_cells_swc")
+    swc_path = os.path.join("..","res","celegans_cells_swc")
     swc_files = [f for f in os.listdir(swc_path)]
     secs = []
     for i,swcf in enumerate(swc_files):

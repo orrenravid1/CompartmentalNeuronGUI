@@ -11,12 +11,12 @@ Currently there is a functional demo both for the entire c elegans nervous syste
 
 ## Instructions
 1. Install neuron via `pip install neuron` on Unix or via an exe for Windows here: [https://www.neuron.yale.edu/neuron/download](https://www.neuron.yale.edu/neuron/download)
-2. Install the relevant packages from requirements.txt via `pip install -r requirements.txt`
-3. Run `python visualizer.py`
-4. You can swap out the swc file being used by simply adding your swc file path instead of the one being used at the bottom of the file.
+2. Install as a package via `pip install -e .` in the root directory
+3. Run `python examples/visualizer_neuron.py`
+4. You can swap out the swc file being used by simply adding your swc file path instead of the one being used in the file.
 5. The demo will run a NEURON simulation where we load the morphology, add Hodgkin Huxley and passive dynamics, apply a number of current clamps over an 80 ms period
 6.
-    a. You can update the experimental setup currently in the `neuron_process` method, though it has not been modularized yet to make things straightforward.
+    a. You can update the experimental setup currently in the `setup` method. But this approach may be subject to change.
 
     b. The easy things to change currently are changing the mechanisms being added and point processes: IClamps, etc.
 ## Controls
