@@ -87,9 +87,14 @@ class NeuronSimulation(Simulation):
         xloc  = (CUM + 0.5 * L) / TOT              # (M,)
         rad   = 0.5 * (D0 + D1)                    # (M,)
         col   = np.tile(np.array([0.7,0.7,0.7,1.0], dtype=np.float32), (M,1))
-
+        
         # orientations via bulk Rodrigues
-        dn    = (P1 - P0) / L[:,None]               # (M,3)
+        diffs = P1 - P0                           # (M,3)
+        L     = np.linalg.norm(diffs, axis=1)     # (M,)
+        dn    = np.zeros_like(diffs)              # (M,3)
+        # handling zero or near zero lengths
+        nz    = L > 1e-8
+        dn[nz] = diffs[nz] / L[nz,None]
         cos_t = dn[:,2]                             # dot with z
         ang   = np.arccos(np.clip(cos_t, -1.0, 1.0))# (M,)
         ax    = np.cross(np.repeat([[0,0,1]], M, 0), dn)  # (M,3)
