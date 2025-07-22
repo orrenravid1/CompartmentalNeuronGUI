@@ -69,6 +69,7 @@ def simulation_process(sim: Simulation, data_pipe: Connection, cmd_pipe: Connect
                 if cmd_pipe.recv()=="reset":
                     sim.initialize()
             data = sim.get_data()
+            ## TODO: More generic data sending
             data_pipe.send((data['t'], data['v']))
     finally:
         data_pipe.close()

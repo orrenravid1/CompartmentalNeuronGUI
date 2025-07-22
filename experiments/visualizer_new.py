@@ -30,17 +30,12 @@ class MyNeuronSimulation(NeuronSimulation):
             if "soma" not in sec.name():
                 sec.nseg = 10
 
-        h.dt = 0.1
-
         soma = next(sec for sec in self.secs if 'soma' in sec.name().lower())
         self.iclamps = []
         for d,du,a in [(2,5,1),(20,5,1),(40,5,1),(60,5,5),(80,5,5)]:
             icl = h.IClamp(soma(0.5))
             icl.delay, icl.dur, icl.amp = d, du, a
             self.iclamps.append(icl)
-    
-    def initialize(self):
-        h.finitialize(-65.0)
 
     def step(self):
         h.fadvance()

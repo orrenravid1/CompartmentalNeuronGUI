@@ -15,12 +15,12 @@ class NeuronSimulation(Simulation):
 
     def __init__(self, dt=0.1, v_init=-65):
         super().__init__()
-        self.dt = dt
-        self.v_int = v_init
         # Will map morphology_var→(PtrVector,Vector)
         self._morph_recorders   = {}
         # Will map sim_var→(PtrVector,Vector)
         self._sim_recorders = {}
+        self.dt = dt
+        self.v_init = v_init
     
     @property
     @abstractmethod
@@ -124,6 +124,34 @@ class NeuronSimulation(Simulation):
             'xloc':         xloc.astype(np.float32)
         }
     
+    def initialize(self):
+        h.dt = self.dt
+        h.finitialize(self.v_init)
+
+    # TODO: More generic recording
+    def record(self):
+        self.record_simulation_vars('t')
+        self.record_morphology_vars('v')
+    
+    def get_data(self, *args, **kwargs):
+        data = {}
+        # Just return them all in one dictionary
+        for (varname, (pvs, vs)) in self._morph_recorders.items():
+            if args and varname not in args:
+                continue
+            else:
+                pvs.gather(vs)
+                arr = vs.as_numpy()
+                data[varname] = arr
+        for (varname, (pv, v)) in self._sim_recorders.items():
+            if args and varname not in args:
+                continue
+            else:
+                pv.gather(v)
+                arr = v.as_numpy()
+                data[varname] = arr[0]
+        return data
+
     def record_morphology_vars(self, *args, **kwargs):
         idxs  = self.morphology_meta["sec_idx"]
         xlocs = self.morphology_meta["xloc"]
@@ -148,29 +176,6 @@ class NeuronSimulation(Simulation):
                 pv.pset(0, ref)
 
                 self._sim_recorders[varname] = (pv, v)
-    
-    def record(self):
-        self.record_simulation_vars('t')
-        self.record_morphology_vars('v')
-    
-    def get_data(self, *args, **kwargs):
-        data = {}
-        # Just return them all in one dictionary
-        for (varname, (pvs, vs)) in self._morph_recorders.items():
-            if args and varname not in args:
-                continue
-            else:
-                pvs.gather(vs)
-                arr = vs.as_numpy()
-                data[varname] = arr
-        for (varname, (pv, v)) in self._sim_recorders.items():
-            if args and varname not in args:
-                continue
-            else:
-                pv.gather(v)
-                arr = v.as_numpy()
-                data[varname] = arr[0]
-        return data
         
 
                 

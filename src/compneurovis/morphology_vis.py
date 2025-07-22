@@ -174,6 +174,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                     continue
 
                 # subsequent messages: (t, voltages)
+                ## TODO: More generic data consumption
                 t, arr = msg
                 self.mgr.update_colors(arr, lambda a: np.clip((a+80)/130,0,1))
                 self.canvas3d.update()
