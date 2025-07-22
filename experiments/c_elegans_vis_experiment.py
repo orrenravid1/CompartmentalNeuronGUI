@@ -5,6 +5,7 @@ import time
 import numpy as np
 import multiprocessing as mp
 from multiprocessing import Pipe, Process
+from pathlib import Path
 
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtCore import Qt
@@ -121,8 +122,8 @@ def neuron_process(data_pipe, cmd_pipe):
     from neuron import h
 
     t0 = time.perf_counter()
-    
-    swc_path = os.path.join("..","res","celegans_cells_swc")
+    curr_path = os.path.dirname(os.path.abspath(__file__))
+    swc_path = os.path.join(curr_path,"..","res","celegans_cells_swc")
     swc_files = [f for f in os.listdir(swc_path)]
     secs = []
     for i,swcf in enumerate(swc_files):

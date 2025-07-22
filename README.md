@@ -6,8 +6,8 @@ A repository to create a new interactive 3d GUI for compartmental neuron modelin
 
 ## Current State:
 Currently there is a functional demo both for the entire c elegans nervous system and a complex morphology of a single cell.
-- `python visualizer.py` runs the complex morphology of a single cell demo
-- `python c_elegans_vis_test.py` runs the whole c elegans nervous system demo
+- `python examples/visualizer_neuron.py` runs the complex morphology of a single cell demo
+- `python experiments/c_elegans_vis_test.py` runs the whole c elegans nervous system demo
 
 ## Instructions
 1. Install neuron via `pip install neuron` on Unix or via an exe for Windows here: [https://www.neuron.yale.edu/neuron/download](https://www.neuron.yale.edu/neuron/download)
