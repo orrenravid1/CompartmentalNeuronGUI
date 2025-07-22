@@ -14,26 +14,28 @@ from vispy import scene, app as vispy_app
 from vispy.scene.cameras import TurntableCamera
 import pyqtgraph as pg
 
-from scipy.spatial.transform import Rotation
-from src.vispyutils.cappedcylindercollection import CappedCylinderCollection
-from src.neuronutils.swc_utils import load_swc_multi
+from compneurovis.vispyutils.cappedcylindercollection import CappedCylinderCollection
+from compneurovis.neuronutils.swc_utils import load_swc_neuron
 
 
 def build_morphology_meta(secs):
     """
     Pure‐NumPy, vectorized builder for per‐segment metadata.
-    Filters out zero‐length segments to avoid divide‐by‐zero.
+    Returns a dict with:
+      - positions (M,3)
+      - orientations (M,3,3)
+      - radii (M,)
+      - lengths (M,)
+      - colors (M,4)
+      - sec_names (list of str)
+      - sec_idx (M,)
+      - xloc (M,)
     """
-    import time, numpy as np
-    from scipy.spatial.transform import Rotation
-
     t0 = time.perf_counter()
-
-    # ─── Gather per‐section data ─────────────────────────────────────────────
+    # gather per‐section data
     sec_names = []
-    P0_list, P1_list = [], []
-    D0_list, D1_list = [], []
-    CUM_list, TOT_list, S_list = [], [], []
+    P0, P1, D0, D1 = [], [], [], []
+    CUM, TOT, S = [], [], []
 
     for si, sec in enumerate(secs):
         n3d = int(sec.n3d())
@@ -41,80 +43,76 @@ def build_morphology_meta(secs):
             continue
         sec_names.append(sec.name())
 
-        pts   = np.stack([[sec.x3d(i), sec.y3d(i), sec.z3d(i)]
-                          for i in range(n3d)], axis=0).astype(np.float32)
-        diams = np.array([sec.diam3d(i) for i in range(n3d)],
-                         dtype=np.float32)
+        # extract coords & diameters
+        pts   = np.stack([[sec.x3d(i), sec.y3d(i), sec.z3d(i)] for i in range(n3d)], axis=0).astype(np.float32)
+        diams = np.array([sec.diam3d(i) for i in range(n3d)], dtype=np.float32)
 
-        diffs = pts[1:] - pts[:-1]                  # (n3d-1,3)
-        dlen  = np.linalg.norm(diffs, axis=1)       # (n3d-1,)
-        cum   = np.concatenate(([0.0], np.cumsum(dlen)))[:-1]
-        total = cum[-1] + dlen[-1] if dlen.sum() > 0 else 1.0
+        # segment vectors & lengths
+        diffs = pts[1:] - pts[:-1]                    # (n3d-1,3)
+        dlen  = np.linalg.norm(diffs, axis=1)         # (n3d-1,)
+        cum   = np.concatenate(([0.0], np.cumsum(dlen)))[:-1]  # (n3d-1,)
+        total = cum[-1] + dlen[-1] if dlen.sum()>0 else 1.0
 
-        P0_list.append(pts[:-1])
-        P1_list.append(pts[1:])
-        D0_list.append(diams[:-1])
-        D1_list.append(diams[1:])
-        CUM_list.append(cum)
-        TOT_list.append(np.full_like(dlen, total, dtype=np.float32))
-        S_list.append(np.full_like(dlen, si, dtype=np.int32))
+        # record
+        P0.append(pts[:-1])
+        P1.append(pts[1:])
+        D0.append(diams[:-1])
+        D1.append(diams[1:])
+        CUM.append(cum)
+        TOT.append(np.full_like(dlen, total, dtype=np.float32))
+        S .append(np.full_like(dlen, si,    dtype=np.int32))
 
-    # ─── Stack into flat arrays ──────────────────────────────────────────────
-    P0  = np.vstack(P0_list)       # (M,3)
-    P1  = np.vstack(P1_list)
-    D0  = np.concatenate(D0_list)  # (M,)
-    D1  = np.concatenate(D1_list)
-    CUM = np.concatenate(CUM_list)
-    TOT = np.concatenate(TOT_list)
-    S   = np.concatenate(S_list)
-    M   = P0.shape[0]
+    # stack into flat arrays
+    P0   = np.vstack(P0)         # (M,3)
+    P1   = np.vstack(P1)
+    D0   = np.concatenate(D0)    # (M,)
+    D1   = np.concatenate(D1)
+    CUM  = np.concatenate(CUM)
+    TOT  = np.concatenate(TOT)
+    S    = np.concatenate(S)
+    M    = P0.shape[0]
 
-    # ─── Compute raw lengths and mask out zeros ──────────────────────────────
-    raw_L = np.linalg.norm(P1 - P0, axis=1)         # (M,)
-    mask  = raw_L > 1e-6
-    P0, P1, D0, D1 = P0[mask], P1[mask], D0[mask], D1[mask]
-    CUM, TOT, S   = CUM[mask], TOT[mask], S[mask]
-    L             = raw_L[mask]
+    # compute midpoints, lengths, radii, normalized xloc
+    mid   = 0.5 * (P0 + P1)                    # (M,3)
+    L     = np.linalg.norm(P1 - P0, axis=1)    # (M,)
+    xloc  = (CUM + 0.5 * L) / TOT              # (M,)
+    rad   = 0.5 * (D0 + D1)                    # (M,)
+    col   = np.tile(np.array([0.7,0.7,0.7,1.0], dtype=np.float32), (M,1))
 
-    # ─── Midpoints, xloc, radii, colors ─────────────────────────────────────
-    mid   = 0.5*(P0 + P1)                            # (K,3)
-    xloc  = (CUM + 0.5*L) / TOT                      # (K,)
-    rad   = 0.5*(D0 + D1)                            # (K,)
-    col   = np.tile([0.7,0.7,0.7,1.0], (len(L),1)).astype(np.float32)
-
-    # ─── Bulk Rodrigues rotations ────────────────────────────────────────────
-    dn    = (P1 - P0) / L[:,None]                    # (K,3)
-    cos_t = dn[:,2]
-    ang   = np.arccos(np.clip(cos_t, -1.0, 1.0))
-    ax    = np.cross(np.repeat([[0,0,1]], len(L), 0), dn)
+    # orientations via bulk Rodrigues
+    dn    = (P1 - P0) / L[:,None]               # (M,3)
+    cos_t = dn[:,2]                             # dot with z
+    ang   = np.arccos(np.clip(cos_t, -1.0, 1.0))# (M,)
+    ax    = np.cross(np.repeat([[0,0,1]], M, 0), dn)  # (M,3)
     ax_n  = np.linalg.norm(ax, axis=1, keepdims=True)
-    ax_u  = ax / np.where(ax_n>1e-6, ax_n, 1.0)
+    ax_u  = np.divide(ax, ax_n, where=(ax_n>1e-6))
     ux, uy, uz = ax_u.T
 
-    K    = np.zeros((len(L),3,3), dtype=np.float32)
+    # build skew K and K²
+    K    = np.zeros((M,3,3), dtype=np.float32)
     K[:,0,1] = -uz; K[:,0,2] =  uy
     K[:,1,0] =  uz; K[:,1,2] = -ux
     K[:,2,0] = -uy; K[:,2,1] =  ux
-    K2   = K @ K
+    K2   = K @ K  # (M,3,3)
 
     sin_t = np.sin(ang)[:,None,None]
     one_c = (1.0 - cos_t)[:,None,None]
-    I     = np.eye(3, dtype=np.float32)[None,:,:]
+    I     = np.eye(3, dtype=np.float32)[None,:,:]  # broadcastable
 
-    R = I + sin_t*K + one_c*K2                    # (K,3,3)
+    R = I + sin_t * K + one_c * K2  # (M,3,3)
 
     elapsed = time.perf_counter() - t0
-    print(f"Meta file generated in {elapsed:.2f}s (filtered {M-len(L)} zero-length segments)")
+    print(f"Meta file generated in {elapsed:.2f}s")
 
     return {
-        'positions':    mid,
-        'orientations':R,
-        'radii':        rad,
-        'lengths':      L,
+        'positions':    mid.astype(np.float32),
+        'orientations':R.astype(np.float32),
+        'radii':        rad.astype(np.float32),
+        'lengths':      L.astype(np.float32),
         'colors':       col,
         'sec_names':    sec_names,
         'sec_idx':      S,
-        'xloc':         xloc
+        'xloc':         xloc.astype(np.float32)
     }
 
 
@@ -124,17 +122,8 @@ def neuron_process(data_pipe, cmd_pipe):
 
     t0 = time.perf_counter()
     
-    swc_path = os.path.join("res","celegans_cells_swc")
-    swc_files = [f for f in os.listdir(swc_path)]
-    secs = []
-    for i,swcf in enumerate(swc_files):
-        print(f"Loading cell {swcf}")
-        cell_name = swcf.split('.')[0]
-        trees = load_swc_multi(os.path.join(swc_path, swcf), cell_name)
-        seclists = trees.values()
-        for seclist in seclists:
-            for sec in seclist:
-                secs.append(sec)
+    swc_path = os.path.join("..","res","Animal_2_Basal_2.CNG.swc")
+    secs = load_swc_neuron(swc_path)
 
     elapsed = time.perf_counter() - t0
     print(f"SWC Loaded in {elapsed:.2f}s")
@@ -162,13 +151,12 @@ def neuron_process(data_pipe, cmd_pipe):
     for i, (sec, x) in enumerate(refs):
         pvs.pset(i, sec(x)._ref_v)
 
-    somas = [sec for sec in secs if 'soma' in sec.name().lower()]
+    soma = next(sec for sec in secs if 'soma' in sec.name().lower())
     iclamps = []
-    for soma in somas:
-        for d,du,a in [(2,5,0.2),(20,5,0.2),(40,5,0.2),(60,5,0.2),(80,5,0.2)]:
-            icl = h.IClamp(soma(0.5))
-            icl.delay, icl.dur, icl.amp = d, du, a
-            iclamps.append(icl)
+    for d,du,a in [(2,5,1),(20,5,1),(40,5,1),(60,5,5),(80,5,5)]:
+        icl = h.IClamp(soma(0.5))
+        icl.delay, icl.dur, icl.amp = d, du, a
+        iclamps.append(icl)
 
     h.finitialize(-65.0)
     try:
@@ -192,9 +180,6 @@ class MorphologyManager:
         self.view = view
 
     def set_morphology(self, meta):
-        
-        t0 = time.perf_counter()
-
         pos   = meta['positions']
         ori   = meta['orientations']
         rad   = meta['radii']
@@ -208,13 +193,13 @@ class MorphologyManager:
         self.sec_idx   = idx
         self.xlocs     = xlocs
 
+        t0 = time.perf_counter()
         self.collection = CappedCylinderCollection(
             positions=pos, radii=rad, heights=ln,
             orientations=ori, colors=col,
             cylinder_segments=32, disk_slices=32,
             parent=self.view.scene
         )
-
         self.collection._side_mesh.shading = None
         self.collection._cap_mesh.shading  = None
 
@@ -315,7 +300,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         # polling
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._poll)
-        self.timer.start(1000 // 60)
+        self.timer.start(1000 // 200)
 
         self.selected = None
         self.DRAG_THRESHOLD = 5
@@ -358,9 +343,6 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                     mask  = np.array([n==sec for n in self.mgr.sec_names])[self.mgr.sec_idx]
                     idxs  = np.where(mask)[0]
                     if idxs.size:
-                        if self.trace_t and t < self.trace_t[-1]:
-                            self.trace_t.clear()
-                            self.trace_v.clear()
                         best = idxs[np.argmin(diffs[idxs])]
                         self.trace_t.append(t)
                         self.trace_v.append(arr[best])

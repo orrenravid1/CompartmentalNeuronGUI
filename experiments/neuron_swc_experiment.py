@@ -2,7 +2,7 @@ from neuron import h, gui
 from src.neuronutils.swc_utils import load_swc_multi, load_swc_neuron
 import os
 
-swc_path = os.path.join("res","celegans_cells_swc")
+swc_path = os.path.join("..","res","celegans_cells_swc")
 swc_files = [f for f in os.listdir(swc_path)]
 allsecs = []
 for i,swcf in enumerate(swc_files):

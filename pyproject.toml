@@ -1,0 +1,42 @@
+[build-system]
+requires    = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name        = "compneurovis"
+version     = "0.1.0"
+description = "A VisPy/PyQt6 GUI for compartmental neuron visualization"
+authors     = ["Orren Ravid"]
+readme      = "README.md"
+license     = "Apache-2.0"
+packages    = [
+  { include = "compneurovis", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python        = "^3.11"
+numpy         = "<2.3"
+PyOpenGL      = "3.1.9"
+PyQt6         = "6.9.1"
+pyqtgraph     = "0.13.7"
+scipy         = "1.16.0"
+vispy         = "0.15.2"
+
+# optional simulator backends
+neuron        = { version = "^8.2", optional = true }
+jaxley        = { version = "^0.1", optional = true }
+arbor         = { version = "^0.9", optional = true }
+pymoose         = { version = "^4.1", optional = true }
+
+[tool.poetry.extras]
+neuron  = ["neuron"]
+jaxley  = ["jaxley"]
+arbor   = ["arbor"]
+moose   = ["moose"]
+all     = ["neuron", "jaxley", "arbor", "moose"]
+
+[tool.poetry.group.dev]
+optional = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
