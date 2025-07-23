@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import TypedDict
 import numpy as np
+from collections.abc import Callable
 
 from multiprocessing.connection import Connection
 

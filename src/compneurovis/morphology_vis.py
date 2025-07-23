@@ -142,7 +142,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         # polling
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._poll)
-        self.timer.start(1000 // 200)
+        self.timer.start(1000 // 60)
 
         self.selected = None
         self.DRAG_THRESHOLD = 5

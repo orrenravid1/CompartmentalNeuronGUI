@@ -1,14 +1,13 @@
 import time
 import os
 from neuron import h
-from pathlib import Path
 
 from compneurovis.morphology_vis import run_visualizer
 from compneurovis.neuron_simulation import NeuronSimulation
 from compneurovis.neuronutils.swc_utils import load_swc_neuron
 
 
-class MyNeuronSimulation(NeuronSimulation):
+class ComplexCellNeuronSimulation(NeuronSimulation):
 
     def __init__(self):
         super().__init__()
@@ -21,7 +20,7 @@ class MyNeuronSimulation(NeuronSimulation):
     def setup(self):
         t0 = time.perf_counter()
         curr_path = os.path.dirname(os.path.abspath(__file__))
-        swc_path = os.path.join(curr_path,"..","res","Animal_2_Basal_2.CNG.swc")
+        swc_path = os.path.join(curr_path,"..","..","res","Animal_2_Basal_2.CNG.swc")
         self.secs = load_swc_neuron(swc_path)
 
         elapsed = time.perf_counter() - t0
@@ -42,4 +41,4 @@ class MyNeuronSimulation(NeuronSimulation):
     def step(self):
         h.fadvance()
   
-run_visualizer(MyNeuronSimulation())
+run_visualizer(ComplexCellNeuronSimulation())
