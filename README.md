@@ -3,6 +3,8 @@ A repository to create a new interactive 3d GUI for compartmental neuron modelin
 <img width="902" alt="image" src="https://github.com/user-attachments/assets/fbdfcc50-5547-4f87-ae4d-48f3e3c653cd" />
 <img width="900" height="474" alt="image" src="https://github.com/user-attachments/assets/3639a36b-59bd-48e3-a0f0-7d74a17f5a3b" />
 
+## Goal:
+Provide a generic way for someone to swap out their compartmental neuron simulator, simulation setup, and add their own widgets and interactions to their visualization.
 
 ## Current State:
 Currently there is a functional demo both for the complex morphology of a single cell and the entire c elegans nervous system.
@@ -19,14 +21,13 @@ Currently there is a functional demo both for the complex morphology of a single
     a. You can update the experimental setup currently in the `setup` method. But this approach may be subject to change.
 
     b. The easy things to change currently are changing the mechanisms being added and point processes: IClamps, etc.
+  
 ## Controls
 1. You can interact by clicking on a section to watch its voltage trace
 2. You can rotate around by clicking and dragging LMB
 3. You can move around by pressing Shift and clicking and dragging LMB
 4. You can zoom either with the scroll wheel or clicking and dragging RMB
 5. Press Spacebar to restart the simulation.
-## Goal:
-Provide a generic way for someone to swap out their compartmental neuron simulator, simulation setup, and add their own widgets and interactions to their visualization.
 
 # Known issues:
 - PyOpenGL has a [known bug](https://github.com/mcfletch/pyopengl/issues/149) affecting Instanced Rendering when using `numpy>=2.3` so currently need to use `numpy<2.3` for things to work. But a [fix](https://github.com/mcfletch/pyopengl/pull/150) is in progress.
