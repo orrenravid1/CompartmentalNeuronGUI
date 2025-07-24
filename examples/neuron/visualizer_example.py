@@ -32,13 +32,13 @@ class ComplexCellNeuronSimulation(NeuronSimulation):
                 sec.nseg = 10
 
         soma = next(sec for sec in self.secs if 'soma' in sec.name().lower())
+        # WARNING: Need to store iclamps outside of this method i.e. via self otherwise they will
+        # be garbage collected
         self.iclamps = []
         for d,du,a in [(2,5,1),(20,5,1),(40,5,1),(60,5,5),(80,5,5)]:
             icl = h.IClamp(soma(0.5))
             icl.delay, icl.dur, icl.amp = d, du, a
             self.iclamps.append(icl)
 
-    def step(self):
-        h.fadvance()
   
 run_visualizer(ComplexCellNeuronSimulation())

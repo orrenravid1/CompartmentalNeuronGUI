@@ -49,12 +49,6 @@ class CElegansNeuronSimulation(NeuronSimulation):
                 icl = h.IClamp(soma(0.5))
                 icl.delay, icl.dur, icl.amp = d, du, a
                 self.iclamps.append(icl)
+                
 
-    def step(self):
-        h.fadvance()
-        ## TODO: Need to make more robust pipe data handling to avoid flooding
-        ## the pipe rather than using time.sleep
-        time.sleep(0.01)
-
-if __name__ == "__main__":
-    run_visualizer(CElegansNeuronSimulation())
+run_visualizer(CElegansNeuronSimulation())

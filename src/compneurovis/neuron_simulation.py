@@ -133,6 +133,12 @@ class NeuronSimulation(Simulation):
         h.dt = self.dt
         h.finitialize(self.v_init)
 
+    def step(self):
+        h.fadvance()
+        ## TODO: Need to make more robust pipe data handling to avoid flooding
+        ## the pipe rather than using time.sleep
+        time.sleep(0.01)
+
     # TODO: More generic recording
     def record(self):
         self.record_simulation_vars('t')
