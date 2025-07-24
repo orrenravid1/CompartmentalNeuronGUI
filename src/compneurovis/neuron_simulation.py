@@ -137,7 +137,7 @@ class NeuronSimulation(Simulation):
         h.fadvance()
         ## TODO: Need to make more robust pipe data handling to avoid flooding
         ## the pipe rather than using time.sleep
-        time.sleep(0.01)
+        time.sleep(0.002)
 
     # TODO: More generic recording
     def record(self):

@@ -77,7 +77,7 @@ def _build_branch(nodes, children, parent_id, child_id, parent_sec, sections, co
     # 5) Create the NEURON Section and connect it
     sec = h.Section(name=sec_name)
     if parent_sec is not None:
-        sec.connect(parent_sec, 1, 0)
+        sec.connect(parent_sec, 0)
 
     # 6) Add the 3D points to the section
     sec.pt3dclear()

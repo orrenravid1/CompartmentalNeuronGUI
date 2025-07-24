@@ -27,7 +27,8 @@ class ComplexCellNeuronSimulation(NeuronSimulation):
         print(f"SWC Loaded in {elapsed:.2f}s")
 
         for sec in self.secs:
-            sec.insert("hh" if "dendrite" not in sec.name() else "pas")
+            sec.insert("hh")
+
             if "soma" not in sec.name():
                 sec.nseg = 10
 
@@ -35,7 +36,7 @@ class ComplexCellNeuronSimulation(NeuronSimulation):
         # WARNING: Need to store iclamps outside of this method i.e. via self otherwise they will
         # be garbage collected
         self.iclamps = []
-        for d,du,a in [(2,5,1),(20,5,1),(40,5,1),(60,5,5),(80,5,5)]:
+        for d,du,a in [(2,5,1),(20,5,1),(40,5,1),(60,5,1),(80,5,1)]:
             icl = h.IClamp(soma(0.5))
             icl.delay, icl.dur, icl.amp = d, du, a
             self.iclamps.append(icl)

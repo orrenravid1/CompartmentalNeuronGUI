@@ -36,7 +36,7 @@ class CElegansNeuronSimulation(NeuronSimulation):
         print(f"SWCs Loaded in {elapsed:.2f}s")
 
         for sec in self.secs:
-            sec.insert("hh" if "dendrite" not in sec.name() else "pas")
+            sec.insert("hh")
             if "soma" not in sec.name():
                 sec.nseg = 10
 
