@@ -16,6 +16,21 @@ from vispy.scene.cameras import TurntableCamera
 from compneurovis.vispyutils.cappedcylindercollection import CappedCylinderCollection
 from compneurovis.simulation import Simulation, simulation_process
 
+TRACE_COLORS = ['b', 'r', 'g', 'm', 'c', 'y', (255,165,0), (128,0,128)]
+
+class _Trace:
+    """A single recorded trace on the plot."""
+    __slots__ = ('sec', 'xloc', 'seg_idx', 'plot_item', 't', 'v')
+
+    def __init__(self, sec, xloc, seg_idx, plot_item):
+        self.sec = sec
+        self.xloc = xloc
+        self.seg_idx = seg_idx
+        self.plot_item = plot_item
+        self.t = []
+        self.v = []
+
+
 class MorphologyManager:
     """VisPy instancing, picking & color‐mapping from flat arrays."""
     def __init__(self, view):
@@ -113,18 +128,157 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         self.plot2d.setLabel('bottom','Time','ms')
         self.plot2d.setLabel('left','Voltage','mV')
         self.plot2d.setBackground('w')
-        self.trace_t, self.trace_v = [], []
-        self.trace = self.plot2d.plot(pen='b')
+        self.plot2d.addLegend(offset=(10, 10))
+        self.traces: list[_Trace] = []
         vb = self.plot2d.getPlotItem().getViewBox()
-        vb.setRange(yRange=(-80,50), padding=0)
+        # fixed y-range for voltage, allow x auto-range
+        self._vb_ymin, self._vb_ymax = -80, 80
+        vb.setLimits(yMin=self._vb_ymin, yMax=self._vb_ymax)
+        vb.setRange(yRange=(self._vb_ymin, self._vb_ymax), padding=0)
         vb.enableAutoRange(x=True, y=False)
-        vb.setLimits(yMin=-80, yMax=50)
 
         # layout
         w = QtWidgets.QWidget()
         hb = QtWidgets.QHBoxLayout(w)
         hb.addWidget(self.canvas3d.native)
-        hb.addWidget(self.plot2d)
+
+        # Right side: plot + controls
+        right_w = QtWidgets.QWidget()
+        right_l = QtWidgets.QVBoxLayout(right_w)
+        right_l.setContentsMargins(0,0,0,0)
+        right_l.addWidget(self.plot2d)
+
+        # Parameter controls: dynamically generated from simulation.spec
+        ctrl_w = QtWidgets.QWidget()
+        ctrl_l = QtWidgets.QVBoxLayout(ctrl_w)
+        ctrl_l.setContentsMargins(6,6,6,6)
+        ctrl_l.setSpacing(6)
+        self._controls = {}
+        try:
+            specs = sim.controllable_parameters() or {}
+        except Exception:
+            specs = {}
+
+        # If simulation exposes nothing but has a dt attribute, provide a fallback
+        if not specs and hasattr(sim, 'dt'):
+            specs = {
+                'dt': {'type': 'float', 'min': 0.01, 'max': 1.0, 'steps': 100, 'default': getattr(sim, 'dt', 0.1), 'label': 'dt (ms)'}
+            }
+
+        for name, spec in specs.items():
+            h = QtWidgets.QWidget()
+            hl = QtWidgets.QHBoxLayout(h)
+            hl.setContentsMargins(0,0,0,0)
+            lab = QtWidgets.QLabel(spec.get('label', name))
+            hl.addWidget(lab)
+            t = spec.get('type', 'float')
+            if t in ('float', 'double'):
+                steps = int(spec.get('steps', 100))
+                mn = float(spec.get('min', 0.0))
+                mx = float(spec.get('max', 1.0))
+                scale = spec.get('scale', 'linear')
+                slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+                slider.setRange(0, steps)
+                # initial value
+                init = spec.get('default', getattr(sim, name, mn))
+                try:
+                    if scale == 'log' and mn > 0 and mx > mn:
+                        import math
+                        lo = math.log(mn)
+                        hi = math.log(mx)
+                        v0 = int(round((math.log(float(init)) - lo) / (hi - lo) * steps))
+                    else:
+                        v0 = int(round((float(init) - mn) / (mx - mn) * steps))
+                except Exception:
+                    v0 = 0
+                slider.setValue(max(0, min(steps, v0)))
+                value_label = QtWidgets.QLabel("")
+
+                def make_float_cb(n, mn, mx, steps, lbl, scale):
+                    def _cb(val: int):
+                        frac = (val / steps)
+                        try:
+                            if scale == 'log' and mn > 0 and mx > mn:
+                                # geometric interpolation
+                                v = mn * ((mx / mn) ** frac)
+                            else:
+                                v = mn + (mx - mn) * frac
+                            lbl.setText(f"{v:.3g}")
+                            try:
+                                self.cmd_parent.send(("control", n, float(v)))
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+                    return _cb
+
+                slider.valueChanged.connect(make_float_cb(name, mn, mx, steps, value_label, scale))
+                # trigger display update for initial
+                slider.valueChanged.emit(slider.value())
+                hl.addWidget(slider, 1)
+                hl.addWidget(value_label)
+                self._controls[name] = slider
+
+            elif t == 'int':
+                mn = int(spec.get('min', 0))
+                mx = int(spec.get('max', 100))
+                spin = QtWidgets.QSpinBox()
+                spin.setRange(mn, mx)
+                spin.setValue(int(spec.get('default', getattr(sim, name, mn))))
+                def make_int_cb(n):
+                    def _cb(val: int):
+                        try:
+                            self.cmd_parent.send(("control", n, int(val)))
+                        except Exception:
+                            pass
+                    return _cb
+                spin.valueChanged.connect(make_int_cb(name))
+                hl.addWidget(spin)
+                self._controls[name] = spin
+
+            elif t == 'bool':
+                cb = QtWidgets.QCheckBox()
+                cb.setChecked(bool(spec.get('default', getattr(sim, name, False))))
+                def make_bool_cb(n):
+                    def _cb(val: bool):
+                        try:
+                            self.cmd_parent.send(("control", n, bool(val)))
+                        except Exception:
+                            pass
+                    return _cb
+                cb.toggled.connect(make_bool_cb(name))
+                hl.addWidget(cb)
+                self._controls[name] = cb
+
+            elif t == 'enum':
+                opts = list(spec.get('options', []))
+                combo = QtWidgets.QComboBox()
+                combo.addItems([str(o) for o in opts])
+                default = spec.get('default', getattr(sim, name, None))
+                if default in opts:
+                    combo.setCurrentIndex(opts.index(default))
+                def make_enum_cb(n, options):
+                    def _cb(idx: int):
+                        try:
+                            self.cmd_parent.send(("control", n, options[int(idx)]))
+                        except Exception:
+                            pass
+                    return _cb
+                combo.currentIndexChanged.connect(make_enum_cb(name, opts))
+                hl.addWidget(combo)
+                self._controls[name] = combo
+
+            else:
+                # Unknown type: show a label of the default
+                val_lab = QtWidgets.QLabel(str(spec.get('default', getattr(sim, name, ''))))
+                hl.addWidget(val_lab)
+                self._controls[name] = val_lab
+
+            ctrl_l.addWidget(h)
+
+        right_l.addWidget(ctrl_w)
+
+        hb.addWidget(right_w)
         self.setCentralWidget(w)
         self.resize(1200,600)
 
@@ -145,6 +299,8 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         self.timer.start(1000 // 60)
 
         self.selected = None
+        self._assign_iclamp_mode = False
+        self._iclamp_target = None
         self.DRAG_THRESHOLD = 5
 
     def _start_worker(self):
@@ -179,19 +335,12 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                 self.mgr.update_colors(arr, lambda a: np.clip((a+80)/130,0,1))
                 self.canvas3d.update()
 
-                if self.selected:
-                    sec, xloc = self.selected
-                    # find closest
-                    diffs = np.abs(self.mgr.xlocs - xloc)
-                    mask  = np.array([n==sec for n in self.mgr.sec_names])[self.mgr.sec_idx]
-                    idxs  = np.where(mask)[0]
-                    if idxs.size:
-                        best = idxs[np.argmin(diffs[idxs])]
-                        self.trace_t.append(t)
-                        self.trace_v.append(arr[best])
-                        if len(self.trace_t)>1000:
-                            self.trace_t.pop(0); self.trace_v.pop(0)
-                        self.trace.setData(self.trace_t, self.trace_v)
+                for trace in self.traces:
+                    trace.t.append(t)
+                    trace.v.append(arr[trace.seg_idx])
+                    if len(trace.t) > 1000:
+                        trace.t.pop(0); trace.v.pop(0)
+                    trace.plot_item.setData(trace.t, trace.v)
         except (EOFError, OSError):
             self.timer.stop()
 
@@ -210,24 +359,95 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         xf, yf = int(x*ps), int((h-y-1)*ps)
         picked = self.mgr.pick(xf, yf, self.canvas3d)
         if picked:
-            self.select(*picked)
+            # If user is holding the '1' key, assign IClamp target instead
+            if getattr(self, '_assign_iclamp_mode', False):
+                sec, xloc = picked
+                self._iclamp_target = (sec, xloc)
+                self.statusBar().showMessage(f"IClamp target set to {sec}@{xloc:.3f}")
+                QtCore.QTimer.singleShot(3000, self.statusBar().clearMessage)
+            else:
+                self.select(*picked)
+
+    def _resolve_seg_idx(self, sec, xloc):
+        """Find the closest segment index for a given section and xloc."""
+        diffs = np.abs(self.mgr.xlocs - xloc)
+        mask  = np.array([n==sec for n in self.mgr.sec_names])[self.mgr.sec_idx]
+        idxs  = np.where(mask)[0]
+        if idxs.size:
+            return idxs[np.argmin(diffs[idxs])]
+        return None
 
     def select(self, sec, xloc):
+        seg_idx = self._resolve_seg_idx(sec, xloc)
+        if seg_idx is None:
+            return
         self.selected = (sec, xloc)
-        self.trace_t.clear(); self.trace_v.clear()
-        self.trace.clear()
+        color = TRACE_COLORS[len(self.traces) % len(TRACE_COLORS)]
+        label = f"{sec}@{xloc:.3f}"
+        plot_item = self.plot2d.plot(pen=color, name=label)
+        self.traces.append(_Trace(sec, xloc, seg_idx, plot_item))
         self.plot2d.setTitle(f"Voltage for {sec}@{xloc:.3f}")
 
+    def clear_traces(self):
+        for trace in self.traces:
+            self.plot2d.removeItem(trace.plot_item)
+        self.traces.clear()
+        self.selected = None
+        legend = self.plot2d.getPlotItem().legend
+        if legend:
+            legend.clear()
+        # reapply fixed y-range after clearing
+        vb = self.plot2d.getPlotItem().getViewBox()
+        vb.setLimits(yMin=self._vb_ymin, yMax=self._vb_ymax)
+        vb.setRange(yRange=(self._vb_ymin, self._vb_ymax), padding=0)
+
     def keyPressEvent(self, ev):
-        if ev.key()==Qt.Key.Key_Space and self.geom_ready:
+        if not self.geom_ready:
+            return super().keyPressEvent(ev)
+        # Hold '1' to assign IClamp location on next click
+        if ev.key() == Qt.Key.Key_1:
+            self._assign_iclamp_mode = True
+            self.statusBar().showMessage("IClamp-assign mode: click a segment to set target")
+            return
+        if ev.key() == Qt.Key.Key_Space:
             self.cmd_parent.send("reset")
             while self.data_parent.poll():
                 self.data_parent.recv()
-            self.trace_t.clear(); self.trace_v.clear()
-            self.trace.clear()
+            ##self.clear_traces()
             vb = self.plot2d.getPlotItem().getViewBox()
             vb.enableAutoRange(x=True, y=False)
+            # reapply fixed y-range (ensure not auto-ranging)
+            vb.setLimits(yMin=self._vb_ymin, yMax=self._vb_ymax)
+            vb.setRange(yRange=(self._vb_ymin, self._vb_ymax), padding=0)
+        elif ev.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            self.clear_traces()
+            vb = self.plot2d.getPlotItem().getViewBox()
+            vb.enableAutoRange(x=True, y=False)
+        elif ev.key() == Qt.Key.Key_I:
+            # apply an IClamp at the currently selected location (or first section)
+            if not self.geom_ready:
+                return
+            if getattr(self, '_iclamp_target', None) is not None:
+                sec_name, xloc = self._iclamp_target
+            elif self.selected is not None:
+                sec_name, xloc = self.selected
+            else:
+                sec_name = self.mgr.sec_names[0]
+                xloc = 0.5
+            payload = {'sec_name': sec_name, 'xloc': xloc, 'dur': 2.0, 'amp': 0.3}
+            try:
+                self.cmd_parent.send(("action", "iclamp", payload))
+            except Exception:
+                pass
         super().keyPressEvent(ev)
+
+    def keyReleaseEvent(self, ev):
+        # release '1' to exit assign mode
+        if getattr(self, '_assign_iclamp_mode', False) and ev.key() == Qt.Key.Key_1:
+            self._assign_iclamp_mode = False
+            self.statusBar().clearMessage()
+            return
+        super().keyReleaseEvent(ev)
 
     def closeEvent(self, ev):
         if self.worker.is_alive():
