@@ -41,6 +41,12 @@ class NeuronSimulation(Simulation):
         - xloc (M,)
         """
         t0 = time.perf_counter()
+
+        # Auto-generate layout for sections missing pt3d data
+        if any(int(sec.n3d()) < 2 for sec in self.sections):
+            from compneurovis.neuronutils.layout import generate_layout
+            generate_layout(self.sections)
+
         # gather per‐section data
         sec_names = []
         P0, P1, D0, D1 = [], [], [], []
