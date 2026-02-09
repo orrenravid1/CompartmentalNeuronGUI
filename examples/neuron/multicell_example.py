@@ -205,6 +205,8 @@ class MultiCellSimulation(NeuronSimulation):
                 (self.cell3_secs[0], self.cell2_secs[3], 1.0),  # cell3 soma at cell2 axon tip
             ],
         )
+        # Uses the default layout which ignores connectivity
+        ##h.define_shape()
 
 
 run_visualizer(MultiCellSimulation())
