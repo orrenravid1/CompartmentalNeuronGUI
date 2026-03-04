@@ -57,6 +57,9 @@ class Simulation(ABC):
         self.morphology_meta = self.build_morphology_meta()
         self.record()
 
+    def close(self):
+        pass
+
     # --- Controllable parameter API ---
     def controllable_parameters(self) -> dict:
         """Return a dict mapping parameter names to a small spec dict describing
@@ -88,6 +91,20 @@ class Simulation(ABC):
         Default does nothing and returns False. Subclasses may implement
         actions such as creating an IClamp.
         """
+        return False
+
+    # --- Viewer interaction hooks (called in GUI process) ---
+    def handle_key_press(self, key, viewer) -> bool:
+        """Handle a key press in the viewer. Return True if consumed."""
+        return False
+
+    def handle_key_release(self, key, viewer) -> bool:
+        """Handle a key release in the viewer. Return True if consumed."""
+        return False
+
+    def handle_segment_click(self, sec: str, xloc: float, viewer) -> bool:
+        """Handle a segment click in the viewer.
+        Return True to suppress the default trace-select behaviour."""
         return False
 
 
@@ -133,16 +150,9 @@ def simulation_process(sim: Simulation, data_pipe: Connection, cmd_pipe: Connect
                             sim.apply_action(_name, _val)
                         except Exception:
                             pass
-                    # Special-case common NEURON parameter updates
-                    try:
-                        from neuron import h
-                        if _name == 'dt':
-                            h.dt = _val
-                    except Exception:
-                        pass
+
             data = sim.get_data()
-            ## TODO: More generic data sending
-            data_pipe.send((data['t'], data['v']))
+            data_pipe.send(data)
     finally:
         data_pipe.close()
         cmd_pipe.close()

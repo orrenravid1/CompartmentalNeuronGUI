@@ -1,6 +1,7 @@
 import time
 import os
 from neuron import h
+import random
 
 from compneurovis.morphology_vis import run_visualizer
 from compneurovis.neuron_simulation import NeuronSimulation
@@ -45,7 +46,7 @@ class CElegansNeuronSimulation(NeuronSimulation):
         # be garbage collected
         self.iclamps = []
         for soma in somas:
-            for d,du,a in [(2,5,0.2),(20,5,0.2),(40,5,0.2),(60,5,0.2),(80,5,0.2)]:
+            for d,du,a in [(2 + random.random()*5,5,0.2),(20 + random.random()*5,5,0.2),(40 + random.random()*5,5,0.2),(60 + random.random()*5,5,0.2),(80 + random.random()*5,5,0.2)]:
                 icl = h.IClamp(soma(0.5))
                 icl.delay, icl.dur, icl.amp = d, du, a
                 self.iclamps.append(icl)

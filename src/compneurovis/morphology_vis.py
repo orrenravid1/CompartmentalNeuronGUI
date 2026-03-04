@@ -1,6 +1,7 @@
 import time
 import multiprocessing as mp
 from multiprocessing import Pipe, Process
+from collections import deque
 import numpy as np
 import sys
 
@@ -20,15 +21,16 @@ TRACE_COLORS = ['b', 'r', 'g', 'm', 'c', 'y', (255,165,0), (128,0,128)]
 
 class _Trace:
     """A single recorded trace on the plot."""
-    __slots__ = ('sec', 'xloc', 'seg_idx', 'plot_item', 't', 'v')
+    __slots__ = ('sec', 'xloc', 'seg_idx', 'varname', 'plot_item', 't', 'v')
 
-    def __init__(self, sec, xloc, seg_idx, plot_item):
+    def __init__(self, sec, xloc, seg_idx, plot_item, varname='v'):
         self.sec = sec
         self.xloc = xloc
-        self.seg_idx = seg_idx
+        self.seg_idx = seg_idx       # int for morph vars, None for scalar sim vars
+        self.varname = varname       # key into data dict
         self.plot_item = plot_item
-        self.t = []
-        self.v = []
+        self.t = deque(maxlen=1000)
+        self.v = deque(maxlen=1000)
 
 
 class MorphologyManager:
@@ -120,19 +122,20 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                                            elevation=30, azimuth=30,
                                            translate_speed=100, up='+z')
 
+        self.sim        = sim
         self.mgr        = MorphologyManager(self.view)
         self.geom_ready = False
 
         # 2D plot
-        self.plot2d = pg.PlotWidget(title="Voltage for segment")
+        self.plot2d = pg.PlotWidget(title="Traces")
         self.plot2d.setLabel('bottom','Time','ms')
-        self.plot2d.setLabel('left','Voltage','mV')
+        self.plot2d.setLabel('left','Value','')
         self.plot2d.setBackground('w')
         self.plot2d.addLegend(offset=(10, 10))
         self.traces: list[_Trace] = []
         vb = self.plot2d.getPlotItem().getViewBox()
         # fixed y-range for voltage, allow x auto-range
-        self._vb_ymin, self._vb_ymax = -80, 80
+        self._vb_ymin, self._vb_ymax = -120, 120
         vb.setLimits(yMin=self._vb_ymin, yMax=self._vb_ymax)
         vb.setRange(yRange=(self._vb_ymin, self._vb_ymax), padding=0)
         vb.enableAutoRange(x=True, y=False)
@@ -156,14 +159,11 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         self._controls = {}
         try:
             specs = sim.controllable_parameters() or {}
-        except Exception:
+        except Exception as e:
             specs = {}
-
-        # If simulation exposes nothing but has a dt attribute, provide a fallback
-        if not specs and hasattr(sim, 'dt'):
-            specs = {
-                'dt': {'type': 'float', 'min': 0.01, 'max': 1.0, 'steps': 100, 'default': getattr(sim, 'dt', 0.1), 'label': 'dt (ms)'}
-            }
+            print(f"Error retrieving controllable parameters: {e}")
+        
+        print (specs)
 
         for name, spec in specs.items():
             h = QtWidgets.QWidget()
@@ -180,7 +180,8 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                 slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
                 slider.setRange(0, steps)
                 # initial value
-                init = spec.get('default', getattr(sim, name, mn))
+                init = spec.get('default', 0.5 * (mx - mn) + mn)
+                print(f"Control {name}: default={init}")
                 try:
                     if scale == 'log' and mn > 0 and mx > mn:
                         import math
@@ -299,8 +300,6 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         self.timer.start(1000 // 60)
 
         self.selected = None
-        self._assign_iclamp_mode = False
-        self._iclamp_target = None
         self.DRAG_THRESHOLD = 5
 
     def _start_worker(self):
@@ -325,22 +324,53 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                     self.geom_ready = True
                     self.canvas3d.events.mouse_press .connect(self._on_mouse_press)
                     self.canvas3d.events.mouse_release.connect(self._on_mouse_release)
-                    # auto‐select first section
-                    self.select(self.mgr.sec_names[0], 0.5)
+                    # auto‐select first section (skip if traces were pre-configured)
+                    if not self.traces:
+                        self.select(self.mgr.sec_names[0], 0.5)
                     continue
 
-                # subsequent messages: (t, voltages)
-                ## TODO: More generic data consumption
-                t, arr = msg
-                self.mgr.update_colors(arr, lambda a: np.clip((a+80)/130,0,1))
-                self.canvas3d.update()
+                # subsequent messages: data dict (or legacy (t, v) tuple)
+                if isinstance(msg, dict):
+                    data = msg
+                    t = data['t']
+                else:
+                    t, arr = msg
+                    data = {'t': t, 'v': arr}
+
+                # 3D color mapping
+                color_arr = None
+                color_var = None
+                if 'v' in data and isinstance(data['v'], np.ndarray):
+                    color_var = 'v'
+                    color_arr = data['v']
+                else:
+                    for k, val in data.items():
+                        if k != 't' and isinstance(val, np.ndarray) and val.ndim == 1:
+                            color_var = k
+                            color_arr = val
+                            break
+
+                if color_arr is not None:
+                    if color_var == 'v':
+                        self.mgr.update_colors(color_arr, lambda a: np.clip((a+80)/130,0,1))
+                    else:
+                        self.mgr.update_colors(color_arr, lambda a: np.clip(a, 0, 1))
+                    self.canvas3d.update()
 
                 for trace in self.traces:
-                    trace.t.append(t)
-                    trace.v.append(arr[trace.seg_idx])
-                    if len(trace.t) > 1000:
-                        trace.t.pop(0); trace.v.pop(0)
-                    trace.plot_item.setData(trace.t, trace.v)
+                    val = data.get(trace.varname)
+                    if val is None:
+                        continue
+                    if trace.seg_idx is not None and hasattr(val, '__len__'):
+                        trace.t.append(t)
+                        trace.v.append(val[trace.seg_idx])
+                    else:
+                        trace.t.append(t)
+                        trace.v.append(val)
+
+            for trace in self.traces:
+                if trace.t:
+                    trace.plot_item.setData(list(trace.t), list(trace.v))
         except (EOFError, OSError):
             self.timer.stop()
 
@@ -359,13 +389,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         xf, yf = int(x*ps), int((h-y-1)*ps)
         picked = self.mgr.pick(xf, yf, self.canvas3d)
         if picked:
-            # If user is holding the '1' key, assign IClamp target instead
-            if getattr(self, '_assign_iclamp_mode', False):
-                sec, xloc = picked
-                self._iclamp_target = (sec, xloc)
-                self.statusBar().showMessage(f"IClamp target set to {sec}@{xloc:.3f}")
-                QtCore.QTimer.singleShot(3000, self.statusBar().clearMessage)
-            else:
+            if not self.sim.handle_segment_click(*picked, self):
                 self.select(*picked)
 
     def _resolve_seg_idx(self, sec, xloc):
@@ -385,8 +409,22 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         color = TRACE_COLORS[len(self.traces) % len(TRACE_COLORS)]
         label = f"{sec}@{xloc:.3f}"
         plot_item = self.plot2d.plot(pen=color, name=label)
-        self.traces.append(_Trace(sec, xloc, seg_idx, plot_item))
+        self.traces.append(_Trace(sec, xloc, seg_idx, plot_item, varname='v'))
         self.plot2d.setTitle(f"Voltage for {sec}@{xloc:.3f}")
+
+    def add_scalar_trace(self, varname, label=None, color=None):
+        """Add a trace for a scalar simulation variable (e.g. point process output)."""
+        if label is None:
+            label = varname
+        if color is None:
+            color = TRACE_COLORS[len(self.traces) % len(TRACE_COLORS)]
+        plot_item = self.plot2d.plot(pen=color, name=label)
+        self.traces.append(_Trace(sec=None, xloc=None, seg_idx=None,
+                                  plot_item=plot_item, varname=varname))
+        # enable y auto-range for scalar traces (0-1 range would be invisible in voltage range)
+        vb = self.plot2d.getPlotItem().getViewBox()
+        vb.enableAutoRange(y=True)
+        vb.setLimits(yMin=None, yMax=None)
 
     def clear_traces(self):
         for trace in self.traces:
@@ -404,16 +442,12 @@ class MorphologyViewer(QtWidgets.QMainWindow):
     def keyPressEvent(self, ev):
         if not self.geom_ready:
             return super().keyPressEvent(ev)
-        # Hold '1' to assign IClamp location on next click
-        if ev.key() == Qt.Key.Key_1:
-            self._assign_iclamp_mode = True
-            self.statusBar().showMessage("IClamp-assign mode: click a segment to set target")
+        if self.sim.handle_key_press(ev.key(), self):
             return
         if ev.key() == Qt.Key.Key_Space:
             self.cmd_parent.send("reset")
             while self.data_parent.poll():
                 self.data_parent.recv()
-            ##self.clear_traces()
             vb = self.plot2d.getPlotItem().getViewBox()
             vb.enableAutoRange(x=True, y=False)
             # reapply fixed y-range (ensure not auto-ranging)
@@ -423,29 +457,10 @@ class MorphologyViewer(QtWidgets.QMainWindow):
             self.clear_traces()
             vb = self.plot2d.getPlotItem().getViewBox()
             vb.enableAutoRange(x=True, y=False)
-        elif ev.key() == Qt.Key.Key_I:
-            # apply an IClamp at the currently selected location (or first section)
-            if not self.geom_ready:
-                return
-            if getattr(self, '_iclamp_target', None) is not None:
-                sec_name, xloc = self._iclamp_target
-            elif self.selected is not None:
-                sec_name, xloc = self.selected
-            else:
-                sec_name = self.mgr.sec_names[0]
-                xloc = 0.5
-            payload = {'sec_name': sec_name, 'xloc': xloc, 'dur': 2.0, 'amp': 0.3}
-            try:
-                self.cmd_parent.send(("action", "iclamp", payload))
-            except Exception:
-                pass
         super().keyPressEvent(ev)
 
     def keyReleaseEvent(self, ev):
-        # release '1' to exit assign mode
-        if getattr(self, '_assign_iclamp_mode', False) and ev.key() == Qt.Key.Key_1:
-            self._assign_iclamp_mode = False
-            self.statusBar().clearMessage()
+        if self.sim.handle_key_release(ev.key(), self):
             return
         super().keyReleaseEvent(ev)
 
@@ -455,7 +470,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         self.timer.stop()
         super().closeEvent(ev)
 
-def run_visualizer(sim: Simulation):
+def run_visualizer(sim: Simulation, setup_callback=None):
     # only launch GUI in the original process, not in any spawned children
     if mp.current_process().name != "MainProcess":
         return
@@ -467,5 +482,7 @@ def run_visualizer(sim: Simulation):
     # now safe to create the QApplication and window
     app = QtWidgets.QApplication(sys.argv)
     w   = MorphologyViewer(sim)
+    if setup_callback is not None:
+        setup_callback(w)
     w.show()
     vispy_app.run()
