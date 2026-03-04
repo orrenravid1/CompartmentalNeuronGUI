@@ -63,6 +63,10 @@ class MorphologyManager:
         self.collection._cap_mesh.shading  = None
 
         N = pos.shape[0]
+        self._color_buf = np.empty((N, 4), dtype=np.float32)
+        self._color_buf[:,1] = 0.2
+        self._color_buf[:,3] = 1.0
+
         def make_id_color(i):
             cid = i+1
             return np.array([
@@ -100,12 +104,9 @@ class MorphologyManager:
 
     def update_colors(self, data, map_fn):
         norm = map_fn(data)
-        cols = np.zeros((len(data),4), dtype=np.float32)
-        cols[:,0] = norm
-        cols[:,1] = 0.2
-        cols[:,2] = 1.0 - norm
-        cols[:,3] = 1.0
-        self.collection.set_colors(cols)
+        self._color_buf[:,0] = norm
+        self._color_buf[:,2] = 1.0 - norm
+        self.collection.set_colors(self._color_buf)
 
 
 class MorphologyViewer(QtWidgets.QMainWindow):
@@ -122,9 +123,10 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                                            elevation=30, azimuth=30,
                                            translate_speed=100, up='+z')
 
-        self.sim        = sim
-        self.mgr        = MorphologyManager(self.view)
-        self.geom_ready = False
+        self.sim            = sim
+        self.mgr            = MorphologyManager(self.view)
+        self.geom_ready     = False
+        self._color_var_key = None
 
         # 2D plot
         self.plot2d = pg.PlotWidget(title="Traces")
@@ -310,12 +312,14 @@ class MorphologyViewer(QtWidgets.QMainWindow):
 
     def _poll(self):
         try:
+            colors_dirty = False
             while self.data_parent.poll():
                 msg = self.data_parent.recv()
 
                 if not self.geom_ready:
                     # first message is meta dict
                     self.mgr.set_morphology(msg)
+                    self._color_var_key = None   # reset cached color key
                     elapsed = time.perf_counter() - self._load_t0
                     self.statusBar().showMessage(f"Loaded in {elapsed:.2f}s")
                     print(f"Loaded in {elapsed:.2f}s")
@@ -337,25 +341,23 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                     t, arr = msg
                     data = {'t': t, 'v': arr}
 
-                # 3D color mapping
-                color_arr = None
-                color_var = None
-                if 'v' in data and isinstance(data['v'], np.ndarray):
-                    color_var = 'v'
-                    color_arr = data['v']
-                else:
-                    for k, val in data.items():
-                        if k != 't' and isinstance(val, np.ndarray) and val.ndim == 1:
-                            color_var = k
-                            color_arr = val
-                            break
+                # 3D color mapping — find color key once, reuse thereafter
+                if self._color_var_key is None:
+                    if 'v' in data and isinstance(data['v'], np.ndarray):
+                        self._color_var_key = 'v'
+                    else:
+                        for k, val in data.items():
+                            if k != 't' and isinstance(val, np.ndarray) and val.ndim == 1:
+                                self._color_var_key = k
+                                break
 
+                color_arr = data.get(self._color_var_key) if self._color_var_key else None
                 if color_arr is not None:
-                    if color_var == 'v':
+                    if self._color_var_key == 'v':
                         self.mgr.update_colors(color_arr, lambda a: np.clip((a+80)/130,0,1))
                     else:
                         self.mgr.update_colors(color_arr, lambda a: np.clip(a, 0, 1))
-                    self.canvas3d.update()
+                    colors_dirty = True
 
                 for trace in self.traces:
                     val = data.get(trace.varname)
@@ -368,9 +370,11 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                         trace.t.append(t)
                         trace.v.append(val)
 
+            if colors_dirty:
+                self.canvas3d.update()
             for trace in self.traces:
                 if trace.t:
-                    trace.plot_item.setData(list(trace.t), list(trace.v))
+                    trace.plot_item.setData(np.asarray(trace.t), np.asarray(trace.v))
         except (EOFError, OSError):
             self.timer.stop()
 
