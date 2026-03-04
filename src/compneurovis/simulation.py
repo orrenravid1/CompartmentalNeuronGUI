@@ -60,6 +60,12 @@ class Simulation(ABC):
     def close(self):
         pass
 
+    def on_reset(self):
+        """Called in the simulation process when a reset is requested.
+        Default reinitializes simulation state. Override to add extra teardown
+        or re-wiring before/after initialize."""
+        self.initialize()
+
     # --- Controllable parameter API ---
     def controllable_parameters(self) -> dict:
         """Return a dict mapping parameter names to a small spec dict describing
@@ -107,7 +113,7 @@ class Simulation(ABC):
         Return True to suppress the default trace-select behaviour."""
         return False
 
-    def handle_reset(self, viewer) -> None:
+    def handle_viewer_reset(self, viewer) -> None:
         """Called in the GUI process after a simulation reset and trace clear.
         Override to customize plot axis state after reset."""
         vb = viewer.plot2d.getPlotItem().getViewBox()
@@ -127,7 +133,7 @@ def simulation_process(sim: Simulation, data_pipe: Connection, cmd_pipe: Connect
                 cmd = cmd_pipe.recv()
                 # Backwards-compatible string command
                 if cmd == "reset":
-                    sim.initialize()
+                    sim.on_reset()
                 # Tuple-based control commands: ("control", name, value)
                 elif isinstance(cmd, tuple) and len(cmd) >= 3:
                     kind = cmd[0]

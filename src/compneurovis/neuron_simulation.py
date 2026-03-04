@@ -214,7 +214,7 @@ class NeuronSimulation(Simulation):
 
     # --- Viewer interaction hooks ---
 
-    def handle_reset(self, viewer) -> None:
+    def handle_viewer_reset(self, viewer) -> None:
         vb = viewer.plot2d.getPlotItem().getViewBox()
         has_scalar = any(tr.seg_idx is None for tr in viewer.traces)
         if has_scalar:

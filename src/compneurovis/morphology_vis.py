@@ -456,7 +456,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                 trace.t.clear()
                 trace.v.clear()
                 trace.plot_item.setData([], [])
-            self.sim.handle_reset(self)
+            self.sim.handle_viewer_reset(self)
         elif ev.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             self.clear_traces()
             vb = self.plot2d.getPlotItem().getViewBox()
