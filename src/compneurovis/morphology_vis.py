@@ -456,11 +456,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                 trace.t.clear()
                 trace.v.clear()
                 trace.plot_item.setData([], [])
-            vb = self.plot2d.getPlotItem().getViewBox()
-            vb.enableAutoRange(x=True, y=False)
-            # reapply fixed y-range (ensure not auto-ranging)
-            vb.setLimits(yMin=self._vb_ymin, yMax=self._vb_ymax)
-            vb.setRange(yRange=(self._vb_ymin, self._vb_ymax), padding=0)
+            self.sim.handle_reset(self)
         elif ev.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             self.clear_traces()
             vb = self.plot2d.getPlotItem().getViewBox()

@@ -214,6 +214,17 @@ class NeuronSimulation(Simulation):
 
     # --- Viewer interaction hooks ---
 
+    def handle_reset(self, viewer) -> None:
+        vb = viewer.plot2d.getPlotItem().getViewBox()
+        has_scalar = any(tr.seg_idx is None for tr in viewer.traces)
+        if has_scalar:
+            vb.enableAutoRange(x=True, y=True)
+            vb.setLimits(yMin=None, yMax=None)
+        else:
+            vb.enableAutoRange(x=True, y=False)
+            vb.setLimits(yMin=viewer._vb_ymin, yMax=viewer._vb_ymax)
+            vb.setRange(yRange=(viewer._vb_ymin, viewer._vb_ymax), padding=0)
+
     def handle_key_press(self, key, viewer) -> bool:
         from PyQt6.QtCore import Qt
         if key == Qt.Key.Key_1:

@@ -107,6 +107,13 @@ class Simulation(ABC):
         Return True to suppress the default trace-select behaviour."""
         return False
 
+    def handle_reset(self, viewer) -> None:
+        """Called in the GUI process after a simulation reset and trace clear.
+        Override to customize plot axis state after reset."""
+        vb = viewer.plot2d.getPlotItem().getViewBox()
+        vb.enableAutoRange(x=True, y=True)
+        vb.setLimits(yMin=None, yMax=None)
+
 
 def simulation_process(sim: Simulation, data_pipe: Connection, cmd_pipe: Connection):
     try:
