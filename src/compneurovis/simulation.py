@@ -100,6 +100,11 @@ class Simulation(ABC):
         return False
 
     # --- Viewer interaction hooks (called in GUI process) ---
+    def on_control_gui(self, name: str, value) -> None:
+        """Called in the GUI process when a control value changes.
+        Override to track GUI-side state (e.g. current iclamp amplitude)."""
+        pass
+
     def handle_key_press(self, key, viewer) -> bool:
         """Handle a key press in the viewer. Return True if consumed."""
         return False

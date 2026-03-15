@@ -21,9 +21,6 @@ class NeuronSimulation(Simulation):
         self._sim_recorders = {}
         self.dt = dt
         self.v_init = v_init
-        # IClamp interaction state (viewer-side only)
-        self._assign_iclamp_mode = False
-        self._iclamp_target = None
     
     @property
     @abstractmethod
@@ -224,44 +221,5 @@ class NeuronSimulation(Simulation):
             vb.enableAutoRange(x=True, y=False)
             vb.setLimits(yMin=viewer._vb_ymin, yMax=viewer._vb_ymax)
             vb.setRange(yRange=(viewer._vb_ymin, viewer._vb_ymax), padding=0)
-
-    def handle_key_press(self, key, viewer) -> bool:
-        from PyQt6.QtCore import Qt
-        if key == Qt.Key.Key_1:
-            self._assign_iclamp_mode = True
-            viewer.statusBar().showMessage("IClamp-assign mode: click a segment to set target")
-            return True
-        if key == Qt.Key.Key_I:
-            if self._iclamp_target is not None:
-                sec_name, xloc = self._iclamp_target
-            elif viewer.selected is not None:
-                sec_name, xloc = viewer.selected
-            else:
-                sec_name = viewer.mgr.sec_names[0]
-                xloc = 0.5
-            payload = {'sec_name': sec_name, 'xloc': xloc, 'dur': 2.0, 'amp': 0.3}
-            try:
-                viewer.cmd_parent.send(("action", "iclamp", payload))
-            except Exception:
-                pass
-            return True
-        return False
-
-    def handle_key_release(self, key, viewer) -> bool:
-        from PyQt6.QtCore import Qt
-        if self._assign_iclamp_mode and key == Qt.Key.Key_1:
-            self._assign_iclamp_mode = False
-            viewer.statusBar().clearMessage()
-            return True
-        return False
-
-    def handle_segment_click(self, sec: str, xloc: float, viewer) -> bool:
-        if self._assign_iclamp_mode:
-            from PyQt6 import QtCore
-            self._iclamp_target = (sec, xloc)
-            viewer.statusBar().showMessage(f"IClamp target set to {sec}@{xloc:.3f}")
-            QtCore.QTimer.singleShot(3000, viewer.statusBar().clearMessage)
-            return True
-        return False
 
 

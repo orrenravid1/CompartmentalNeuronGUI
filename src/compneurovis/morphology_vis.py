@@ -207,6 +207,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                             else:
                                 v = mn + (mx - mn) * frac
                             lbl.setText(f"{v:.3g}")
+                            self.sim.on_control_gui(n, float(v))
                             try:
                                 self.cmd_parent.send(("control", n, float(v)))
                             except Exception:
