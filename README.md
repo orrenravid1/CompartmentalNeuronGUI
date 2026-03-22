@@ -28,6 +28,3 @@ Currently there is a functional demo both for the complex morphology of a single
 3. You can move around by pressing Shift and clicking and dragging LMB
 4. You can zoom either with the scroll wheel or clicking and dragging RMB
 5. Press Spacebar to restart the simulation.
-
-# Known issues:
-- PyOpenGL has a [known bug](https://github.com/mcfletch/pyopengl/issues/149) affecting Instanced Rendering when using `numpy>=2.3` so currently need to use `numpy<2.3` for things to work. But a [fix](https://github.com/mcfletch/pyopengl/pull/150) is in progress.

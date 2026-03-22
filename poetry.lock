@@ -3940,14 +3940,14 @@ vispy-qt5 = ["pyNeuroML[vispy-common]", "pyqt5"]
 
 [[package]]
 name = "pyopengl"
-version = "3.1.9"
+version = "3.1.10"
 description = "Standard OpenGL bindings for Python"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "PyOpenGL-3.1.9-py3-none-any.whl", hash = "sha256:15995fd3b0deb991376805da36137a4ae5aba6ddbb5e29ac1f35462d130a3f77"},
-    {file = "pyopengl-3.1.9.tar.gz", hash = "sha256:28ebd82c5f4491a418aeca9672dffb3adbe7d33b39eada4548a5b4e8c03f60c8"},
+    {file = "pyopengl-3.1.10-py3-none-any.whl", hash = "sha256:794a943daced39300879e4e47bd94525280685f42dbb5a998d336cfff151d74f"},
+    {file = "pyopengl-3.1.10.tar.gz", hash = "sha256:c4a02d6866b54eb119c8e9b3fb04fa835a95ab802dd96607ab4cdb0012df8335"},
 ]
 
 [[package]]
@@ -5337,4 +5337,4 @@ neuron = ["neuron"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "83f3ec31c040629712b4e57ed29ac8b8bc715da2643dc5f160261cb29606b3b7"
+content-hash = "0ce3052dbd872784bc32c815a04c37872242e8ecd47ccc23474b3221d095301b"
