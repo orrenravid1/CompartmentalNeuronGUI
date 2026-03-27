@@ -19,6 +19,7 @@ class NeuronSimulation(Simulation):
         self._morph_recorders   = {}
         # Will map sim_var→(PtrVector,Vector)
         self._sim_recorders = {}
+        self.morphology_meta = None
         self.dt = dt
         self.v_init = v_init
     
@@ -125,6 +126,7 @@ class NeuronSimulation(Simulation):
         print(f"Meta file generated in {elapsed:.2f}s")
 
         return {
+            'kind':         'morphology',
             'positions':    mid.astype(np.float32),
             'orientations': R.astype(np.float32),
             'radii':        rad.astype(np.float32),
@@ -134,6 +136,16 @@ class NeuronSimulation(Simulation):
             'sec_idx':      S,
             'xloc':         xloc.astype(np.float32)
         }
+
+    def build_initial_payload(self):
+        self.morphology_meta = self.build_morphology_meta()
+        return self.morphology_meta
+
+    @property
+    def morphology_count(self):
+        if self.morphology_meta is None:
+            raise ValueError("Cannot record morphology variables before morphology metadata has been built")
+        return len(self.morphology_meta["sec_idx"])
     
     def initialize(self):
         h.dt = self.dt
@@ -221,5 +233,3 @@ class NeuronSimulation(Simulation):
             vb.enableAutoRange(x=True, y=False)
             vb.setLimits(yMin=viewer._vb_ymin, yMax=viewer._vb_ymax)
             vb.setRange(yRange=(viewer._vb_ymin, viewer._vb_ymax), padding=0)
-
-

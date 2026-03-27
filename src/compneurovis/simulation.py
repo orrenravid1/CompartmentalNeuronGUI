@@ -1,29 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import TypedDict
-import numpy as np
-from collections.abc import Callable
+import time
 
 from multiprocessing.connection import Connection
 
-class MorphologyMeta(TypedDict):
-    positions:    np.ndarray   # (M,3) float32
-    orientations: np.ndarray   # (M,3,3) float32
-    radii:        np.ndarray   # (M,)   float32
-    lengths:      np.ndarray   # (M,)   float32
-    colors:       np.ndarray   # (M,4)  float32
-    sec_names:    list[str]
-    sec_idx:      np.ndarray   # (M,)   int32
-    xloc:         np.ndarray   # (M,)   float32
-
-
 class Simulation(ABC):
-
     def __init__(self):
-        self.morphology_meta = None
-        pass
-    
-    @abstractmethod
-    def build_morphology_meta(self) -> MorphologyMeta:
         pass
 
     @abstractmethod
@@ -45,17 +26,33 @@ class Simulation(ABC):
     @abstractmethod
     def get_data(self, *args, **kwargs):
         pass
-    
-    @property
-    def morphology_count(self):
-        if self.morphology_meta is None:
-            raise ValueError("Cannot get size of morphology before generating morphology file via build_morphology_meta")
-        return len(self.morphology_meta["sec_idx"])
+
+    def build_initial_payload(self):
+        """Return optional static viewer payload generated after setup().
+
+        Subclasses can override this to provide any precomputed metadata a
+        viewer may want, such as morphology geometry. The base simulation does
+        not assume any specific payload shape.
+        """
+        return None
+
+    def consume_scene_payload_update(self):
+        """Return a pending scene payload update for the viewer, if any."""
+        return None
+
+    def is_live(self) -> bool:
+        """Whether the simulation advances continuously in the worker process."""
+        return True
+
+    def idle_sleep(self) -> float:
+        """Sleep interval used when the worker is not advancing live state."""
+        return 0.05
 
     def prepare(self):
         self.setup()
-        self.morphology_meta = self.build_morphology_meta()
+        initial_payload = self.build_initial_payload()
         self.record()
+        return initial_payload
 
     def close(self):
         pass
@@ -128,12 +125,15 @@ class Simulation(ABC):
 
 def simulation_process(sim: Simulation, data_pipe: Connection, cmd_pipe: Connection):
     try:
-        sim.prepare()
-        data_pipe.send(sim.morphology_meta)
+        initial_payload = sim.prepare()
+        data_pipe.send(("initial_payload", initial_payload))
         sim.initialize()
 
         while True:
-            sim.step()
+            if sim.is_live():
+                sim.step()
+            else:
+                time.sleep(sim.idle_sleep())
             while cmd_pipe.poll():
                 cmd = cmd_pipe.recv()
                 # Backwards-compatible string command
@@ -169,11 +169,14 @@ def simulation_process(sim: Simulation, data_pipe: Connection, cmd_pipe: Connect
                         except Exception:
                             pass
 
+            scene_payload = sim.consume_scene_payload_update()
+            if scene_payload is not None:
+                data_pipe.send(("scene_payload", scene_payload))
+
             data = sim.get_data()
-            data_pipe.send(data)
+            data_pipe.send(("data", data))
     finally:
         data_pipe.close()
         cmd_pipe.close()
                 
         
-

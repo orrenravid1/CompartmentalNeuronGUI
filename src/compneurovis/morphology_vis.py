@@ -2,6 +2,7 @@ import time
 import multiprocessing as mp
 from multiprocessing import Pipe, Process
 from collections import deque
+from typing import TypedDict
 import numpy as np
 import sys
 
@@ -18,6 +19,30 @@ from compneurovis.vispyutils.cappedcylindercollection import CappedCylinderColle
 from compneurovis.simulation import Simulation, simulation_process
 
 TRACE_COLORS = ['b', 'r', 'g', 'm', 'c', 'y', (255,165,0), (128,0,128)]
+
+
+class MorphologyMeta(TypedDict):
+    kind: str
+    positions: np.ndarray
+    orientations: np.ndarray
+    radii: np.ndarray
+    lengths: np.ndarray
+    colors: np.ndarray
+    sec_names: list[str]
+    sec_idx: np.ndarray
+    xloc: np.ndarray
+
+
+class SurfaceMeta(TypedDict, total=False):
+    kind: str
+    x: np.ndarray
+    y: np.ndarray
+    z: np.ndarray
+    colors: np.ndarray
+    color_by: str
+    cmap: str
+    clim: tuple[float, float]
+    title: str
 
 class _Trace:
     """A single recorded trace on the plot."""
@@ -109,11 +134,104 @@ class MorphologyManager:
         self.collection.set_colors(self._color_buf)
 
 
-class MorphologyViewer(QtWidgets.QMainWindow):
+class SurfaceManager:
+    def __init__(self, view):
+        self.view = view
+        self.surface = None
+
+    def _colormap_samples(self, name: str, n: int = 256) -> np.ndarray:
+        name = str(name).lower()
+        x = np.linspace(0.0, 1.0, n, dtype=np.float32)
+        if name == 'grayscale':
+            rgb = np.stack([x, x, x], axis=1)
+        elif name == 'fire':
+            rgb = np.stack([
+                np.clip(1.5 * x, 0.0, 1.0),
+                np.clip(2.0 * x - 0.4, 0.0, 1.0),
+                np.clip(4.0 * x - 3.0, 0.0, 1.0),
+            ], axis=1)
+        else:
+            # blue-white-red default
+            rgb = np.empty((n, 3), dtype=np.float32)
+            left = x <= 0.5
+            right = ~left
+            rgb[left, 0] = 2.0 * x[left]
+            rgb[left, 1] = 2.0 * x[left]
+            rgb[left, 2] = 1.0
+            rgb[right, 0] = 1.0
+            rgb[right, 1] = 2.0 * (1.0 - x[right])
+            rgb[right, 2] = 2.0 * (1.0 - x[right])
+        alpha = np.ones((n, 1), dtype=np.float32)
+        return np.concatenate([rgb, alpha], axis=1)
+
+    def _map_height_to_colors(self, z: np.ndarray, meta) -> np.ndarray:
+        clim = meta.get('clim')
+        if clim is None:
+            zmin = float(np.min(z))
+            zmax = float(np.max(z))
+        else:
+            zmin = float(clim[0])
+            zmax = float(clim[1])
+        if abs(zmax - zmin) < 1e-12:
+            norm = np.zeros_like(z, dtype=np.float32)
+        else:
+            norm = np.clip((z - zmin) / (zmax - zmin), 0.0, 1.0).astype(np.float32)
+        lut = self._colormap_samples(meta.get('cmap', 'bwr'))
+        idx = np.clip((norm * (len(lut) - 1)).astype(np.int32), 0, len(lut) - 1)
+        return lut[idx]
+
+    def set_surface(self, meta):
+        x = np.asarray(meta['x'], dtype=np.float32)
+        y = np.asarray(meta['y'], dtype=np.float32)
+        z = np.asarray(meta['z'], dtype=np.float32)
+        colors = meta.get('colors')
+        color_by = meta.get('color_by')
+
+        if self.surface is not None:
+            self.surface.parent = None
+            self.surface = None
+
+        if colors is None and color_by == 'height':
+            colors = self._map_height_to_colors(z, meta)
+
+        self.surface = scene.visuals.SurfacePlot(
+            x=x,
+            y=y,
+            z=z,
+            color=(0.5, 0.6, 0.8, 1.0),
+            shading=None,
+            parent=self.view.scene,
+        )
+
+        if colors is not None:
+            self.surface.set_data(z=z, colors=np.asarray(colors, dtype=np.float32))
+
+        self.view.camera.set_range()
+
+
+def _payload_kind(payload) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    kind = payload.get('kind')
+    if isinstance(kind, str):
+        return kind
+    morphology_keys = {
+        'positions', 'orientations', 'radii', 'lengths',
+        'colors', 'sec_names', 'sec_idx', 'xloc'
+    }
+    if morphology_keys.issubset(payload.keys()):
+        return 'morphology'
+    surface_keys = {'x', 'y', 'z'}
+    if surface_keys.issubset(payload.keys()):
+        return 'surface'
+    return None
+
+
+class SimulationViewer(QtWidgets.QMainWindow):
     def __init__(self, sim: Simulation):
         super().__init__()
-        self.setWindowTitle("Morphology + Voltage")
-        self.statusBar().showMessage("Loading morphology…")
+        self.setWindowTitle("Simulation Viewer")
+        self.statusBar().showMessage("Loading simulation…")
 
         # 3D canvas
         self.canvas3d = scene.SceneCanvas(keys='interactive',
@@ -125,7 +243,8 @@ class MorphologyViewer(QtWidgets.QMainWindow):
 
         self.sim            = sim
         self.mgr            = MorphologyManager(self.view)
-        self.geom_ready     = False
+        self.surface_mgr    = SurfaceManager(self.view)
+        self.morphology_ready = False
         self._color_var_key = None
 
         # 2D plot
@@ -304,6 +423,8 @@ class MorphologyViewer(QtWidgets.QMainWindow):
 
         self.selected = None
         self.DRAG_THRESHOLD = 5
+        self.has_morphology = False
+        self.scene_kind = None
 
     def _start_worker(self):
         self._load_t0 = time.perf_counter()
@@ -311,39 +432,65 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         self.data_child.close()
         self.cmd_child.close()
 
+    def _handle_initial_payload(self, payload):
+        elapsed = time.perf_counter() - self._load_t0
+        kind = _payload_kind(payload)
+        self.scene_kind = kind
+        if kind == "morphology":
+            self.canvas3d.native.show()
+            self.mgr.set_morphology(payload)
+            self.has_morphology = True
+            self.morphology_ready = True
+            self._color_var_key = None
+            self.statusBar().showMessage(f"Loaded morphology in {elapsed:.2f}s")
+            if not self.traces:
+                self.select(self.mgr.sec_names[0], 0.5)
+            self.canvas3d.events.mouse_press.connect(self._on_mouse_press)
+            self.canvas3d.events.mouse_release.connect(self._on_mouse_release)
+        elif kind == "surface":
+            self.canvas3d.native.show()
+            self.surface_mgr.set_surface(payload)
+            self.has_morphology = False
+            self.morphology_ready = False
+            title = payload.get("title", "surface")
+            self.statusBar().showMessage(f"Loaded {title} in {elapsed:.2f}s")
+        else:
+            self.has_morphology = False
+            self.morphology_ready = False
+            self.canvas3d.native.hide()
+            self.statusBar().showMessage(f"Loaded simulation in {elapsed:.2f}s")
+
+        print(f"Loaded in {elapsed:.2f}s")
+        QtCore.QTimer.singleShot(3000, self.statusBar().clearMessage)
+
     def _poll(self):
         try:
             colors_dirty = False
             while self.data_parent.poll():
                 msg = self.data_parent.recv()
+                if isinstance(msg, tuple) and len(msg) == 2:
+                    kind, payload = msg
+                else:
+                    kind, payload = "data", msg
 
-                if not self.geom_ready:
-                    # first message is meta dict
-                    self.mgr.set_morphology(msg)
-                    self._color_var_key = None   # reset cached color key
-                    elapsed = time.perf_counter() - self._load_t0
-                    self.statusBar().showMessage(f"Loaded in {elapsed:.2f}s")
-                    print(f"Loaded in {elapsed:.2f}s")
-                    QtCore.QTimer.singleShot(3000, self.statusBar().clearMessage)
-
-                    self.geom_ready = True
-                    self.canvas3d.events.mouse_press .connect(self._on_mouse_press)
-                    self.canvas3d.events.mouse_release.connect(self._on_mouse_release)
-                    # auto‐select first section (skip if traces were pre-configured)
-                    if not self.traces:
-                        self.select(self.mgr.sec_names[0], 0.5)
+                if kind == "initial_payload":
+                    self._handle_initial_payload(payload)
+                    continue
+                if kind == "scene_payload":
+                    self._handle_initial_payload(payload)
+                    self.canvas3d.update()
                     continue
 
                 # subsequent messages: data dict (or legacy (t, v) tuple)
-                if isinstance(msg, dict):
-                    data = msg
+                if isinstance(payload, dict):
+                    data = payload
                     t = data['t']
                 else:
-                    t, arr = msg
+                    t, arr = payload
                     data = {'t': t, 'v': arr}
 
                 # 3D color mapping — find color key once, reuse thereafter
-                if self._color_var_key is None:
+                if self.has_morphology and self._color_var_key is None:
                     if 'v' in data and isinstance(data['v'], np.ndarray):
                         self._color_var_key = 'v'
                     else:
@@ -352,7 +499,7 @@ class MorphologyViewer(QtWidgets.QMainWindow):
                                 self._color_var_key = k
                                 break
 
-                color_arr = data.get(self._color_var_key) if self._color_var_key else None
+                color_arr = data.get(self._color_var_key) if self.has_morphology and self._color_var_key else None
                 if color_arr is not None:
                     if self._color_var_key == 'v':
                         self.mgr.update_colors(color_arr, lambda a: np.clip((a+80)/130,0,1))
@@ -383,6 +530,8 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         self._mouse_start = ev.pos
 
     def _on_mouse_release(self, ev):
+        if not self.has_morphology:
+            return
         if not hasattr(self,'_mouse_start'):
             return
         dx = ev.pos[0] - self._mouse_start[0]
@@ -399,6 +548,8 @@ class MorphologyViewer(QtWidgets.QMainWindow):
 
     def _resolve_seg_idx(self, sec, xloc):
         """Find the closest segment index for a given section and xloc."""
+        if not self.has_morphology:
+            return None
         diffs = np.abs(self.mgr.xlocs - xloc)
         mask  = np.array([n==sec for n in self.mgr.sec_names])[self.mgr.sec_idx]
         idxs  = np.where(mask)[0]
@@ -445,8 +596,6 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         vb.setRange(yRange=(self._vb_ymin, self._vb_ymax), padding=0)
 
     def keyPressEvent(self, ev):
-        if not self.geom_ready:
-            return super().keyPressEvent(ev)
         if self.sim.handle_key_press(ev.key(), self):
             return
         if ev.key() == Qt.Key.Key_Space:
@@ -475,6 +624,10 @@ class MorphologyViewer(QtWidgets.QMainWindow):
         self.timer.stop()
         super().closeEvent(ev)
 
+
+MorphologyViewer = SimulationViewer
+
+
 def run_visualizer(sim: Simulation, setup_callback=None):
     # only launch GUI in the original process, not in any spawned children
     if mp.current_process().name != "MainProcess":
@@ -486,7 +639,7 @@ def run_visualizer(sim: Simulation, setup_callback=None):
 
     # now safe to create the QApplication and window
     app = QtWidgets.QApplication(sys.argv)
-    w   = MorphologyViewer(sim)
+    w   = SimulationViewer(sim)
     if setup_callback is not None:
         setup_callback(w)
     w.show()
