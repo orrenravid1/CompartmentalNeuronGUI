@@ -61,6 +61,7 @@ class StaticSurfaceSimulation(StaticVisualizationSimulation):
         color_by=None,
         cmap="bwr",
         clim=None,
+        background_color=None,
     ):
         payload = {
             'kind': 'surface',
@@ -77,4 +78,6 @@ class StaticSurfaceSimulation(StaticVisualizationSimulation):
             payload['cmap'] = str(cmap)
         if clim is not None:
             payload['clim'] = tuple(float(v) for v in clim)
+        if background_color is not None:
+            payload['background_color'] = background_color
         super().__init__(initial_payload=payload, data=data)

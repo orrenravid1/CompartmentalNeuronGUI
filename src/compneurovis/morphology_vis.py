@@ -42,7 +42,96 @@ class SurfaceMeta(TypedDict, total=False):
     color_by: str
     cmap: str
     clim: tuple[float, float]
+    surface_alpha: float
+    background_color: str | tuple[float, float, float] | tuple[float, float, float, float]
+    render_axes: bool
+    axes_in_middle: bool
+    tick_count: int
+    axis_color: str | tuple[float, float, float] | tuple[float, float, float, float]
+    axis_labels: tuple[str, str, str]
     title: str
+
+
+class SurfaceAxesOverlay:
+    def __init__(self, view):
+        self.view = view
+        self._visuals = []
+
+    def clear(self):
+        for vis in self._visuals:
+            vis.parent = None
+        self._visuals.clear()
+
+    def _add_line(self, points, color, width=2):
+        line = scene.visuals.Line(
+            pos=np.asarray(points, dtype=np.float32),
+            color=color,
+            width=width,
+            method='gl',
+            parent=self.view.scene,
+        )
+        self._visuals.append(line)
+
+    def _add_text(self, text, pos, color, font_size=10, anchor_x='center', anchor_y='center'):
+        label = scene.visuals.Text(
+            text=str(text),
+            pos=np.asarray(pos, dtype=np.float32),
+            color=color,
+            font_size=font_size,
+            anchor_x=anchor_x,
+            anchor_y=anchor_y,
+            parent=self.view.scene,
+        )
+        label.set_gl_state(depth_test=False, blend=True)
+        label.order = 1000
+        self._visuals.append(label)
+
+    def set_axes(self, meta, x: np.ndarray, y: np.ndarray, z: np.ndarray):
+        self.clear()
+        if not meta.get('render_axes', False):
+            return
+
+        axis_color = meta.get('axis_color', 'black')
+        tick_count = max(0, int(meta.get('tick_count', 5)))
+        centered = bool(meta.get('axes_in_middle', True))
+        axis_labels = meta.get('axis_labels', ('x', 'y', 'z'))
+
+        xmin, xmax = float(np.min(x)), float(np.max(x))
+        ymin, ymax = float(np.min(y)), float(np.max(y))
+        zmin, zmax = float(np.min(z)), float(np.max(z))
+        xmid = 0.5 * (xmin + xmax)
+        ymid = 0.5 * (ymin + ymax)
+        zmid = 0.5 * (zmin + zmax)
+
+        axis_y = ymid if centered else ymin
+        axis_z = zmid if centered else zmin
+        axis_x = xmid if centered else xmin
+
+        self._add_line([[xmin, axis_y, axis_z], [xmax, axis_y, axis_z]], axis_color)
+        self._add_line([[axis_x, ymin, axis_z], [axis_x, ymax, axis_z]], axis_color)
+        self._add_line([[axis_x, axis_y, zmin], [axis_x, axis_y, zmax]], axis_color)
+
+        xtick = 0.03 * max(ymax - ymin, 1e-6)
+        ytick = 0.03 * max(xmax - xmin, 1e-6)
+        ztick = 0.03 * max(xmax - xmin, 1e-6)
+        xoff = 0.09 * max(ymax - ymin, 1e-6)
+        yoff = 0.07 * max(xmax - xmin, 1e-6)
+        zoff = 0.07 * max(xmax - xmin, 1e-6)
+
+        if tick_count > 0:
+            for xv in np.linspace(xmin, xmax, tick_count):
+                self._add_line([[xv, axis_y - xtick, axis_z], [xv, axis_y + xtick, axis_z]], axis_color, width=1)
+                self._add_text(f"{xv:.0f}", [xv, axis_y - xoff, axis_z], axis_color, font_size=12, anchor_y='top')
+            for yv in np.linspace(ymin, ymax, tick_count):
+                self._add_line([[axis_x - ytick, yv, axis_z], [axis_x + ytick, yv, axis_z]], axis_color, width=1)
+                self._add_text(f"{yv:.0f}", [axis_x - yoff, yv, axis_z], axis_color, font_size=12, anchor_x='right')
+            for zv in np.linspace(zmin, zmax, tick_count):
+                self._add_line([[axis_x - ztick, axis_y, zv], [axis_x + ztick, axis_y, zv]], axis_color, width=1)
+                self._add_text(f"{zv:.0f}", [axis_x + zoff, axis_y, zv], axis_color, font_size=12, anchor_x='left')
+
+        self._add_text(axis_labels[0], [xmax, axis_y - xoff * 1.8, axis_z], axis_color, font_size=16, anchor_y='top')
+        self._add_text(axis_labels[1], [axis_x - yoff * 1.8, ymax, axis_z], axis_color, font_size=16, anchor_x='right')
+        self._add_text(axis_labels[2], [axis_x + zoff * 1.8, axis_y, zmax], axis_color, font_size=16, anchor_x='left')
 
 class _Trace:
     """A single recorded trace on the plot."""
@@ -138,6 +227,7 @@ class SurfaceManager:
     def __init__(self, view):
         self.view = view
         self.surface = None
+        self.axes = SurfaceAxesOverlay(view)
 
     def _colormap_samples(self, name: str, n: int = 256) -> np.ndarray:
         name = str(name).lower()
@@ -186,6 +276,8 @@ class SurfaceManager:
         z = np.asarray(meta['z'], dtype=np.float32)
         colors = meta.get('colors')
         color_by = meta.get('color_by')
+        surface_alpha = float(meta.get('surface_alpha', 1.0))
+        surface_alpha = min(1.0, max(0.0, surface_alpha))
 
         if self.surface is not None:
             self.surface.parent = None
@@ -193,19 +285,25 @@ class SurfaceManager:
 
         if colors is None and color_by == 'height':
             colors = self._map_height_to_colors(z, meta)
+        if colors is not None:
+            colors = np.asarray(colors, dtype=np.float32).copy()
+            if colors.shape[-1] == 4:
+                colors[..., 3] = surface_alpha
 
         self.surface = scene.visuals.SurfacePlot(
             x=x,
             y=y,
             z=z,
-            color=(0.5, 0.6, 0.8, 1.0),
+            color=(0.5, 0.6, 0.8, surface_alpha),
             shading=None,
             parent=self.view.scene,
         )
+        self.surface.set_gl_state('translucent', depth_test=True, cull_face=False)
 
         if colors is not None:
             self.surface.set_data(z=z, colors=np.asarray(colors, dtype=np.float32))
 
+        self.axes.set_axes(meta, x, y, z)
         self.view.camera.set_range()
 
 
@@ -436,6 +534,9 @@ class SimulationViewer(QtWidgets.QMainWindow):
         elapsed = time.perf_counter() - self._load_t0
         kind = _payload_kind(payload)
         self.scene_kind = kind
+        bg = payload.get("background_color") if isinstance(payload, dict) else None
+        if bg is not None:
+            self.canvas3d.bgcolor = bg
         if kind == "morphology":
             self.canvas3d.native.show()
             self.mgr.set_morphology(payload)
