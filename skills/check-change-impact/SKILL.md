@@ -1,0 +1,28 @@
+---
+name: check-change-impact
+description: Review a CompNeuroVis change set and determine what code, tests, docs, AGENTS metadata, generated indexes, and repo-owned skills need to be updated. Use when code has changed and Codex should audit downstream impact before or after implementation.
+---
+
+# Check Change Impact
+
+Read `AGENTS.md` first.
+
+Audit changes in this order:
+
+1. Identify the touched package or example paths.
+2. Map those paths onto the package map and public API in `AGENTS.md`.
+3. Decide whether the change affects:
+   - exported names in `src/compneurovis/__init__.py`
+   - package-local `README.md` files
+   - architecture or concept docs in `docs/`
+   - examples
+   - skills
+   - generated reference indexes
+4. Run the smallest useful verification:
+   - `python -m compileall src examples tests`
+   - `pytest`
+   - `python scripts/generate_indexes.py --check`
+5. Report missing follow-up edits explicitly instead of assuming docs are still correct.
+
+When the change alters public concepts, package boundaries, or workflows, treat docs updates as required work, not optional cleanup.
+

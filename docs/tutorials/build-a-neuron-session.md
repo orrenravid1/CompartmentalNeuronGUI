@@ -1,0 +1,14 @@
+---
+title: Build a NEURON Session
+summary: Minimal pattern for creating a live NEURON-backed application with the new session API.
+---
+
+# Build a NEURON Session
+
+1. Subclass `NeuronSession`.
+2. Implement `build_sections(...)`.
+3. Implement `setup_model(...)` to insert mechanisms, clamps, synapses, or layout steps.
+4. Wrap the session with `build_neuron_app(...)`.
+5. Launch with `run_app(...)`.
+
+See `examples/neuron/visualizer_example.py` and `examples/neuron/multicell_example.py`.

@@ -40,3 +40,6 @@ optional = false
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

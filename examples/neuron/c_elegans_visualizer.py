@@ -1,55 +1,50 @@
-import time
 import os
-from neuron import h
 import random
 
-from compneurovis.morphology_vis import run_visualizer
-from compneurovis.neuron_simulation import NeuronSimulation
+from neuron import h
+
+from compneurovis import NeuronSession, build_neuron_app, run_app
 from compneurovis.neuronutils.swc_utils import load_swc_multi
 
 
-class CElegansNeuronSimulation(NeuronSimulation):
-
+class CElegansSession(NeuronSession):
     def __init__(self):
-        super().__init__()
-        self.secs = None
-    
-    @property
-    def sections(self):
-        return self.secs
+        super().__init__(title="C. elegans morphology viewer")
 
-    def setup(self):
-        t0 = time.perf_counter()
+    def build_sections(self):
         curr_path = os.path.dirname(os.path.abspath(__file__))
-        swc_path = os.path.join(curr_path,"..","..","res","celegans_cells_swc")
-        swc_files = [f for f in os.listdir(swc_path)]
-        self.secs = []
-        for i,swcf in enumerate(swc_files):
-            print(f"Loading cell {swcf}")
-            cell_name = swcf.split('.')[0]
-            trees = load_swc_multi(os.path.join(swc_path, swcf), cell_name)
-            seclists = trees.values()
-            for seclist in seclists:
-                for sec in seclist:
-                    self.secs.append(sec)
+        swc_path = os.path.join(curr_path, "..", "..", "res", "celegans_cells_swc")
+        sections = []
+        for swc_file in os.listdir(swc_path):
+            print(f"Loading cell {swc_file}")
+            cell_name = swc_file.split(".")[0]
+            trees = load_swc_multi(os.path.join(swc_path, swc_file), cell_name)
+            for section_list in trees.values():
+                sections.extend(section_list)
+        return sections
 
-        elapsed = time.perf_counter() - t0
-        print(f"SWCs Loaded in {elapsed:.2f}s")
-
-        for sec in self.secs:
+    def setup_model(self, sections):
+        for sec in sections:
             sec.insert("hh")
             if "soma" not in sec.name():
                 sec.nseg = 10
 
-        somas = [sec for sec in self.secs if 'soma' in sec.name().lower()]
-        # WARNING: Need to store iclamps outside of this method i.e. via self otherwise they will
-        # be garbage collected
+        somas = [sec for sec in sections if "soma" in sec.name().lower()]
         self.iclamps = []
         for soma in somas:
-            for d,du,a in [(2 + random.random()*5,5,0.2),(20 + random.random()*5,5,0.2),(40 + random.random()*5,5,0.2),(60 + random.random()*5,5,0.2),(80 + random.random()*5,5,0.2)]:
-                icl = h.IClamp(soma(0.5))
-                icl.delay, icl.dur, icl.amp = d, du, a
-                self.iclamps.append(icl)
-                
+            for delay, dur, amp in [
+                (2 + random.random() * 5, 5, 0.2),
+                (20 + random.random() * 5, 5, 0.2),
+                (40 + random.random() * 5, 5, 0.2),
+                (60 + random.random() * 5, 5, 0.2),
+                (80 + random.random() * 5, 5, 0.2),
+            ]:
+                clamp = h.IClamp(soma(0.5))
+                clamp.delay = delay
+                clamp.dur = dur
+                clamp.amp = amp
+                self.iclamps.append(clamp)
+        return {"iclamps": self.iclamps}
 
-run_visualizer(CElegansNeuronSimulation())
+
+run_app(build_neuron_app(CElegansSession()))

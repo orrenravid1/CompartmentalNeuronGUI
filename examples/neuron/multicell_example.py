@@ -1,16 +1,12 @@
 import time
+
 from neuron import h
 
-from compneurovis.morphology_vis import run_visualizer
-from compneurovis.neuron_simulation import NeuronSimulation
+from compneurovis import NeuronSession, build_neuron_app, run_app
 from compneurovis.neuronutils.layout import generate_layout
 
 
 def make_straight_cell(name):
-    """
-    Cell 1: straight chain.
-    soma ─── dend
-    """
     soma = h.Section(name=f"{name}_soma")
     soma.L = 20
     soma.diam = 20
@@ -32,12 +28,6 @@ def make_straight_cell(name):
 
 
 def make_y_cell(name):
-    """
-    Cell 2: Y-shaped.
-            ┌─ dend_a
-    soma ───┤
-            └─ dend_b
-    """
     soma = h.Section(name=f"{name}_soma")
     soma.L = 25
     soma.diam = 15
@@ -65,14 +55,6 @@ def make_y_cell(name):
 
 
 def make_branching_cell(name):
-    """
-    Cell 3: deeper branching.
-                    ┌─ branch_a
-    soma ─── dend ──┤
-                    │        ┌─ twig_a
-                    └─ branch_b ──┤
-                                  └─ twig_b
-    """
     soma = h.Section(name=f"{name}_soma")
     soma.L = 30
     soma.diam = 18
@@ -117,96 +99,63 @@ def make_branching_cell(name):
     return [soma, dend, branch_a, branch_b, twig_a, twig_b, axon]
 
 
-class MultiCellSimulation(NeuronSimulation):
-
+class MultiCellSession(NeuronSession):
     def __init__(self):
-        super().__init__()
-        self.secs = None
+        super().__init__(title="Multi-cell network viewer")
 
-    @property
-    def sections(self):
-        return self.secs
-
-    def setup(self):
+    def build_sections(self):
         t0 = time.perf_counter()
-
-        # --- Build 3 cells ---
         self.cell1_secs = make_straight_cell("cell1")
         self.cell2_secs = make_y_cell("cell2")
         self.cell3_secs = make_branching_cell("cell3")
+        sections = self.cell1_secs + self.cell2_secs + self.cell3_secs
+        print(f"Cells built in {time.perf_counter() - t0:.2f}s")
+        return sections
 
-        self.secs = self.cell1_secs + self.cell2_secs + self.cell3_secs
-
-        # --- Biophysics: HH on all sections ---
-        for sec in self.secs:
+    def setup_model(self, sections):
+        for sec in sections:
             sec.insert("hh")
 
-        # --- Synaptic connections via NetCon + ExpSyn ---
-        # Cell 1 axon -> Cell 2 soma
         syn1 = h.ExpSyn(self.cell2_secs[0](0.5))
         syn1.tau = 2.0
         syn1.e = 0.0
-        nc1 = h.NetCon(
-            self.cell1_secs[2](0.9)._ref_v,  # cell1 axon near tip
-            syn1,
-            sec=self.cell1_secs[2],
-        )
+        nc1 = h.NetCon(self.cell1_secs[2](0.9)._ref_v, syn1, sec=self.cell1_secs[2])
         nc1.weight[0] = 0.05
         nc1.delay = 1.0
 
-        # Cell 2 axon -> Cell 3 soma
         syn2 = h.ExpSyn(self.cell3_secs[0](0.5))
         syn2.tau = 2.0
         syn2.e = 0.0
-        nc2 = h.NetCon(
-            self.cell2_secs[3](0.9)._ref_v,  # cell2 axon near tip
-            syn2,
-            sec=self.cell2_secs[3],
-        )
+        nc2 = h.NetCon(self.cell2_secs[3](0.9)._ref_v, syn2, sec=self.cell2_secs[3])
         nc2.weight[0] = 0.05
         nc2.delay = 1.0
 
-        # Cell 3 axon -> Cell 1 dend (recurrent)
         syn3 = h.ExpSyn(self.cell1_secs[1](0.5))
         syn3.tau = 2.0
         syn3.e = 0.0
-        nc3 = h.NetCon(
-            self.cell3_secs[6](0.9)._ref_v,  # cell3 axon near tip
-            syn3,
-            sec=self.cell3_secs[6],
-        )
+        nc3 = h.NetCon(self.cell3_secs[6](0.9)._ref_v, syn3, sec=self.cell3_secs[6])
         nc3.weight[0] = 0.03
         nc3.delay = 1.0
 
-        # Store to prevent garbage collection
         self.synapses = [syn1, syn2, syn3]
         self.netcons = [nc1, nc2, nc3]
 
-        # --- Current injection into cell 1 soma to drive the network ---
         self.iclamps = []
-        for delay, dur, amp in [(2, 5, 0.5), (20, 5, 0.5), (40, 5, 0.5),
-                                (60, 5, 0.5), (80, 5, 0.5)]:
+        for delay, dur, amp in [(2, 5, 0.5), (20, 5, 0.5), (40, 5, 0.5), (60, 5, 0.5), (80, 5, 0.5)]:
             icl = h.IClamp(self.cell1_secs[0](0.5))
             icl.delay = delay
             icl.dur = dur
             icl.amp = amp
             self.iclamps.append(icl)
 
-        elapsed = time.perf_counter() - t0
-        print(f"Cells built in {elapsed:.2f}s")
-
-        # --- Layout: position cells so they don't overlap ---
-        # cell_connections places cell2's soma at the end of cell1's axon,
-        # and cell3's soma at the end of cell2's axon.
         generate_layout(
-            self.secs,
+            sections,
             cell_connections=[
-                (self.cell2_secs[0], self.cell1_secs[2], 1.0),  # cell2 soma at cell1 axon tip
-                (self.cell3_secs[0], self.cell2_secs[3], 1.0),  # cell3 soma at cell2 axon tip
+                (self.cell2_secs[0], self.cell1_secs[2], 1.0),
+                (self.cell3_secs[0], self.cell2_secs[3], 1.0),
             ],
         )
-        # Uses the default layout which ignores connectivity
-        ##h.define_shape()
+        return {"synapses": self.synapses, "netcons": self.netcons, "iclamps": self.iclamps}
 
 
-run_visualizer(MultiCellSimulation())
+run_app(build_neuron_app(MultiCellSession()))

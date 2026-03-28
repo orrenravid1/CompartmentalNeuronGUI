@@ -1,45 +1,35 @@
-import time
 import os
+
 from neuron import h
 
-from compneurovis.morphology_vis import run_visualizer
-from compneurovis.neuron_simulation import NeuronSimulation
+from compneurovis import NeuronSession, build_neuron_app, run_app
 from compneurovis.neuronutils.swc_utils import load_swc_neuron
 
 
-class ComplexCellNeuronSimulation(NeuronSimulation):
-
+class ComplexCellSession(NeuronSession):
     def __init__(self):
-        super().__init__()
-        self.secs = None
-    
-    @property
-    def sections(self):
-        return self.secs
+        super().__init__(title="Complex cell viewer")
 
-    def setup(self):
-        t0 = time.perf_counter()
+    def build_sections(self):
         curr_path = os.path.dirname(os.path.abspath(__file__))
-        swc_path = os.path.join(curr_path,"..","..","res","Animal_2_Basal_2.CNG.swc")
-        self.secs = load_swc_neuron(swc_path)
+        swc_path = os.path.join(curr_path, "..", "..", "res", "Animal_2_Basal_2.CNG.swc")
+        return load_swc_neuron(swc_path)
 
-        elapsed = time.perf_counter() - t0
-        print(f"SWC Loaded in {elapsed:.2f}s")
-
-        for sec in self.secs:
+    def setup_model(self, sections):
+        for sec in sections:
             sec.insert("hh")
-
             if "soma" not in sec.name():
                 sec.nseg = 10
 
-        soma = next(sec for sec in self.secs if 'soma' in sec.name().lower())
-        # WARNING: Need to store iclamps outside of this method i.e. via self otherwise they will
-        # be garbage collected
+        soma = next(sec for sec in sections if "soma" in sec.name().lower())
         self.iclamps = []
-        for d,du,a in [(2,5,1),(20,5,1),(40,5,1),(60,5,1),(80,5,1)]:
-            icl = h.IClamp(soma(0.5))
-            icl.delay, icl.dur, icl.amp = d, du, a
-            self.iclamps.append(icl)
+        for delay, dur, amp in [(2, 5, 1), (20, 5, 1), (40, 5, 1), (60, 5, 1), (80, 5, 1)]:
+            clamp = h.IClamp(soma(0.5))
+            clamp.delay = delay
+            clamp.dur = dur
+            clamp.amp = amp
+            self.iclamps.append(clamp)
+        return {"iclamps": self.iclamps}
 
-  
-run_visualizer(ComplexCellNeuronSimulation())
+
+run_app(build_neuron_app(ComplexCellSession()))

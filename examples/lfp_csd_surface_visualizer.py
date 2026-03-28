@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-
-import numpy as np
 import pickle
 
-from compneurovis.morphology_vis import run_visualizer
-from compneurovis.static_visualization import StaticSurfaceSimulation
+import numpy as np
+
+from compneurovis import SurfaceViewSpec, build_surface_app, grid_field, run_app
 
 
 DEFAULT_PKL = (
@@ -49,12 +48,7 @@ def to_channels_by_time(lfp: np.ndarray) -> np.ndarray:
 
 def compute_csd(lfp: np.ndarray, vaknin: bool = True) -> np.ndarray:
     chans_by_time = to_channels_by_time(lfp)
-    if vaknin:
-        padded = np.vstack(
-            [chans_by_time[0:1], chans_by_time, chans_by_time[-1:]]
-        )
-    else:
-        padded = chans_by_time
+    padded = np.vstack([chans_by_time[0:1], chans_by_time, chans_by_time[-1:]]) if vaknin else chans_by_time
     return -(padded[:-2] - 2.0 * padded[1:-1] + padded[2:])
 
 
@@ -86,67 +80,46 @@ def average_erp_csd_for_experiment(
     return avg
 
 
-def build_surface_simulation(
-    pkl_path: Path,
-    experiment_index: int,
-) -> StaticSurfaceSimulation:
+def build_surface_app_from_pickle(pkl_path: Path, experiment_index: int):
     run = load_run(pkl_path)
     lfps = extract_lfps_by_experiment(run)
     if not 0 <= experiment_index < len(lfps):
-        raise IndexError(
-            f"Experiment index {experiment_index} out of range for {len(lfps)} runs"
-        )
+        raise IndexError(f"Experiment index {experiment_index} out of range for {len(lfps)} runs")
 
     lfp = lfps[experiment_index]
-    avg_csd = average_erp_csd_for_experiment(
-        lfp=lfp,
-        isi_ms=DEFAULT_ISI_MS[experiment_index],
-    )
+    avg_csd = average_erp_csd_for_experiment(lfp=lfp, isi_ms=DEFAULT_ISI_MS[experiment_index])
 
     time_ms = np.linspace(0.0, DEFAULT_WINDOW_MS, avg_csd.shape[1], dtype=np.float32)
     depths_um = np.linspace(0.0, DEFAULT_DEPTH_UM, avg_csd.shape[0], dtype=np.float32)
-    time_grid, depth_grid = np.meshgrid(time_ms, depths_um)
 
-    title = (
-        f"Average ERP CSD surface "
-        f"(ISI {DEFAULT_ISI_MS[experiment_index]} ms, run {experiment_index})"
+    field, geometry = grid_field(
+        field_id="csd",
+        values=avg_csd,
+        x_coords=time_ms,
+        y_coords=depths_um,
+        x_dim="time",
+        y_dim="channel",
     )
-    return StaticSurfaceSimulation(
-        x=time_grid,
-        y=depth_grid,
-        z=avg_csd,
+    title = f"Average ERP CSD surface (ISI {DEFAULT_ISI_MS[experiment_index]} ms, run {experiment_index})"
+    surface_view = SurfaceViewSpec(
+        id="surface",
         title=title,
-        data={"t": 0.0},
+        field_id=field.id,
+        geometry_id=geometry.id,
+        axis_labels=("time", "channel", "csd"),
     )
+    return build_surface_app(field=field, geometry=geometry, title=title, surface_view=surface_view)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Visualize one experiment from an LFP pickle as a static CSD surface."
     )
-    parser.add_argument(
-        "--pkl",
-        type=Path,
-        default=DEFAULT_PKL,
-        help="Path to the pickle containing {'simData': [...]} with LFP arrays.",
-    )
-    parser.add_argument(
-        "--experiment-index",
-        type=int,
-        default=0,
-        help="Which of the 7 experimental conditions to visualize.",
-    )
+    parser.add_argument("--pkl", type=Path, default=DEFAULT_PKL)
+    parser.add_argument("--experiment-index", type=int, default=0)
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    sim = build_surface_simulation(
-        pkl_path=args.pkl.expanduser().resolve(),
-        experiment_index=args.experiment_index,
-    )
-    run_visualizer(sim)
-
-
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    run_app(build_surface_app_from_pickle(args.pkl.expanduser().resolve(), args.experiment_index))
