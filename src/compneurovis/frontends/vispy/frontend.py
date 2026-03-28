@@ -171,9 +171,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
         central = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout(central)
+        self._central_layout = layout
         layout.addWidget(self.viewport, 2)
 
         right = QtWidgets.QWidget()
+        self._right_panel = right
         right_layout = QtWidgets.QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.addWidget(self.line_plot, 3)
@@ -211,6 +213,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 self.state.setdefault("selected_entity_label", geometry.label_for(geometry.entity_ids[0]))
 
         self.viewport.clear()
+        self._update_panel_visibility()
         self._apply_refresh_targets(self.refresh_planner.full_refresh_targets())
 
     def _morphology_view(self):
@@ -229,6 +232,16 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if self.document is None or self.document.layout.line_plot_view_id is None:
             return None
         return self.document.views.get(self.document.layout.line_plot_view_id)
+
+    def _update_panel_visibility(self) -> None:
+        has_3d = self.document is not None and self.document.layout.main_3d_view_id is not None
+        self.viewport.setVisible(has_3d)
+        if has_3d:
+            self._central_layout.setStretch(0, 2)
+            self._central_layout.setStretch(1, 1)
+        else:
+            self._central_layout.setStretch(0, 0)
+            self._central_layout.setStretch(1, 1)
 
     def _refresh_controls(self) -> None:
         if self.document is None:

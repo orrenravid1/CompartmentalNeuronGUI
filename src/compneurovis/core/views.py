@@ -55,6 +55,7 @@ class SurfaceViewSpec(ViewSpec):
 class LinePlotViewSpec(ViewSpec):
     field_id: str = ""
     x_dim: str | None = None
+    series_dim: str | None = None
     selectors: dict[str, SelectorValue] = field(default_factory=dict)
     orthogonal_slice_state_key: str | None = None
     orthogonal_position_state_key: str | None = None
@@ -64,4 +65,5 @@ class LinePlotViewSpec(ViewSpec):
     y_unit: str = ""
     pen: ValueOrBinding = "k"
     background_color: ValueOrBinding = "w"
-
+    show_legend: bool = True
+    series_colors: dict[str, ValueOrBinding] = field(default_factory=dict)

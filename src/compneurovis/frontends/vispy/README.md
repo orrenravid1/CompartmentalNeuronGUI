@@ -12,3 +12,5 @@ This package contains the current runnable frontend:
 - `frontend.py`
 
 The frontend uses explicit refresh targets and long-lived renderer objects so state changes can update only the affected layers instead of forcing a full scene rebuild.
+
+The line-plot panel supports both single-trace views and multi-series fields, and the window collapses cleanly to a 2D-first layout when a document has no 3D view.

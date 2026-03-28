@@ -212,9 +212,12 @@ class LinePlotPanel(pg.PlotWidget):
         super().__init__(parent=parent, title="Plot")
         self.setBackground("w")
         self._plot_item = self.plot([], [], pen="k")
+        self._series_items: dict[str, pg.PlotDataItem] = {}
+        self._legend_added = False
 
     def refresh(self, view: LinePlotViewSpec | None, field: Field | None, state: dict[str, Any], geometry_lookup: dict[str, MorphologyGeometry]) -> None:
         if view is None or field is None:
+            self._clear_series()
             self._plot_item.setData([], [])
             self.setTitle("")
             return
@@ -224,6 +227,7 @@ class LinePlotPanel(pg.PlotWidget):
             self.setBackground(background)
 
         if view.orthogonal_slice_state_key:
+            self._clear_series()
             line = line_from_orthogonal_slice(field, view, state)
             if line is None:
                 self._plot_item.setData([], [])
@@ -247,6 +251,12 @@ class LinePlotPanel(pg.PlotWidget):
 
         sliced = field.select(resolved_selectors)
         x_dim = view.x_dim or sliced.dims[-1]
+        if view.series_dim is not None:
+            self._plot_item.setData([], [])
+            self._refresh_series(view, sliced, x_dim, state)
+            return
+
+        self._clear_series()
         if len(sliced.dims) != 1 or sliced.dims[0] != x_dim:
             raise ValueError(f"LinePlotViewSpec '{view.id}' must resolve to a 1D field along '{x_dim}'")
 
@@ -264,6 +274,63 @@ class LinePlotPanel(pg.PlotWidget):
         self.setTitle(title)
         self._plot_item.setPen(pg.mkPen(resolve_binding(view.pen, state), width=2))
         self._plot_item.setData(x, y)
+
+    def _ensure_legend(self, enabled: bool) -> None:
+        if enabled and self.plotItem.legend is None:
+            self.addLegend(offset=(10, 10))
+        elif not enabled and self.plotItem.legend is not None:
+            self.plotItem.legend.scene().removeItem(self.plotItem.legend)
+            self.plotItem.legend = None
+
+    def _clear_series(self) -> None:
+        if self._series_items:
+            for item in self._series_items.values():
+                self.removeItem(item)
+            self._series_items.clear()
+        if self.plotItem.legend is not None:
+            self.plotItem.legend.clear()
+
+    def _refresh_series(self, view: LinePlotViewSpec, field: Field, x_dim: str, state: dict[str, Any]) -> None:
+        series_dim = view.series_dim
+        if series_dim is None:
+            raise ValueError("series_dim is required for multi-series refresh")
+        if set(field.dims) != {series_dim, x_dim} or field.values.ndim != 2:
+            raise ValueError(
+                f"LinePlotViewSpec '{view.id}' with series_dim='{series_dim}' must resolve to a 2D field over ({series_dim}, {x_dim})"
+            )
+
+        axis_map = {dim: idx for idx, dim in enumerate(field.dims)}
+        values = np.asarray(field.values, dtype=np.float32)
+        if field.dims != (series_dim, x_dim):
+            values = np.transpose(values, axes=(axis_map[series_dim], axis_map[x_dim]))
+
+        x = np.asarray(field.coord(x_dim), dtype=np.float32)
+        series_labels = [str(label) for label in field.coord(series_dim)]
+        self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
+        self.setLabel("left", view.y_label, view.y_unit)
+        self.setTitle(view.title or field.id)
+        self._ensure_legend(view.show_legend)
+
+        stale = set(self._series_items.keys()) - set(series_labels)
+        for label in stale:
+            self.removeItem(self._series_items[label])
+            del self._series_items[label]
+
+        if self.plotItem.legend is not None:
+            self.plotItem.legend.clear()
+
+        for idx, label in enumerate(series_labels):
+            color = view.series_colors.get(label, view.pen)
+            pen = pg.mkPen(resolve_binding(color, state), width=2)
+            item = self._series_items.get(label)
+            if item is None:
+                item = self.plot([], [], pen=pen)
+                self._series_items[label] = item
+            else:
+                item.setPen(pen)
+            item.setData(x, values[idx])
+            if self.plotItem.legend is not None:
+                self.plotItem.legend.addItem(item, label)
 
 
 class ControlsPanel(QtWidgets.QWidget):

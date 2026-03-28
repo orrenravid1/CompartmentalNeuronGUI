@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np
 from PyQt6 import QtWidgets
 
-from compneurovis import ControlSpec, Field, LinePlotViewSpec, MorphologyGeometry, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_surface_app, grid_field
+from compneurovis import AppSpec, ControlSpec, Document, Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_surface_app, grid_field
 from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
 from compneurovis.frontends.vispy.panels import LinePlotPanel, Viewport3DPanel
@@ -182,3 +182,73 @@ def test_run_app_skips_frontend_launch_in_spawned_child():
     finally:
         frontend_module.mp.current_process = original_current_process
         frontend_module.QtWidgets.QApplication = original_qapplication
+
+
+def test_line_plot_panel_supports_multi_series_fields():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    field = Field(
+        id="cascade",
+        values=np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32),
+        dims=("series", "time"),
+        coords={
+            "series": np.array(["ligand", "receptor"]),
+            "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
+        },
+    )
+    view = LinePlotViewSpec(
+        id="cascade-plot",
+        field_id=field.id,
+        x_dim="time",
+        series_dim="series",
+        title="Cascade",
+        x_label="Time",
+        y_label="Value",
+        series_colors={"ligand": "#ff0000", "receptor": "#0000ff"},
+    )
+
+    panel.refresh(view, field, {}, {})
+
+    assert set(panel._series_items.keys()) == {"ligand", "receptor"}
+    ligand_x, ligand_y = panel._series_items["ligand"].getData()
+    receptor_x, receptor_y = panel._series_items["receptor"].getData()
+    assert np.allclose(ligand_x, np.array([0.0, 1.0, 2.0], dtype=np.float32))
+    assert np.allclose(ligand_y, np.array([1.0, 2.0, 3.0], dtype=np.float32))
+    assert np.allclose(receptor_x, np.array([0.0, 1.0, 2.0], dtype=np.float32))
+    assert np.allclose(receptor_y, np.array([10.0, 20.0, 30.0], dtype=np.float32))
+    app.quit()
+
+
+def test_frontend_hides_viewport_when_document_has_no_3d_view():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    field = Field(
+        id="cascade",
+        values=np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32),
+        dims=("series", "time"),
+        coords={
+            "series": np.array(["ligand", "receptor"]),
+            "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
+        },
+    )
+    document = Document(
+        fields={field.id: field},
+        geometries={},
+        views={
+            "cascade-plot": LinePlotViewSpec(
+                id="cascade-plot",
+                field_id=field.id,
+                x_dim="time",
+                series_dim="series",
+            )
+        },
+        layout=LayoutSpec(title="Cascade", main_3d_view_id=None, line_plot_view_id="cascade-plot"),
+    )
+    window = VispyFrontendWindow(AppSpec(document=document, title="Cascade"))
+    window.timer.stop()
+
+    assert not window.viewport.isVisible()
+    assert window._central_layout.stretch(0) == 0
+    assert window._central_layout.stretch(1) == 1
+
+    window.close()
+    app.quit()
