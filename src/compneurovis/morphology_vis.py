@@ -13,6 +13,7 @@ import pyqtgraph as pg
 from vispy import use
 use(app='pyqt6', gl='gl+')
 from vispy import scene, app as vispy_app
+from vispy.color import Color
 from vispy.scene.cameras import TurntableCamera
 
 from compneurovis.vispyutils.cappedcylindercollection import CappedCylinderCollection
@@ -47,8 +48,15 @@ class SurfaceMeta(TypedDict, total=False):
     render_axes: bool
     axes_in_middle: bool
     tick_count: int
+    tick_length_scale: float
+    tick_label_size: float
+    axis_label_size: float
     axis_color: str | tuple[float, float, float] | tuple[float, float, float, float]
+    text_color: str | tuple[float, float, float] | tuple[float, float, float, float]
+    axis_alpha: float
     axis_labels: tuple[str, str, str]
+    slice_rect: dict
+    plot2d: dict
     title: str
 
 
@@ -70,6 +78,8 @@ class SurfaceAxesOverlay:
             method='gl',
             parent=self.view.scene,
         )
+        line.set_gl_state(depth_test=False, blend=True)
+        line.order = 1000
         self._visuals.append(line)
 
     def _add_text(self, text, pos, color, font_size=10, anchor_x='center', anchor_y='center'):
@@ -86,13 +96,41 @@ class SurfaceAxesOverlay:
         label.order = 1000
         self._visuals.append(label)
 
+    def _format_tick_value(self, value: float, lo: float, hi: float, tick_count: int) -> str:
+        span = abs(float(hi) - float(lo))
+        if span < 1e-12:
+            return f"{value:.3g}"
+        step = span / max(1.0, float(max(1, tick_count - 1)))
+        decimals = 0
+        rounded = round(step)
+        if abs(step - rounded) > 1e-9:
+            import math
+            decimals = min(6, max(1, int(math.ceil(-math.log10(abs(step - rounded)))) + 1))
+        elif step < 1.0:
+            import math
+            decimals = min(6, max(0, int(math.ceil(-math.log10(step)))))
+        text = f"{value:.{decimals}f}"
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text
+
+    def _with_alpha(self, color, alpha: float):
+        rgba = list(Color(color).rgba)
+        rgba[3] = min(1.0, max(0.0, float(alpha)))
+        return tuple(rgba)
+
     def set_axes(self, meta, x: np.ndarray, y: np.ndarray, z: np.ndarray):
         self.clear()
         if not meta.get('render_axes', False):
             return
 
-        axis_color = meta.get('axis_color', 'black')
+        axis_alpha = float(meta.get('axis_alpha', 1.0))
+        axis_color = self._with_alpha(meta.get('axis_color', 'black'), axis_alpha)
+        text_color = self._with_alpha(meta.get('text_color', meta.get('axis_color', 'black')), axis_alpha)
         tick_count = max(0, int(meta.get('tick_count', 5)))
+        tick_length_scale = max(0.0, float(meta.get('tick_length_scale', 1.0)))
+        tick_label_size = max(1.0, float(meta.get('tick_label_size', 12.0)))
+        axis_label_size = max(1.0, float(meta.get('axis_label_size', 16.0)))
         centered = bool(meta.get('axes_in_middle', True))
         axis_labels = meta.get('axis_labels', ('x', 'y', 'z'))
 
@@ -111,9 +149,9 @@ class SurfaceAxesOverlay:
         self._add_line([[axis_x, ymin, axis_z], [axis_x, ymax, axis_z]], axis_color)
         self._add_line([[axis_x, axis_y, zmin], [axis_x, axis_y, zmax]], axis_color)
 
-        xtick = 0.03 * max(ymax - ymin, 1e-6)
-        ytick = 0.03 * max(xmax - xmin, 1e-6)
-        ztick = 0.03 * max(xmax - xmin, 1e-6)
+        xtick = 0.03 * max(ymax - ymin, 1e-6) * tick_length_scale
+        ytick = 0.03 * max(xmax - xmin, 1e-6) * tick_length_scale
+        ztick = 0.03 * max(xmax - xmin, 1e-6) * tick_length_scale
         xoff = 0.09 * max(ymax - ymin, 1e-6)
         yoff = 0.07 * max(xmax - xmin, 1e-6)
         zoff = 0.07 * max(xmax - xmin, 1e-6)
@@ -121,17 +159,85 @@ class SurfaceAxesOverlay:
         if tick_count > 0:
             for xv in np.linspace(xmin, xmax, tick_count):
                 self._add_line([[xv, axis_y - xtick, axis_z], [xv, axis_y + xtick, axis_z]], axis_color, width=1)
-                self._add_text(f"{xv:.0f}", [xv, axis_y - xoff, axis_z], axis_color, font_size=12, anchor_y='top')
+                self._add_text(self._format_tick_value(float(xv), xmin, xmax, tick_count), [xv, axis_y - xoff, axis_z], text_color, font_size=tick_label_size, anchor_y='top')
             for yv in np.linspace(ymin, ymax, tick_count):
                 self._add_line([[axis_x - ytick, yv, axis_z], [axis_x + ytick, yv, axis_z]], axis_color, width=1)
-                self._add_text(f"{yv:.0f}", [axis_x - yoff, yv, axis_z], axis_color, font_size=12, anchor_x='right')
+                self._add_text(self._format_tick_value(float(yv), ymin, ymax, tick_count), [axis_x - yoff, yv, axis_z], text_color, font_size=tick_label_size, anchor_x='right')
             for zv in np.linspace(zmin, zmax, tick_count):
                 self._add_line([[axis_x - ztick, axis_y, zv], [axis_x + ztick, axis_y, zv]], axis_color, width=1)
-                self._add_text(f"{zv:.0f}", [axis_x + zoff, axis_y, zv], axis_color, font_size=12, anchor_x='left')
+                self._add_text(self._format_tick_value(float(zv), zmin, zmax, tick_count), [axis_x + zoff, axis_y, zv], text_color, font_size=tick_label_size, anchor_x='left')
 
-        self._add_text(axis_labels[0], [xmax, axis_y - xoff * 1.8, axis_z], axis_color, font_size=16, anchor_y='top')
-        self._add_text(axis_labels[1], [axis_x - yoff * 1.8, ymax, axis_z], axis_color, font_size=16, anchor_x='right')
-        self._add_text(axis_labels[2], [axis_x + zoff * 1.8, axis_y, zmax], axis_color, font_size=16, anchor_x='left')
+        self._add_text(axis_labels[0], [xmax, axis_y - xoff * 1.8, axis_z], text_color, font_size=axis_label_size, anchor_y='top')
+        self._add_text(axis_labels[1], [axis_x - yoff * 1.8, ymax, axis_z], text_color, font_size=axis_label_size, anchor_x='right')
+        self._add_text(axis_labels[2], [axis_x + zoff * 1.8, axis_y, zmax], text_color, font_size=axis_label_size, anchor_x='left')
+
+
+class SurfaceSliceOverlay:
+    def __init__(self, view):
+        self.view = view
+        self._line = None
+
+    def clear(self):
+        if self._line is not None:
+            self._line.parent = None
+            self._line = None
+
+    def set_slice_rect(self, meta, x: np.ndarray, y: np.ndarray, z: np.ndarray):
+        rect = meta.get('slice_rect')
+        if not isinstance(rect, dict):
+            self.clear()
+            return
+
+        color = rect.get('color', (0.1, 0.1, 0.1, 1.0))
+        alpha = min(1.0, max(0.0, float(rect.get('alpha', 1.0))))
+        rgba = list(Color(color).rgba)
+        rgba[3] = alpha
+        color = tuple(rgba)
+        width = float(rect.get('width', 3.0))
+        axis = str(rect.get('axis', 'x')).lower()
+        value = float(rect.get('value', 0.0))
+
+        xmin, xmax = float(np.min(x)), float(np.max(x))
+        ymin, ymax = float(np.min(y)), float(np.max(y))
+        zmin, zmax = float(np.min(z)), float(np.max(z))
+
+        if axis == 'y':
+            value = min(max(value, ymin), ymax)
+            corners = np.array(
+                [
+                    [xmin, value, zmin],
+                    [xmax, value, zmin],
+                    [xmax, value, zmax],
+                    [xmin, value, zmax],
+                    [xmin, value, zmin],
+                ],
+                dtype=np.float32,
+            )
+        else:
+            value = min(max(value, xmin), xmax)
+            corners = np.array(
+                [
+                    [value, ymin, zmin],
+                    [value, ymax, zmin],
+                    [value, ymax, zmax],
+                    [value, ymin, zmax],
+                    [value, ymin, zmin],
+                ],
+                dtype=np.float32,
+            )
+
+        if self._line is None:
+            self._line = scene.visuals.Line(
+                pos=corners,
+                color=color,
+                width=width,
+                method='gl',
+                parent=self.view.scene,
+            )
+            self._line.set_gl_state(depth_test=False, blend=True)
+            self._line.order = 1000
+        else:
+            self._line.set_data(pos=corners, color=color, width=width)
 
 class _Trace:
     """A single recorded trace on the plot."""
@@ -228,6 +334,8 @@ class SurfaceManager:
         self.view = view
         self.surface = None
         self.axes = SurfaceAxesOverlay(view)
+        self.slice_overlay = SurfaceSliceOverlay(view)
+        self._surface_grid_shape = None
 
     def _colormap_samples(self, name: str, n: int = 256) -> np.ndarray:
         name = str(name).lower()
@@ -290,21 +398,32 @@ class SurfaceManager:
             if colors.shape[-1] == 4:
                 colors[..., 3] = surface_alpha
 
-        self.surface = scene.visuals.SurfacePlot(
-            x=x,
-            y=y,
-            z=z,
-            color=(0.5, 0.6, 0.8, surface_alpha),
-            shading=None,
-            parent=self.view.scene,
-        )
-        self.surface.set_gl_state('translucent', depth_test=True, cull_face=False)
+        grid_shape = (tuple(x.shape), tuple(y.shape), tuple(z.shape))
+        recreate_surface = self.surface is None or self._surface_grid_shape != grid_shape
+        if recreate_surface:
+            if self.surface is not None:
+                self.surface.parent = None
+                self.surface = None
+            self.surface = scene.visuals.SurfacePlot(
+                x=x,
+                y=y,
+                z=z,
+                color=(0.5, 0.6, 0.8, surface_alpha),
+                shading=None,
+                parent=self.view.scene,
+            )
+            self.surface.set_gl_state('translucent', depth_test=True, cull_face=False)
+            self._surface_grid_shape = grid_shape
 
         if colors is not None:
-            self.surface.set_data(z=z, colors=np.asarray(colors, dtype=np.float32))
+            self.surface.set_data(x=x, y=y, z=z, colors=np.asarray(colors, dtype=np.float32))
+        else:
+            self.surface.set_data(x=x, y=y, z=z, color=(0.5, 0.6, 0.8, surface_alpha))
 
         self.axes.set_axes(meta, x, y, z)
-        self.view.camera.set_range()
+        self.slice_overlay.set_slice_rect(meta, x, y, z)
+        if recreate_surface:
+            self.view.camera.set_range()
 
 
 def _payload_kind(payload) -> str | None:
@@ -352,6 +471,9 @@ class SimulationViewer(QtWidgets.QMainWindow):
         self.plot2d.setBackground('w')
         self.plot2d.addLegend(offset=(10, 10))
         self.traces: list[_Trace] = []
+        self._plot2d_static_items = []
+        self._plot2d_static_item = None
+        self._plot2d_static_meta = {}
         vb = self.plot2d.getPlotItem().getViewBox()
         # fixed y-range for voltage, allow x auto-range
         self._vb_ymin, self._vb_ymax = -120, 120
@@ -424,7 +546,7 @@ class SimulationViewer(QtWidgets.QMainWindow):
                             else:
                                 v = mn + (mx - mn) * frac
                             lbl.setText(f"{v:.3g}")
-                            self.sim.on_control_gui(n, float(v))
+                            self.sim.on_control_gui(n, float(v), self)
                             try:
                                 self.cmd_parent.send(("control", n, float(v)))
                             except Exception:
@@ -449,6 +571,10 @@ class SimulationViewer(QtWidgets.QMainWindow):
                 def make_int_cb(n):
                     def _cb(val: int):
                         try:
+                            self.sim.on_control_gui(n, int(val), self)
+                        except Exception:
+                            pass
+                        try:
                             self.cmd_parent.send(("control", n, int(val)))
                         except Exception:
                             pass
@@ -462,6 +588,10 @@ class SimulationViewer(QtWidgets.QMainWindow):
                 cb.setChecked(bool(spec.get('default', getattr(sim, name, False))))
                 def make_bool_cb(n):
                     def _cb(val: bool):
+                        try:
+                            self.sim.on_control_gui(n, bool(val), self)
+                        except Exception:
+                            pass
                         try:
                             self.cmd_parent.send(("control", n, bool(val)))
                         except Exception:
@@ -480,6 +610,10 @@ class SimulationViewer(QtWidgets.QMainWindow):
                     combo.setCurrentIndex(opts.index(default))
                 def make_enum_cb(n, options):
                     def _cb(idx: int):
+                        try:
+                            self.sim.on_control_gui(n, options[int(idx)], self)
+                        except Exception:
+                            pass
                         try:
                             self.cmd_parent.send(("control", n, options[int(idx)]))
                         except Exception:
@@ -537,6 +671,8 @@ class SimulationViewer(QtWidgets.QMainWindow):
         bg = payload.get("background_color") if isinstance(payload, dict) else None
         if bg is not None:
             self.canvas3d.bgcolor = bg
+        if isinstance(payload, dict):
+            self._apply_plot2d_payload(payload.get("plot2d"))
         if kind == "morphology":
             self.canvas3d.native.show()
             self.mgr.set_morphology(payload)
@@ -564,6 +700,68 @@ class SimulationViewer(QtWidgets.QMainWindow):
         print(f"Loaded in {elapsed:.2f}s")
         QtCore.QTimer.singleShot(3000, self.statusBar().clearMessage)
 
+    def _clear_static_plot2d(self):
+        for item in self._plot2d_static_items:
+            try:
+                self.plot2d.removeItem(item)
+            except Exception:
+                pass
+        self._plot2d_static_items.clear()
+        self._plot2d_static_item = None
+        self._plot2d_static_meta = {}
+
+    def _apply_plot2d_payload(self, spec):
+        if not isinstance(spec, dict):
+            return
+
+        if self.traces:
+            self.clear_traces()
+
+        title = spec.get("title", "")
+        xlabel = spec.get("xlabel", "x")
+        ylabel = spec.get("ylabel", "y")
+        xunits = spec.get("xunits", "")
+        yunits = spec.get("yunits", "")
+        background = spec.get("background_color")
+        if background is not None and self._plot2d_static_meta.get("background_color") != background:
+            self.plot2d.setBackground(background)
+        if self._plot2d_static_meta.get("title") != title:
+            self.plot2d.setTitle(title)
+        if self._plot2d_static_meta.get("xlabel") != xlabel or self._plot2d_static_meta.get("xunits") != xunits:
+            self.plot2d.setLabel('bottom', xlabel, xunits)
+        if self._plot2d_static_meta.get("ylabel") != ylabel or self._plot2d_static_meta.get("yunits") != yunits:
+            self.plot2d.setLabel('left', ylabel, yunits)
+
+        x = np.asarray(spec.get("x", []), dtype=np.float32)
+        y = np.asarray(spec.get("y", []), dtype=np.float32)
+        pen = spec.get("pen", "k")
+        name = spec.get("name")
+        pen_obj = pg.mkPen(pen, width=2)
+        if self._plot2d_static_item is None:
+            self._clear_static_plot2d()
+            self._plot2d_static_item = self.plot2d.plot(x, y, pen=pen_obj, name=name)
+            self._plot2d_static_items.append(self._plot2d_static_item)
+        else:
+            self._plot2d_static_item.setData(x, y)
+            self._plot2d_static_item.setPen(pen_obj)
+
+        legend = self.plot2d.getPlotItem().legend
+        if legend and not name:
+            legend.clear()
+
+        vb = self.plot2d.getPlotItem().getViewBox()
+        vb.enableAutoRange(x=True, y=True)
+        vb.setLimits(yMin=None, yMax=None)
+        self._plot2d_static_meta = {
+            "title": title,
+            "xlabel": xlabel,
+            "xunits": xunits,
+            "ylabel": ylabel,
+            "yunits": yunits,
+            "background_color": background,
+            "name": name,
+        }
+
     def _poll(self):
         try:
             colors_dirty = False
@@ -585,7 +783,7 @@ class SimulationViewer(QtWidgets.QMainWindow):
                 # subsequent messages: data dict (or legacy (t, v) tuple)
                 if isinstance(payload, dict):
                     data = payload
-                    t = data['t']
+                    t = data.get('t')
                 else:
                     t, arr = payload
                     data = {'t': t, 'v': arr}
@@ -611,6 +809,8 @@ class SimulationViewer(QtWidgets.QMainWindow):
                 for trace in self.traces:
                     val = data.get(trace.varname)
                     if val is None:
+                        continue
+                    if t is None:
                         continue
                     if trace.seg_idx is not None and hasattr(val, '__len__'):
                         trace.t.append(t)

@@ -97,7 +97,7 @@ class Simulation(ABC):
         return False
 
     # --- Viewer interaction hooks (called in GUI process) ---
-    def on_control_gui(self, name: str, value) -> None:
+    def on_control_gui(self, name: str, value, viewer=None) -> None:
         """Called in the GUI process when a control value changes.
         Override to track GUI-side state (e.g. current iclamp amplitude)."""
         pass
@@ -174,7 +174,8 @@ def simulation_process(sim: Simulation, data_pipe: Connection, cmd_pipe: Connect
                 data_pipe.send(("scene_payload", scene_payload))
 
             data = sim.get_data()
-            data_pipe.send(("data", data))
+            if data is not None:
+                data_pipe.send(("data", data))
     finally:
         data_pipe.close()
         cmd_pipe.close()
