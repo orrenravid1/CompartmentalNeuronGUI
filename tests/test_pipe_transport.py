@@ -3,7 +3,7 @@ import time
 import numpy as np
 
 from compneurovis.core import Document, Field, LayoutSpec
-from compneurovis.session import BufferedSession, FieldUpdate, PipeTransport, SetControl
+from compneurovis.session import BufferedSession, FieldReplace, PipeTransport, SetControl
 
 
 class DummySession(BufferedSession):
@@ -25,7 +25,7 @@ class DummySession(BufferedSession):
     def handle(self, command) -> None:
         if isinstance(command, SetControl):
             self.emit(
-                FieldUpdate(
+                FieldReplace(
                     field_id="demo",
                     values=np.array([command.value, command.value + 1], dtype=np.float32),
                 )
@@ -45,16 +45,15 @@ def test_pipe_transport_roundtrip():
 
         transport.send_command(SetControl("demo", 5.0))
         deadline = time.time() + 5
-        field_update = None
-        while time.time() < deadline and field_update is None:
+        field_replace = None
+        while time.time() < deadline and field_replace is None:
             for update in transport.poll_updates():
-                if isinstance(update, FieldUpdate):
-                    field_update = update
+                if isinstance(update, FieldReplace):
+                    field_replace = update
                     break
             time.sleep(0.05)
 
-        assert field_update is not None
-        assert np.allclose(field_update.values, np.array([5.0, 6.0], dtype=np.float32))
+        assert field_replace is not None
+        assert np.allclose(field_replace.values, np.array([5.0, 6.0], dtype=np.float32))
     finally:
         transport.stop()
-

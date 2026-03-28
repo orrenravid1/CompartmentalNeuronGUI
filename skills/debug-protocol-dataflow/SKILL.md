@@ -1,6 +1,6 @@
 ---
 name: debug-protocol-dataflow
-description: Debug dataflow, transport, and session/frontend integration issues in CompNeuroVis. Use when DocumentReady, FieldUpdate, or DocumentPatch messages are missing, malformed, stale, or not producing the expected frontend behavior.
+description: Debug dataflow, transport, and session/frontend integration issues in CompNeuroVis. Use when DocumentReady, FieldReplace, FieldAppend, or DocumentPatch messages are missing, malformed, stale, or not producing the expected frontend behavior.
 ---
 
 # Debug Protocol Dataflow

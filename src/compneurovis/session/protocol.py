@@ -46,7 +46,7 @@ class DocumentReady(SessionUpdate):
 
 
 @dataclass(frozen=True, slots=True)
-class FieldUpdate(SessionUpdate):
+class FieldReplace(SessionUpdate):
     field_id: str
     values: np.ndarray
     coords: dict[str, np.ndarray] | None = None
@@ -78,3 +78,7 @@ class Status(SessionUpdate):
 @dataclass(frozen=True, slots=True)
 class Error(SessionUpdate):
     message: str
+
+
+# Backward-compatible alias. Prefer FieldReplace in new code.
+FieldUpdate = FieldReplace

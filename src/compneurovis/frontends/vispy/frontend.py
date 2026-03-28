@@ -13,7 +13,7 @@ use(app="pyqt6", gl="gl+")
 
 from compneurovis.core import AppSpec, Document, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec
 from compneurovis.frontends.vispy.panels import ControlsPanel, LinePlotPanel, Viewport3DPanel
-from compneurovis.session import DocumentPatch, DocumentReady, FieldAppend, FieldUpdate, InvokeAction, PipeTransport, Reset, SetControl, configure_multiprocessing
+from compneurovis.session import DocumentPatch, DocumentReady, FieldAppend, FieldReplace, InvokeAction, PipeTransport, Reset, SetControl, configure_multiprocessing
 
 
 class RefreshTarget(Enum):
@@ -123,7 +123,7 @@ class RefreshPlanner:
 
         return targets
 
-    def targets_for_field_update(self, field_id: str) -> set[RefreshTarget]:
+    def targets_for_field_replace(self, field_id: str) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
         morph_view = self.morphology_view()
         if morph_view is not None and morph_view.color_field_id == field_id:
@@ -395,14 +395,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 self._set_document(update.document)
                 pending_targets.clear()
                 pending_status = "Document ready"
-            elif isinstance(update, FieldUpdate):
+            elif isinstance(update, FieldReplace):
                 if self.document is None:
                     continue
                 current = self.document.fields[update.field_id]
                 coords = current.coords if update.coords is None else update.coords
                 self.document.fields[update.field_id] = current.with_values(update.values, coords=coords, attrs_update=update.attrs_update)
                 if self.refresh_planner is not None:
-                    pending_targets.update(self.refresh_planner.targets_for_field_update(update.field_id))
+                    pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id))
             elif isinstance(update, FieldAppend):
                 if self.document is None:
                     continue
@@ -415,7 +415,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     attrs_update=update.attrs_update,
                 )
                 if self.refresh_planner is not None:
-                    pending_targets.update(self.refresh_planner.targets_for_field_update(update.field_id))
+                    pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id))
             elif isinstance(update, DocumentPatch):
                 if self.document is None:
                     continue

@@ -13,7 +13,7 @@ Debug in this order:
 
 1. **Confirm the Document is wired correctly.** Check that the `ViewSpec` `field_id` and `geometry_id` actually exist in `document.fields` and `document.geometries`. A missing key silently skips rendering.
 
-2. **Confirm the correct `RefreshTarget` is being triggered.** Add a temporary print in `_apply_refresh_targets()` to verify which targets fire on the expected event. If no target fires, the issue is in `RefreshPlanner` — check `targets_for_field_update()` or `targets_for_state_change()`.
+2. **Confirm the correct `RefreshTarget` is being triggered.** Add a temporary print in `_apply_refresh_targets()` to verify which targets fire on the expected event. If no target fires, the issue is in `RefreshPlanner` — check `targets_for_field_replace()` or `targets_for_state_change()`.
 
 3. **For morphology issues:**
    - Validate `MorphologyGeometry` shapes: `positions (n, 3)`, `orientations (n, 3, 3)`, `radii/lengths/xlocs (n,)`, `entity_ids` length `n`
@@ -35,6 +35,6 @@ Debug in this order:
 
 7. **For performance issues:**
    - Check `RefreshPlanner` is not returning more targets than the event warrants — a state change that hits `SURFACE_VISUAL` on every slider move will rebuild the mesh each frame
-   - Check `FieldAppend` is being used instead of `FieldUpdate` for incremental live history
+   - Check `FieldAppend` is being used instead of `FieldReplace` for incremental live history
 
 If the renderer itself raises an exception, reproduce with `python -m compileall src` first to rule out import errors, then run the minimal static example to isolate frontend vs backend.

@@ -9,7 +9,7 @@ from neuron import h
 
 from compneurovis.core.controls import ControlSpec
 from compneurovis.core.document import Document
-from compneurovis.session import BufferedSession, FieldAppend, FieldUpdate, InvokeAction, Reset, SetControl
+from compneurovis.session import BufferedSession, FieldAppend, FieldReplace, InvokeAction, Reset, SetControl
 from compneurovis.backends.neuron.document import NeuronDocumentBuilder
 
 
@@ -171,7 +171,7 @@ class NeuronSession(BufferedSession, ABC):
             h.finitialize(self.v_init)
             time_value, voltage_values = self._sample()
             self.emit(
-                FieldUpdate(
+                FieldReplace(
                     field_id="voltage",
                     values=voltage_values[:, None],
                     coords={

@@ -46,7 +46,7 @@ Document(
 
 `LayoutSpec` controls which views and controls are shown and in what order. If `main_3d_view_id` is `None`, the frontend collapses to a plot-and-controls layout.
 
-`Document` is **mutable** — the frontend modifies `fields` in-place on `FieldUpdate` / `FieldAppend` and patches `views`/`controls` on `DocumentPatch`.
+`Document` is **mutable** — the frontend modifies `fields` in-place on `FieldReplace` / `FieldAppend` and patches `views`/`controls` on `DocumentPatch`.
 
 ### Session
 Optional live or replay backend. A `Session`:
@@ -72,6 +72,6 @@ See [VisPy Frontend](vispy-frontend.md) for panel structure and refresh planning
 
 **Frontends own UI state.** Selection, slice position, and control values live in the frontend's `state` dict. Backends receive `SetControl` / `InvokeAction` — not raw GUI events.
 
-**`FieldUpdate` / `FieldAppend` vs `DocumentPatch`.** Use `FieldUpdate` when replacing a field wholesale. Use `FieldAppend` for incremental live history updates along one dimension. Use `DocumentPatch` for metadata, view property, or control changes that don't require rebuilding the full document.
+**Prefer the narrowest correct update.** Use `FieldAppend` for incremental live history updates along one dimension. Use `DocumentPatch` for metadata, view property, or control changes that don't require rebuilding the full document. Use `FieldReplace` when replacing a field wholesale. Full replacements are valid, but they are the explicit broader-cost path, not the default.
 
 **`ViewSpec` expresses intent, renderers implement it.** Adding a new visualization means adding a `ViewSpec` subclass and a corresponding renderer/panel — not coupling domain logic into the renderer.

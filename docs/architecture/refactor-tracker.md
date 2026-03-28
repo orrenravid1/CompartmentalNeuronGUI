@@ -21,6 +21,7 @@ Do not use this document as a file-by-file changelog.
 - Keep `Field` as the primary data primitive.
 - Keep `Document + optional Session + Frontend + Transport` as the top-level split.
 - Keep frontend state owned by the frontend, not by sessions.
+- Prefer typed append/patch messages over bundled full-state replacements when only part of the state changed.
 - Prefer builder-driven simple entrypoints for common workflows.
 - Prefer library-level cross-platform behavior over requiring unusual user script patterns.
 
@@ -104,6 +105,7 @@ Target outcomes:
 
 - Whole-window refreshes are too coarse for performance-sensitive scenes.
 - The frontend should invalidate only the affected targets.
+- Protocol and document updates should follow the same rule: send only the information required by the affected targets, not broad bundled refreshes by default.
 - The current explicit targets are:
   - controls
   - morphology
@@ -126,6 +128,16 @@ Target outcomes:
 
 - A live app should not visibly start in a fallback layout and then jump to the intended layout if the initial structure is already knowable.
 - If layout and views are known before the session starts, provide a bootstrap `Document` up front.
+
+### Protocol granularity
+
+- High-throughput rendering workflows should default to need-to-know updates, not bundled full-state pushes.
+- `FieldAppend` and `DocumentPatch` should be the normal path when they can express the change correctly.
+- `FieldReplace` remains the full-replacement field path and should be treated as the broader-cost option.
+- Full replacements are acceptable, but they should be treated as the explicit expensive path.
+- The cost model should be opt-in:
+  - if a backend or frontend wants broader updates, it should ask for them explicitly
+  - the framework should not force broad refreshes unless the change is genuinely structural
 
 ### Public interaction API
 
@@ -167,6 +179,9 @@ Target outcomes:
 - Backend stepping cadence and frontend emission cadence should be separable.
 - For high-frequency simulations, batching several internal simulation steps into one frontend update is the preferred design.
 - The frontend should drain and apply all queued transport updates in one poll tick, then refresh affected views once from the final state rather than redrawing per message.
+- The same principle should extend beyond traces:
+  - patch or append whenever the changed region can be described cleanly
+  - reserve bundled value replacement for cases where incremental semantics would be misleading, fragile, or more complex than the full replace
 
 ### NumPy masked divide behavior
 
@@ -201,6 +216,7 @@ Target outcomes:
   - plot grouping
   - independent y-axes or stacked plots
   - frontend-side ring buffers for very large live fields if simple append-and-trim becomes a bottleneck
+  - richer incremental plot update paths when reslicing whole fields becomes too expensive for dense multi-trace live plots
 
 ### Frontend layout system
 
@@ -219,6 +235,7 @@ Target outcomes:
   - websocket transport
   - Unity frontend
   - richer remote command/update semantics
+  - more granular patch/update messages for remote scenes where bandwidth and serialization cost make bundled updates especially expensive
 
 ### Interaction system cleanup
 

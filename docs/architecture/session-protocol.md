@@ -57,18 +57,32 @@ def handle(self, command):
 | Update | Fields | When to emit |
 |---|---|---|
 | `DocumentReady` | `document: Document` | Once, from `initialize()` or early in `advance()` |
-| `FieldUpdate` | `field_id`, `values`, `coords?`, `attrs_update?` | Replace a field wholesale |
+| `FieldReplace` | `field_id`, `values`, `coords?`, `attrs_update?` | Replace a field wholesale |
 | `FieldAppend` | `field_id`, `append_dim`, `values`, `coord_values`, `max_length?`, `attrs_update?` | Append new samples along one dimension |
 | `DocumentPatch` | `view_updates`, `control_updates`, `metadata_updates` | When view properties or control definitions change |
 | `Status` | `message: str` | Progress or info messages shown in the status bar |
 | `Error` | `message: str` | Non-fatal errors shown in the status bar |
 
-### FieldUpdate vs FieldAppend vs DocumentPatch
+## Update Granularity Rule
 
-Use `FieldUpdate` when the entire field should be replaced:
+The protocol should default to the narrowest typed update that correctly describes the change.
+
+- Use append-style updates when data is extending along an axis.
+- Use patch-style updates when metadata or view/control properties changed.
+- Use wholesale replacement only when the change is genuinely full-field/full-object or when a narrower update would be misleading.
+
+This is not just an optimization. It is the intended cost model for high-throughput rendering:
+
+- backends should not assume the frontend wants full-state resends
+- frontends should not assume one update implies a whole-window redraw
+- transports should carry only the state the receiver needs to know
+
+### FieldReplace vs FieldAppend vs DocumentPatch
+
+Use `FieldReplace` when the entire field should be replaced:
 
 ```python
-self.emit(FieldUpdate(field_id="voltage", values=new_voltages))
+self.emit(FieldReplace(field_id="voltage", values=new_voltages))
 ```
 
 Use `FieldAppend` when live data should extend an existing field along one axis:
@@ -94,6 +108,8 @@ self.emit(DocumentPatch(view_updates={"main": {"title": "updated title"}}))
 ```
 
 Do not use `DocumentPatch` for value updates. Do not rebuild and re-emit `DocumentReady` just to change a view title.
+
+If you find yourself repeatedly emitting large `FieldReplace`s for high-frequency changes, that is a signal to consider a narrower protocol shape rather than normal usage.
 
 ## PipeTransport
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from compneurovis.core import AppSpec, Document
-from compneurovis.session import BufferedSession, FieldUpdate
+from compneurovis.session import BufferedSession, FieldReplace
 
 
 class ReplaySession(BufferedSession):
@@ -23,7 +23,7 @@ class ReplaySession(BufferedSession):
         if not self.frames:
             return
         values, coords = self.frames[self.index]
-        self.emit(FieldUpdate(field_id=self.field_id, values=values, coords=coords))
+        self.emit(FieldReplace(field_id=self.field_id, values=values, coords=coords))
         self.index = (self.index + 1) % len(self.frames)
 
     def handle(self, command) -> None:
@@ -32,4 +32,3 @@ class ReplaySession(BufferedSession):
 
 def build_replay_app(*, document: Document, field_id: str, frames) -> AppSpec:
     return AppSpec(document=document, session=ReplaySession(document=document, field_id=field_id, frames=frames), title=document.layout.title)
-

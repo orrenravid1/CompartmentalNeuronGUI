@@ -30,7 +30,7 @@ LINE_PLOT       — LinePlotPanel
 
 Three trigger sources:
 
-- **`FieldUpdate` / `FieldAppend`** → `targets_for_field_update(field_id)`: marks whichever panels reference that field
+- **`FieldReplace` / `FieldAppend`** → `targets_for_field_replace(field_id)`: marks whichever panels reference that field
 - **State change** (control moved, entity clicked) → `targets_for_state_change(state_key)`: marks panels with a `StateBinding` on that key
 - **`DocumentPatch`** → `targets_for_view_patch(view_id, changed_props)`: marks panels based on which props changed
 
