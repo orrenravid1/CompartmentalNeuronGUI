@@ -171,7 +171,14 @@ def simulation_process(sim: Simulation, data_pipe: Connection, cmd_pipe: Connect
 
             scene_payload = sim.consume_scene_payload_update()
             if scene_payload is not None:
-                data_pipe.send(("scene_payload", scene_payload))
+                if (
+                    isinstance(scene_payload, tuple)
+                    and len(scene_payload) == 2
+                    and isinstance(scene_payload[0], str)
+                ):
+                    data_pipe.send(scene_payload)
+                else:
+                    data_pipe.send(("scene_payload", scene_payload))
 
             data = sim.get_data()
             if data is not None:

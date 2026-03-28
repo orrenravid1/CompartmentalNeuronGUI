@@ -9,7 +9,7 @@ class StaticVisualizationSimulation(Simulation):
     def __init__(self, initial_payload=None, data=None):
         super().__init__()
         self.initial_payload = initial_payload
-        self._pending_scene_payload = None
+        self._pending_scene_update = None
         self.data = {}
         if data:
             self.data.update(data)
@@ -36,12 +36,15 @@ class StaticVisualizationSimulation(Simulation):
 
     def queue_scene_payload_update(self, payload):
         self.initial_payload = payload
-        self._pending_scene_payload = payload
+        self._pending_scene_update = ("scene_payload", payload)
+
+    def queue_scene_payload_patch(self, patch):
+        self._pending_scene_update = ("scene_patch", patch)
 
     def consume_scene_payload_update(self):
-        payload = self._pending_scene_payload
-        self._pending_scene_payload = None
-        return payload
+        update = self._pending_scene_update
+        self._pending_scene_update = None
+        return update
 
     def is_live(self) -> bool:
         return False

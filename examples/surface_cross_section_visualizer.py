@@ -88,6 +88,19 @@ class SurfaceCrossSectionSimulation(StaticSurfaceSimulation):
         )
         self.queue_scene_payload_update(payload)
 
+    def _slice_patch(self):
+        idx, axis_value = self._slice_index_and_value()
+        return {
+            "slice_rect": {
+                "axis": self.slice_axis,
+                "value": axis_value,
+                "color": "#111111",
+                "alpha": 0.95,
+                "width": 3.0,
+            },
+            "plot2d": self._cross_section_payload(idx, axis_value),
+        }
+
     def build_initial_payload(self):
         self._sync_payload()
         return self.initial_payload
@@ -128,7 +141,7 @@ class SurfaceCrossSectionSimulation(StaticSurfaceSimulation):
         else:
             return super().apply_control(name, value)
 
-        self._sync_payload()
+        self.queue_scene_payload_patch(self._slice_patch())
         return True
 
 

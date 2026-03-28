@@ -336,6 +336,7 @@ class SurfaceManager:
         self.axes = SurfaceAxesOverlay(view)
         self.slice_overlay = SurfaceSliceOverlay(view)
         self._surface_grid_shape = None
+        self._meta = {}
 
     def _colormap_samples(self, name: str, n: int = 256) -> np.ndarray:
         name = str(name).lower()
@@ -379,6 +380,7 @@ class SurfaceManager:
         return lut[idx]
 
     def set_surface(self, meta):
+        self._meta = dict(meta)
         x = np.asarray(meta['x'], dtype=np.float32)
         y = np.asarray(meta['y'], dtype=np.float32)
         z = np.asarray(meta['z'], dtype=np.float32)
@@ -424,6 +426,38 @@ class SurfaceManager:
         self.slice_overlay.set_slice_rect(meta, x, y, z)
         if recreate_surface:
             self.view.camera.set_range()
+
+    def apply_patch(self, patch):
+        if not isinstance(patch, dict):
+            return
+        if not self._meta:
+            self._meta = dict(patch)
+        else:
+            self._meta.update(patch)
+
+        if not {'x', 'y', 'z'}.issubset(self._meta.keys()):
+            return
+
+        surface_keys = {'x', 'y', 'z', 'colors', 'color_by', 'cmap', 'clim', 'surface_alpha'}
+        axes_keys = {
+            'render_axes', 'axes_in_middle', 'tick_count', 'tick_length_scale',
+            'tick_label_size', 'axis_label_size', 'axis_color', 'text_color',
+            'axis_alpha', 'axis_labels'
+        }
+        slice_keys = {'slice_rect'}
+
+        x = np.asarray(self._meta['x'], dtype=np.float32)
+        y = np.asarray(self._meta['y'], dtype=np.float32)
+        z = np.asarray(self._meta['z'], dtype=np.float32)
+
+        patch_keys = set(patch.keys())
+        if patch_keys & surface_keys:
+            self.set_surface(self._meta)
+            return
+        if patch_keys & axes_keys:
+            self.axes.set_axes(self._meta, x, y, z)
+        if patch_keys & slice_keys:
+            self.slice_overlay.set_slice_rect(self._meta, x, y, z)
 
 
 def _payload_kind(payload) -> str | None:
@@ -700,6 +734,18 @@ class SimulationViewer(QtWidgets.QMainWindow):
         print(f"Loaded in {elapsed:.2f}s")
         QtCore.QTimer.singleShot(3000, self.statusBar().clearMessage)
 
+    def _handle_scene_patch(self, patch):
+        if not isinstance(patch, dict):
+            return
+        bg = patch.get("background_color")
+        if bg is not None:
+            self.canvas3d.bgcolor = bg
+        if "plot2d" in patch:
+            self._apply_plot2d_payload(patch.get("plot2d"))
+        if self.scene_kind == "surface":
+            self.surface_mgr.apply_patch(patch)
+            self.canvas3d.update()
+
     def _clear_static_plot2d(self):
         for item in self._plot2d_static_items:
             try:
@@ -778,6 +824,9 @@ class SimulationViewer(QtWidgets.QMainWindow):
                 if kind == "scene_payload":
                     self._handle_initial_payload(payload)
                     self.canvas3d.update()
+                    continue
+                if kind == "scene_patch":
+                    self._handle_scene_patch(payload)
                     continue
 
                 # subsequent messages: data dict (or legacy (t, v) tuple)
