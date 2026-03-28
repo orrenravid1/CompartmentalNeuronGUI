@@ -40,6 +40,8 @@ Live NEURON morphology:
 python examples/neuron/visualizer_example.py
 ```
 
+On Windows, live session entrypoints use `multiprocessing` with `spawn`. `run_app(...)` ignores spawned child imports internally so a shared script can keep the same top-level launch pattern across Windows, Linux, and macOS. A manual `if __name__ == "__main__":` wrapper is optional, not a library requirement.
+
 ## Public API
 
 The main package exports the core types, builders, and frontend entrypoint:
@@ -64,4 +66,3 @@ Generate the reference indexes with:
 ```bash
 python scripts/generate_indexes.py
 ```
-

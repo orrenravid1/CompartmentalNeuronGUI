@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -7,6 +8,7 @@ import numpy as np
 from PyQt6 import QtWidgets
 
 from compneurovis import ControlSpec, Field, LinePlotViewSpec, MorphologyGeometry, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_surface_app, grid_field
+from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
 from compneurovis.frontends.vispy.panels import LinePlotPanel, Viewport3DPanel
 
@@ -167,3 +169,16 @@ def test_surface_visual_reuses_same_surface_object_for_same_shape_updates():
 
     assert first_surface is second_surface
     app.quit()
+
+
+def test_run_app_skips_frontend_launch_in_spawned_child():
+    original_current_process = frontend_module.mp.current_process
+    original_qapplication = frontend_module.QtWidgets.QApplication
+    try:
+        frontend_module.mp.current_process = lambda: SimpleNamespace(name="SpawnProcess-1")
+        frontend_module.QtWidgets.QApplication = Mock()
+        frontend_module.run_app(frontend_module.AppSpec())
+        frontend_module.QtWidgets.QApplication.assert_not_called()
+    finally:
+        frontend_module.mp.current_process = original_current_process
+        frontend_module.QtWidgets.QApplication = original_qapplication

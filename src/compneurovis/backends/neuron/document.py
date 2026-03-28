@@ -64,7 +64,8 @@ class NeuronDocumentBuilder:
         ang = np.arccos(np.clip(cos_t, -1.0, 1.0))
         ax = np.cross(np.repeat([[0, 0, 1]], n_segments, axis=0), dn)
         ax_n = np.linalg.norm(ax, axis=1, keepdims=True)
-        ax_u = np.divide(ax, ax_n, where=(ax_n > 1e-6))
+        ax_u = np.zeros_like(ax)
+        np.divide(ax, ax_n, out=ax_u, where=(ax_n > 1e-6))
         ux, uy, uz = ax_u.T
 
         k = np.zeros((n_segments, 3, 3), dtype=np.float32)
@@ -144,4 +145,3 @@ class NeuronDocumentBuilder:
                 control_ids=tuple(controls.keys()) if controls else (),
             ),
         )
-

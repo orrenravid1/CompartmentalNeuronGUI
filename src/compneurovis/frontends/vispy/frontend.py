@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import multiprocessing as mp
 import sys
 from enum import Enum, auto
 from typing import Any
@@ -433,6 +434,8 @@ def binding_key(value) -> str | None:
 
 
 def run_app(app_spec: AppSpec) -> None:
+    if mp.current_process().name != "MainProcess":
+        return
     qt_app = QtWidgets.QApplication.instance()
     owns_app = qt_app is None
     if qt_app is None:
