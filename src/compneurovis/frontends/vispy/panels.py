@@ -326,7 +326,12 @@ class LinePlotPanel(pg.PlotWidget):
             del self._series_items[label]
 
         for idx, label in enumerate(series_labels):
-            color = view.series_colors.get(label, view.pen)
+            if label in view.series_colors:
+                color = view.series_colors[label]
+            elif view.series_palette:
+                color = view.series_palette[idx % len(view.series_palette)]
+            else:
+                color = view.pen
             pen = pg.mkPen(resolve_binding(color, state), width=2)
             item = self._series_items.get(label)
             if item is None:

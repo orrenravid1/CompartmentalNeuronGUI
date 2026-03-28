@@ -13,7 +13,7 @@ The frontend is `VispyFrontendWindow` (a `QMainWindow`) with three panels:
 | Line plot | `LinePlotPanel` | Renders 1-D slices or multi-series traces via pyqtgraph |
 | Controls | `ControlsPanel` | Renders sliders, spinboxes, dropdowns; emits `SetControl` on change |
 
-Layout is driven by `LayoutSpec`. If `main_3d_view_id` is `None`, the viewport is hidden and the right panel fills the window.
+Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, so the main panes are draggable/resizable. If `main_3d_view_id` is `None`, the viewport is hidden and the right panel fills the window.
 
 ## Refresh Planning
 

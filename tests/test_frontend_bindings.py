@@ -222,6 +222,35 @@ def test_line_plot_panel_supports_multi_series_fields():
     app.quit()
 
 
+def test_line_plot_panel_uses_series_palette_for_multi_series_colors():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    field = Field(
+        id="cascade",
+        values=np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32),
+        dims=("series", "time"),
+        coords={
+            "series": np.array(["ligand", "receptor"]),
+            "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
+        },
+    )
+    view = LinePlotViewSpec(
+        id="cascade-plot",
+        field_id=field.id,
+        x_dim="time",
+        series_dim="series",
+        series_palette=("#ff0000", "#0000ff"),
+    )
+
+    panel.refresh(view, field, {}, {})
+
+    ligand_pen = panel._series_items["ligand"].opts["pen"]
+    receptor_pen = panel._series_items["receptor"].opts["pen"]
+    assert ligand_pen.color().name() == "#ff0000"
+    assert receptor_pen.color().name() == "#0000ff"
+    app.quit()
+
+
 def test_line_plot_panel_applies_rolling_window_and_y_range():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = LinePlotPanel()
@@ -390,9 +419,27 @@ def test_frontend_hides_viewport_when_document_has_no_3d_view():
     window = VispyFrontendWindow(AppSpec(document=document, title="Cascade"))
     window.timer.stop()
 
-    assert not window.viewport.isVisible()
-    assert window._central_layout.stretch(0) == 0
-    assert window._central_layout.stretch(1) == 1
+    assert window.viewport.isHidden()
+    assert isinstance(window.centralWidget(), QtWidgets.QSplitter)
+    assert window._horizontal_splitter.orientation() == QtCore.Qt.Orientation.Horizontal
+    assert window._right_splitter.orientation() == QtCore.Qt.Orientation.Vertical
+
+    window.close()
+    app.quit()
+
+
+def test_frontend_uses_splitters_for_draggable_panel_resize():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    window = VispyFrontendWindow(build_surface_cross_section_app())
+    window.timer.stop()
+
+    assert isinstance(window.centralWidget(), QtWidgets.QSplitter)
+    assert window._horizontal_splitter.widget(0) is window.viewport
+    assert window._horizontal_splitter.widget(1) is window._right_splitter
+    assert window._right_splitter.widget(0) is window.line_plot
+    assert window._right_splitter.widget(1) is window.controls
+    assert not window._horizontal_splitter.opaqueResize()
+    assert not window._right_splitter.opaqueResize()
 
     window.close()
     app.quit()

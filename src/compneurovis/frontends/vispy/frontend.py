@@ -171,22 +171,26 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.line_plot = LinePlotPanel()
         self.controls = ControlsPanel(self._on_control_changed, self._on_action_invoked)
 
-        central = QtWidgets.QWidget()
-        layout = QtWidgets.QHBoxLayout(central)
-        self._central_layout = layout
-        layout.addWidget(self.viewport, 2)
+        self._right_splitter = QtWidgets.QSplitter(Qt.Orientation.Vertical)
+        self._right_splitter.setChildrenCollapsible(False)
+        self._right_splitter.setOpaqueResize(False)
+        self._right_splitter.addWidget(self.line_plot)
+        self._right_splitter.addWidget(self.controls)
+        self._right_splitter.setStretchFactor(0, 3)
+        self._right_splitter.setStretchFactor(1, 2)
 
-        right = QtWidgets.QWidget()
-        self._right_panel = right
-        right_layout = QtWidgets.QVBoxLayout(right)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.addWidget(self.line_plot, 3)
-        right_layout.addWidget(self.controls, 2)
-        layout.addWidget(right, 1)
+        self._horizontal_splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
+        self._horizontal_splitter.setChildrenCollapsible(False)
+        self._horizontal_splitter.setOpaqueResize(False)
+        self._horizontal_splitter.addWidget(self.viewport)
+        self._horizontal_splitter.addWidget(self._right_splitter)
+        self._horizontal_splitter.setStretchFactor(0, 2)
+        self._horizontal_splitter.setStretchFactor(1, 1)
 
-        self.setCentralWidget(central)
+        self.setCentralWidget(self._horizontal_splitter)
         self.resize(1280, 720)
         self.statusBar().showMessage("Starting CompNeuroVis")
+        self._apply_default_splitter_sizes(has_3d=True)
 
         if app_spec.document is not None:
             self._set_document(app_spec.document)
@@ -239,12 +243,16 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _update_panel_visibility(self) -> None:
         has_3d = self.document is not None and self.document.layout.main_3d_view_id is not None
         self.viewport.setVisible(has_3d)
+        self._apply_default_splitter_sizes(has_3d=has_3d)
+
+    def _apply_default_splitter_sizes(self, *, has_3d: bool) -> None:
+        width = max(self.width(), 1)
+        height = max(self.height(), 1)
+        self._right_splitter.setSizes([max(1, int(height * 0.6)), max(1, int(height * 0.4))])
         if has_3d:
-            self._central_layout.setStretch(0, 2)
-            self._central_layout.setStretch(1, 1)
+            self._horizontal_splitter.setSizes([max(1, int(width * 0.67)), max(1, int(width * 0.33))])
         else:
-            self._central_layout.setStretch(0, 0)
-            self._central_layout.setStretch(1, 1)
+            self._horizontal_splitter.setSizes([0, width])
 
     def _refresh_controls(self) -> None:
         if self.document is None:
