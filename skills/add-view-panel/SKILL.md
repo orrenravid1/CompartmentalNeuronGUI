@@ -7,16 +7,12 @@ description: Add or update a frontend view or panel in CompNeuroVis. Use when ex
 
 Read `docs/architecture/vispy-frontend.md` first.
 
-Keep the split clear:
+Reference implementations: `src/compneurovis/frontends/vispy/panels.py` and `src/compneurovis/frontends/vispy/renderers.py`.
 
-- `ViewSpec` defines intent
-- panels/renderers implement rendering
-- frontend window coordinates document loading, transport polling, and state refresh
-
-When adding a new panel:
-
-- keep UI state in the frontend
-- consume `Document` and typed updates instead of raw backend callbacks
-- update the relevant package `README.md`
-- add at least one example or test that exercises the new panel
+1. Define a `ViewSpec` subclass in `src/compneurovis/core/views.py` that captures rendering intent.
+2. Implement the panel or renderer under `src/compneurovis/frontends/vispy/`; consume `Document` and typed updates — no raw backend callbacks.
+3. Keep all UI state (selection, slice position, etc.) in the frontend; do not leak it to the backend.
+4. Wire the panel into `VispyFrontendWindow` and register it with `RefreshPlanner`.
+5. Update the frontend package `README.md`.
+6. Add at least one test or example that exercises the new panel end-to-end.
 

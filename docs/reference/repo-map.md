@@ -45,12 +45,15 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `examples/surface_cross_section_visualizer.py`
 
 ## Skills
+- `add-example`: `skills/add-example/SKILL.md`
 - `add-simulator-backend`: `skills/add-simulator-backend/SKILL.md`
 - `add-static-field-visualization`: `skills/add-static-field-visualization/SKILL.md`
 - `add-view-panel`: `skills/add-view-panel/SKILL.md`
+- `audit-skill-coverage`: `skills/audit-skill-coverage/SKILL.md`
 - `check-change-impact`: `skills/check-change-impact/SKILL.md`
 - `check-test-coverage-drift`: `skills/check-test-coverage-drift/SKILL.md`
 - `debug-protocol-dataflow`: `skills/debug-protocol-dataflow/SKILL.md`
+- `debug-rendering`: `skills/debug-rendering/SKILL.md`
 - `pr-readiness`: `skills/pr-readiness/SKILL.md`
 - `register-skill`: `skills/register-skill/SKILL.md`
 - `update-docs-and-indexes`: `skills/update-docs-and-indexes/SKILL.md`

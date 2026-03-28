@@ -1,0 +1,27 @@
+---
+name: add-example
+description: Add a new runnable example to CompNeuroVis. Use when demonstrating a new workflow, builder pattern, or visualization type that is not already covered by an existing example.
+---
+
+# Add an Example
+
+Reference implementations: `examples/static_surface_visualizer.py` (static) and `examples/neuron/visualizer_example.py` (live session).
+
+1. Place the file under `examples/`:
+   - `examples/neuron/` for NEURON-backed live examples
+   - `examples/` root for static or replay examples
+
+2. Structure the file in this order:
+   - top-of-file comment (one line) explaining what the example demonstrates
+   - imports from `compneurovis`
+   - data or model setup
+   - Document / AppSpec assembly
+   - `run_app(app)` at the bottom, unguarded — `run_app()` handles spawn-mode multiprocessing internally
+
+3. Keep module-level code free of expensive NEURON initialization. Any NEURON setup that runs at import time will repeat in every spawned worker process on Windows. Put it inside `build_sections()` or `setup_model()`.
+
+4. Verify importability: `python -m compileall examples`
+
+5. Regenerate the example index: `python scripts/generate_indexes.py`
+
+6. Validate: `python scripts/generate_indexes.py --check`

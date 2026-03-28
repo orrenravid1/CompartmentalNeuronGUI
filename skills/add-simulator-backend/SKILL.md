@@ -5,21 +5,16 @@ description: Add or update a simulator backend/session for CompNeuroVis. Use whe
 
 # Add a Simulator Backend
 
-Read `AGENTS.md`, `docs/architecture/core-model.md`, and `docs/architecture/session-protocol.md` first.
+Read `docs/architecture/core-model.md` and `docs/architecture/session-protocol.md` first.
 
-Implement new backends under `src/compneurovis/backends/<name>`.
+Reference implementation: `src/compneurovis/backends/neuron/session.py`.
 
-Follow these rules:
-
-- Subclass `Session` or `BufferedSession`.
-- Emit typed protocol updates; do not call frontend code directly.
-- Build static structure as a `Document` and emit it via `DocumentReady`.
-- Express measured/simulated values as `Field` objects or `FieldUpdate`s.
-- Keep GUI state out of the backend. Use `SetControl` and `InvokeAction` as semantic inputs.
-
-Update:
-
-- the backend package `README.md`
-- `AGENTS.md` package map or extension points if the public surface changes
-- generated indexes with `python scripts/generate_indexes.py`
+1. Create a package under `src/compneurovis/backends/<name>`.
+2. Subclass `Session` or `BufferedSession`; emit only typed protocol updates — no direct frontend calls.
+3. Emit `DocumentReady` with a fully-built `Document` on initialization.
+4. Express all measured or simulated values as `Field` objects, delivered via `FieldUpdate`.
+5. Accept `SetControl` and `InvokeAction` as the only semantic inputs; keep GUI state out of the backend.
+6. Update the backend package `README.md`.
+7. Update `AGENTS.md` package map and extension points if the public surface changes.
+8. Regenerate reference indexes: `python scripts/generate_indexes.py`.
 

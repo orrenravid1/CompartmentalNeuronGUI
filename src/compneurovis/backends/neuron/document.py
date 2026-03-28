@@ -99,7 +99,17 @@ class NeuronDocumentBuilder:
         )
 
     @staticmethod
-    def build_document(*, geometry: MorphologyGeometry, voltage_values: np.ndarray, time_value: float, controls=None, title: str = "CompNeuroVis") -> Document:
+    def build_document(
+        *,
+        geometry: MorphologyGeometry,
+        voltage_values: np.ndarray,
+        time_value: float,
+        controls=None,
+        actions=None,
+        title: str = "CompNeuroVis",
+        control_ids: tuple[str, ...] | None = None,
+        action_ids: tuple[str, ...] | None = None,
+    ) -> Document:
         voltage_field = Field(
             id="voltage",
             values=np.asarray(voltage_values, dtype=np.float32)[:, None],
@@ -138,10 +148,12 @@ class NeuronDocumentBuilder:
             geometries={geometry.id: geometry},
             views=views,
             controls={} if controls is None else dict(controls),
+            actions={} if actions is None else dict(actions),
             layout=LayoutSpec(
                 title=title,
                 main_3d_view_id="morphology",
                 line_plot_view_id="trace",
-                control_ids=tuple(controls.keys()) if controls else (),
+                control_ids=tuple(controls.keys()) if controls and control_ids is None else (() if control_ids is None else control_ids),
+                action_ids=tuple(actions.keys()) if actions and action_ids is None else (() if action_ids is None else action_ids),
             ),
         )

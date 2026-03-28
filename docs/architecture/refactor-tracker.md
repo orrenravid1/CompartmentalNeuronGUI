@@ -1,0 +1,233 @@
+---
+title: Refactor Tracker
+summary: Living design tracker for architectural decisions, lessons learned, and deferred work during the CompNeuroVis refactor.
+---
+
+# Refactor Tracker
+
+This document is the running plan-and-learnings tracker for the refactor. Update it when we learn something important about architecture, UX, performance, or cross-platform behavior, even if we do not implement the resulting idea yet.
+
+Use this document for:
+
+- design decisions that should stay stable
+- lessons learned from regressions or user feedback
+- deferred work that should not be forgotten
+- cross-platform behavior expectations
+
+Do not use this document as a file-by-file changelog.
+
+## Current Architectural Direction
+
+- Keep `Field` as the primary data primitive.
+- Keep `Document + optional Session + Frontend + Transport` as the top-level split.
+- Keep frontend state owned by the frontend, not by sessions.
+- Prefer builder-driven simple entrypoints for common workflows.
+- Prefer library-level cross-platform behavior over requiring unusual user script patterns.
+
+## Phased Roadmap
+
+### Phase 1: Core Architecture and Workflow Parity
+
+Status: largely complete
+
+Scope:
+
+- replace the old simulation-rooted model with `Document + optional Session + Frontend + Transport`
+- make `Field` the primary data primitive
+- establish a typed session protocol
+- recover practical parity for the current Python + VisPy + pipes workflows
+- add agent-friendly documentation, indexes, and skills
+
+Included outcomes:
+
+- core model and typed protocol are in place
+- incremental live updates now use `FieldAppend`
+- targeted frontend invalidation is in place
+- stock NEURON examples, static surfaces, cross-sections, signaling cascade, and pharynx-style workflows have all been exercised on the new stack
+- docs scaffold, `AGENTS.md`, skill catalog, and generated indexes are in place
+
+Remaining edge work inside this phase:
+
+- continue tightening rough edges found while using real apps
+- keep performance parity and cross-platform behavior stable as other phases begin
+
+### Phase 2: Generic Workbench and Better Public Authoring Surface
+
+Status: not complete
+
+Scope:
+
+- replace the transitional fixed layout with a genuinely generic workbench/layout model
+- move closer to Blender/Unity/Unreal-style panel composition
+- reduce framework exposure in the public authoring API
+- formalize bootstrap-document behavior
+- continue improving live plotting and interaction ergonomics without one-off app logic
+
+Target outcomes:
+
+- generic layout system with a default arrangement and customizable panel composition
+- better builder/default APIs so domain users rarely touch document plumbing directly
+- cleaner interaction model based on strong defaults plus small semantic hooks
+- clearer plot/view composition model once multiple plot panels and more editor-like workflows are added
+
+### Phase 3: Alternate Frontends, Transports, and Editing Workflows
+
+Status: not started
+
+Scope:
+
+- add alternate transports such as websocket-based transport
+- support alternate frontends such as Unity
+- support editing-oriented workflows such as NeuroML visual authoring
+- add more simulator/backend families beyond the current NEURON-first implementation
+
+Target outcomes:
+
+- frontend-agnostic protocol exercised by more than one frontend
+- transport-agnostic session model exercised by more than one transport
+- editor-style workflows living on the same core model rather than as separate infrastructure
+
+## Confirmed Decisions
+
+### Cross-platform launch behavior
+
+- User-facing launch code should work the same on Windows, Linux, and macOS.
+- `run_app(...)` must protect against spawned child imports internally.
+- `if __name__ == "__main__":` is allowed in user scripts, but should not be required by the library just to make examples work.
+
+### Frontend invalidation model
+
+- Whole-window refreshes are too coarse for performance-sensitive scenes.
+- The frontend should invalidate only the affected targets.
+- The current explicit targets are:
+  - controls
+  - morphology
+  - surface visual
+  - surface axes
+  - surface slice overlay
+  - line plot
+
+### Generic layout system
+
+- Layout should be fully generic and composable, with one default arrangement rather than hard-coded app categories.
+- The user-facing model should be closer to Blender, Unity, or Unreal:
+  - a default layout that works immediately
+  - customizable panel arrangement when needed
+  - no assumption that a 3D viewport is always primary
+- The current 2D-only collapse behavior is a temporary step, not the target design.
+- Multi-series line plots are a first-class need within that generic layout system, not an edge case.
+
+### Startup layout behavior
+
+- A live app should not visibly start in a fallback layout and then jump to the intended layout if the initial structure is already knowable.
+- If layout and views are known before the session starts, provide a bootstrap `Document` up front.
+
+### Public interaction API
+
+- The internal architecture may use tools/controllers/manipulators, but the default user-facing API should not require users to think in those terms.
+- For the intended audience, custom interactions should be expressible with a few small callbacks and strong defaults.
+- The framework should expose semantic frontend hooks such as:
+  - action/button invocation
+  - key press
+  - clicked morphology entity
+- Per-app interaction policy should stay outside core renderer/transport logic.
+
+## Lessons Learned
+
+### Surface cross-section performance
+
+- Slice changes should update only:
+  - the derived line plot
+  - the slice overlay
+- Slice changes should not rebuild:
+  - the surface mesh
+  - the axes
+  - unrelated panels
+
+### Renderer update granularity
+
+- Surface rendering should distinguish:
+  - geometry updates
+  - color/data updates
+  - axes updates
+  - overlay updates
+- Long-lived visuals and caches are required for good performance.
+
+### Live session data flow
+
+- Live simulation backends should not resend full trace history on every update.
+- Incremental live data belongs in typed append-style updates, with the frontend owning the displayed rolling history.
+- Backend stepping cadence and frontend emission cadence should be separable.
+- For high-frequency simulations, batching several internal simulation steps into one frontend update is the preferred design.
+- The frontend should drain and apply all queued transport updates in one poll tick, then refresh affected views once from the final state rather than redrawing per message.
+
+### NumPy masked divide behavior
+
+- `np.divide(..., where=...)` without `out=...` can leave masked entries undefined and produce warnings.
+- Use explicit output buffers for geometry normalization paths.
+
+### Developer experience for custom interactions
+
+- `Document`/`ViewSpec`/layout internals are acceptable framework building blocks, but they are too low-level as the primary authoring surface for domain users.
+- If a user has to override document construction just to reorder controls, tune the default trace plot, or express a simple click-mode workflow, the public API is still too exposed.
+- The default NEURON-style path should prefer small hook methods and simple overrides over forcing authors to manually assemble interaction machinery.
+
+## Deferred Work
+
+### Session bootstrap API
+
+- The signaling cascade retrofit showed a need for a formal session-level bootstrap document hook.
+- Current workaround: construct a document before `run_app(...)` when possible.
+- Desired future design:
+  - a small formal API for “static document known before worker start”
+  - no ad hoc per-session bootstrap pattern
+
+### Plot configuration model
+
+- `LinePlotViewSpec` now supports rolling windows and fixed y-ranges.
+- Future work may need:
+  - multiple synchronized plot panels
+  - selectable traces
+  - plot grouping
+  - independent y-axes or stacked plots
+  - frontend-side ring buffers for very large live fields if simple append-and-trim becomes a bottleneck
+
+### Frontend layout system
+
+- Current layout is intentionally simple and should be treated as transitional.
+- Future work may need:
+  - dockable panels
+  - collapsible panels
+  - multiple 3D views
+  - multiple plot panels
+  - persistent saved layouts
+
+### Remote frontend / alternate transport
+
+- The protocol and document model should stay frontend-agnostic.
+- Future work may add:
+  - websocket transport
+  - Unity frontend
+  - richer remote command/update semantics
+
+### Interaction system cleanup
+
+- The current `ActionSpec.selection_mode` path proved useful as a capability check, but it is too rigid as the default public interaction model.
+- Long-term direction:
+  - keep richer controller/tool internals available
+  - prefer callback-driven or declarative-simple interaction hooks for common app authoring
+  - avoid baking one workflow model into `ActionSpec`
+
+## Open Questions
+
+- Should bootstrap documents become part of the `Session` interface or live in builders?
+- Should plot configuration remain on `LinePlotViewSpec`, or do we need a higher-level plot panel model once multiple plot panels land?
+- How much renderer invalidation should be explicit vs inferred from dependencies?
+
+## Update Rule
+
+When a new issue or design insight appears:
+
+1. Record the stable lesson here.
+2. Mark whether it is implemented or deferred.
+3. Link to the canonical architecture doc if the idea becomes foundational.

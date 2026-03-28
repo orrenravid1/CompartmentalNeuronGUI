@@ -1,29 +1,38 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections import deque
+import math
+from typing import Any
 
 import numpy as np
 from neuron import h
 
 from compneurovis.core.controls import ControlSpec
-from compneurovis.session import BufferedSession, FieldUpdate, Reset, SetControl
+from compneurovis.core.document import Document
+from compneurovis.session import BufferedSession, FieldAppend, FieldUpdate, InvokeAction, Reset, SetControl
 from compneurovis.backends.neuron.document import NeuronDocumentBuilder
 
 
 class NeuronSession(BufferedSession, ABC):
-    def __init__(self, *, dt: float = 0.1, v_init: float = -65.0, max_samples: int = 1000, title: str = "CompNeuroVis"):
+    def __init__(
+        self,
+        *,
+        dt: float = 0.1,
+        v_init: float = -65.0,
+        max_samples: int = 1000,
+        display_dt: float | None = 0.5,
+        title: str = "CompNeuroVis",
+    ):
         super().__init__()
         self.dt = dt
         self.v_init = v_init
         self.max_samples = max_samples
+        self.display_dt = display_dt
         self.title = title
         self.sections = None
         self.geometry = None
         self._segment_refs = None
         self._segment_vector = None
-        self._time_history = deque(maxlen=max_samples)
-        self._voltage_history = deque(maxlen=max_samples)
         self._runtime_handles = None
 
     @abstractmethod
@@ -36,12 +45,58 @@ class NeuronSession(BufferedSession, ABC):
     def control_specs(self) -> dict[str, ControlSpec]:
         return {}
 
+    def action_specs(self) -> dict[str, object]:
+        return {}
+
+    def control_order(self) -> tuple[str, ...] | None:
+        return None
+
+    def action_order(self) -> tuple[str, ...] | None:
+        return None
+
+    def trace_view_updates(self) -> dict[str, Any]:
+        return {}
+
     def apply_control(self, control_id: str, value) -> bool:
         try:
             setattr(self, control_id, value)
             return True
         except Exception:
             return False
+
+    def apply_action(self, action_id: str, payload: dict[str, object]) -> bool:
+        del action_id, payload
+        return False
+
+    def on_action(self, action_id: str, payload: dict[str, Any], context) -> bool:
+        del action_id, payload, context
+        return False
+
+    def on_key_press(self, key: str, context) -> bool:
+        del key, context
+        return False
+
+    def on_entity_clicked(self, entity_id: str, context) -> bool:
+        del entity_id, context
+        return False
+
+    def build_document(self, *, geometry, voltage_values: np.ndarray, time_value: float) -> Document:
+        controls = self.control_specs()
+        actions = self.action_specs()
+        document = NeuronDocumentBuilder.build_document(
+            geometry=geometry,
+            voltage_values=voltage_values,
+            time_value=time_value,
+            controls=controls,
+            actions=actions,
+            title=self.title,
+            control_ids=self.control_order(),
+            action_ids=self.action_order(),
+        )
+        trace_updates = self.trace_view_updates()
+        if trace_updates:
+            document.replace_view("trace", trace_updates)
+        return document
 
     def initialize(self):
         self.sections = self.build_sections()
@@ -50,15 +105,11 @@ class NeuronSession(BufferedSession, ABC):
         self._prepare_recorders()
         h.dt = self.dt
         h.finitialize(self.v_init)
-        self._time_history.clear()
-        self._voltage_history.clear()
-        self._append_sample()
-        return NeuronDocumentBuilder.build_document(
+        time_value, voltage_values = self._sample()
+        return self.build_document(
             geometry=self.geometry,
-            voltage_values=self._voltage_history[-1],
-            time_value=self._time_history[-1],
-            controls=self.control_specs(),
-            title=self.title,
+            voltage_values=voltage_values,
+            time_value=time_value,
         )
 
     def _prepare_recorders(self):
@@ -83,40 +134,53 @@ class NeuronSession(BufferedSession, ABC):
         self._segment_refs.gather(self._segment_vector)
         return np.asarray(self._segment_vector.as_numpy(), dtype=np.float32).copy()
 
-    def _append_sample(self) -> None:
-        self._time_history.append(float(h.t))
-        self._voltage_history.append(self._read_voltage())
+    def _sample(self) -> tuple[float, np.ndarray]:
+        return float(h.t), self._read_voltage()
+
+    def steps_per_update(self) -> int:
+        if self.display_dt is None:
+            return 1
+        if self.display_dt <= 0:
+            raise ValueError("NeuronSession display_dt must be positive or None")
+        return max(1, int(math.ceil(float(self.display_dt) / float(self.dt))))
 
     def advance(self) -> None:
-        h.fadvance()
-        self._append_sample()
+        samples: list[np.ndarray] = []
+        times: list[float] = []
+        for _ in range(self.steps_per_update()):
+            h.fadvance()
+            time_value, voltage_values = self._sample()
+            times.append(time_value)
+            samples.append(voltage_values)
+
+        if not samples:
+            return
+
         self.emit(
-            FieldUpdate(
+            FieldAppend(
                 field_id="voltage",
-                values=np.stack(list(self._voltage_history), axis=1),
-                coords={
-                    "segment": np.asarray(self.geometry.entity_ids),
-                    "time": np.asarray(list(self._time_history), dtype=np.float32),
-                },
+                append_dim="time",
+                values=np.stack(samples, axis=1),
+                coord_values=np.asarray(times, dtype=np.float32),
+                max_length=self.max_samples,
             )
         )
 
     def handle(self, command) -> None:
         if isinstance(command, Reset):
             h.finitialize(self.v_init)
-            self._time_history.clear()
-            self._voltage_history.clear()
-            self._append_sample()
+            time_value, voltage_values = self._sample()
             self.emit(
                 FieldUpdate(
                     field_id="voltage",
-                    values=np.stack(list(self._voltage_history), axis=1),
+                    values=voltage_values[:, None],
                     coords={
                         "segment": np.asarray(self.geometry.entity_ids),
-                        "time": np.asarray(list(self._time_history), dtype=np.float32),
+                        "time": np.asarray([time_value], dtype=np.float32),
                     },
                 )
             )
         elif isinstance(command, SetControl):
             self.apply_control(command.control_id, command.value)
-
+        elif isinstance(command, InvokeAction):
+            self.apply_action(command.action_id, command.payload)

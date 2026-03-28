@@ -27,4 +27,6 @@ class ActionSpec:
     id: str
     label: str
     payload: dict[str, Any] = field(default_factory=dict)
-
+    shortcuts: tuple[str, ...] = ()
+    selection_mode: bool = False
+    selection_payload_key: str = "entity_id"

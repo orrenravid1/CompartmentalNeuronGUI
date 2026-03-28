@@ -45,12 +45,15 @@ Key names:
 
 ## Skill Catalog
 
+- `skills/add-example/SKILL.md`
 - `skills/add-simulator-backend/SKILL.md`
 - `skills/add-static-field-visualization/SKILL.md`
 - `skills/add-view-panel/SKILL.md`
+- `skills/audit-skill-coverage/SKILL.md`
 - `skills/check-change-impact/SKILL.md`
 - `skills/check-test-coverage-drift/SKILL.md`
 - `skills/debug-protocol-dataflow/SKILL.md`
+- `skills/debug-rendering/SKILL.md`
 - `skills/pr-readiness/SKILL.md`
 - `skills/register-skill/SKILL.md`
 - `skills/update-docs-and-indexes/SKILL.md`
@@ -60,6 +63,7 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 ## Documentation Index
 
 - Architecture overview: `docs/architecture/core-model.md`
+- Refactor tracker: `docs/architecture/refactor-tracker.md`
 - Session protocol: `docs/architecture/session-protocol.md`
 - VisPy frontend: `docs/architecture/vispy-frontend.md`
 - Field semantics: `docs/concepts/field-model.md`

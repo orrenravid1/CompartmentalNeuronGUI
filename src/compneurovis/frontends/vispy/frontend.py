@@ -5,7 +5,7 @@ import sys
 from enum import Enum, auto
 from typing import Any
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt
 from vispy import app as vispy_app, use
 
@@ -13,7 +13,7 @@ use(app="pyqt6", gl="gl+")
 
 from compneurovis.core import AppSpec, Document, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec
 from compneurovis.frontends.vispy.panels import ControlsPanel, LinePlotPanel, Viewport3DPanel
-from compneurovis.session import DocumentPatch, DocumentReady, FieldUpdate, PipeTransport, Reset, SetControl, configure_multiprocessing
+from compneurovis.session import DocumentPatch, DocumentReady, FieldAppend, FieldUpdate, InvokeAction, PipeTransport, Reset, SetControl, configure_multiprocessing
 
 
 class RefreshTarget(Enum):
@@ -164,10 +164,12 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.state: dict[str, Any] = {}
         self.transport: PipeTransport | None = None
         self.refresh_planner: RefreshPlanner | None = None
+        self._active_selection_action_id: str | None = None
+        self.interaction_target = app_spec.interaction_target if app_spec.interaction_target is not None else app_spec.session
 
         self.viewport = Viewport3DPanel(on_entity_selected=self._on_entity_selected)
         self.line_plot = LinePlotPanel()
-        self.controls = ControlsPanel(self._on_control_changed)
+        self.controls = ControlsPanel(self._on_control_changed, self._on_action_invoked)
 
         central = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout(central)
@@ -201,6 +203,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _set_document(self, document: Document) -> None:
         self.document = document
         self.refresh_planner = RefreshPlanner(document)
+        self._active_selection_action_id = None
         self.setWindowTitle(self.app_spec.title or document.layout.title)
         for control in document.controls.values():
             self.state.setdefault(control.resolved_state_key(), control.default)
@@ -247,7 +250,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if self.document is None:
             return
         controls = [self.document.controls[control_id] for control_id in self.document.layout.control_ids if control_id in self.document.controls]
-        self.controls.set_controls(controls, self.state)
+        actions = [self.document.actions[action_id] for action_id in self.document.layout.action_ids if action_id in self.document.actions]
+        self.controls.set_controls(controls, actions, self.state)
 
     def _resolved_morphology_state(self, view: MorphologyViewSpec) -> dict[str, Any]:
         return {
@@ -376,10 +380,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _poll_transport(self) -> None:
         if self.transport is None:
             return
+        pending_targets: set[RefreshTarget] = set()
+        pending_status: str | None = None
         for update in self.transport.poll_updates():
             if isinstance(update, DocumentReady):
                 self._set_document(update.document)
-                self.statusBar().showMessage("Document ready")
+                pending_targets.clear()
+                pending_status = "Document ready"
             elif isinstance(update, FieldUpdate):
                 if self.document is None:
                     continue
@@ -387,23 +394,37 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 coords = current.coords if update.coords is None else update.coords
                 self.document.fields[update.field_id] = current.with_values(update.values, coords=coords, attrs_update=update.attrs_update)
                 if self.refresh_planner is not None:
-                    self._apply_refresh_targets(self.refresh_planner.targets_for_field_update(update.field_id))
+                    pending_targets.update(self.refresh_planner.targets_for_field_update(update.field_id))
+            elif isinstance(update, FieldAppend):
+                if self.document is None:
+                    continue
+                current = self.document.fields[update.field_id]
+                self.document.fields[update.field_id] = current.append(
+                    update.append_dim,
+                    update.values,
+                    update.coord_values,
+                    max_length=update.max_length,
+                    attrs_update=update.attrs_update,
+                )
+                if self.refresh_planner is not None:
+                    pending_targets.update(self.refresh_planner.targets_for_field_update(update.field_id))
             elif isinstance(update, DocumentPatch):
                 if self.document is None:
                     continue
-                targets: set[RefreshTarget] = set()
                 for view_id, patch in update.view_updates.items():
                     self.document.replace_view(view_id, patch)
                     if self.refresh_planner is not None:
-                        targets.update(self.refresh_planner.targets_for_view_patch(view_id, set(patch.keys())))
+                        pending_targets.update(self.refresh_planner.targets_for_view_patch(view_id, set(patch.keys())))
                 for control_id, patch in update.control_updates.items():
                     self.document.replace_control(control_id, patch)
-                    targets.add(RefreshTarget.CONTROLS)
+                    pending_targets.add(RefreshTarget.CONTROLS)
                 self.document.metadata.update(update.metadata_updates)
-                self._apply_refresh_targets(targets)
             else:
-                message = getattr(update, "message", str(update))
-                self.statusBar().showMessage(message)
+                pending_status = getattr(update, "message", str(update))
+        if pending_targets:
+            self._apply_refresh_targets(pending_targets)
+        if pending_status is not None:
+            self.statusBar().showMessage(pending_status)
 
     def _on_entity_selected(self, entity_id: str) -> None:
         self.state["selected_entity_id"] = entity_id
@@ -412,6 +433,17 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 if isinstance(geometry, MorphologyGeometry) and entity_id in geometry.entity_ids:
                     self.state["selected_entity_label"] = geometry.label_for(entity_id)
                     break
+            if self._invoke_interaction_entity_click(entity_id):
+                pass
+            elif self._active_selection_action_id is not None:
+                action = self.document.actions.get(self._active_selection_action_id)
+                if action is not None:
+                    payload = {
+                        key: resolve_value(value, self.state)
+                        for key, value in action.payload.items()
+                    }
+                    payload[action.selection_payload_key] = entity_id
+                    self._send_action(action, payload)
         if self.refresh_planner is not None:
             self._apply_refresh_targets(self.refresh_planner.targets_for_state_change("selected_entity_id"))
 
@@ -422,10 +454,87 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if self.refresh_planner is not None:
             self._apply_refresh_targets(self.refresh_planner.targets_for_state_change(control.resolved_state_key()))
 
+    def _on_action_invoked(self, action, payload: dict[str, Any]) -> None:
+        if self._invoke_interaction_action(action.id, payload):
+            return
+        if action.selection_mode:
+            self._toggle_selection_action_mode(action)
+            return
+        self._send_action(action, payload)
+
+    def _send_action(self, action, payload: dict[str, Any]) -> None:
+        if self.transport is not None:
+            self.transport.send_command(InvokeAction(action.id, payload))
+
     def keyPressEvent(self, event) -> None:
+        key_text = self._event_key_text(event)
+        if key_text and self._invoke_interaction_key_press(key_text):
+            event.accept()
+            return
+        if self.document is not None:
+            matched_action = self._action_for_event(event)
+            if matched_action is not None:
+                payload = {
+                    key: resolve_value(value, self.state)
+                    for key, value in matched_action.payload.items()
+                }
+                self._on_action_invoked(matched_action, payload)
+                event.accept()
+                return
         if event.key() == Qt.Key.Key_Space and self.transport is not None:
             self.transport.send_command(Reset())
         super().keyPressEvent(event)
+
+    def _action_for_event(self, event: QtGui.QKeyEvent):
+        if self.document is None:
+            return None
+        pressed = self._event_key_text(event)
+        for action_id in self.document.layout.action_ids:
+            action = self.document.actions.get(action_id)
+            if action is None:
+                continue
+            for shortcut in action.shortcuts:
+                normalized = QtGui.QKeySequence(shortcut).toString(QtGui.QKeySequence.SequenceFormat.PortableText)
+                if normalized and normalized == pressed:
+                    return action
+        return None
+
+    def _toggle_selection_action_mode(self, action) -> None:
+        if self._active_selection_action_id == action.id:
+            self._active_selection_action_id = None
+            self.statusBar().showMessage(f"{action.label} mode OFF")
+            return
+        self._active_selection_action_id = action.id
+        self.statusBar().showMessage(f"{action.label} mode ON: click a segment to apply")
+
+    def _event_key_text(self, event: QtGui.QKeyEvent) -> str:
+        return QtGui.QKeySequence(event.modifiers().value | event.key()).toString(
+            QtGui.QKeySequence.SequenceFormat.PortableText
+        )
+
+    def _interaction_context(self) -> "FrontendInteractionContext":
+        return FrontendInteractionContext(self)
+
+    def _invoke_interaction_action(self, action_id: str, payload: dict[str, Any]) -> bool:
+        target = self.interaction_target
+        handler = getattr(target, "on_action", None)
+        if handler is None:
+            return False
+        return bool(handler(action_id, payload, self._interaction_context()))
+
+    def _invoke_interaction_key_press(self, key: str) -> bool:
+        target = self.interaction_target
+        handler = getattr(target, "on_key_press", None)
+        if handler is None:
+            return False
+        return bool(handler(key, self._interaction_context()))
+
+    def _invoke_interaction_entity_click(self, entity_id: str) -> bool:
+        target = self.interaction_target
+        handler = getattr(target, "on_entity_clicked", None)
+        if handler is None:
+            return False
+        return bool(handler(entity_id, self._interaction_context()))
 
     def closeEvent(self, event) -> None:
         self.timer.stop()
@@ -444,6 +553,69 @@ def binding_key(value) -> str | None:
     if isinstance(value, StateBinding):
         return value.key
     return None
+
+
+class FrontendInteractionContext:
+    def __init__(self, window: VispyFrontendWindow):
+        self.window = window
+
+    @property
+    def document(self) -> Document | None:
+        return self.window.document
+
+    @property
+    def selected_entity_id(self) -> str | None:
+        value = self.window.state.get("selected_entity_id")
+        return str(value) if value is not None else None
+
+    def state(self, key: str, default: Any = None) -> Any:
+        return self.window.state.get(key, default)
+
+    def entity_info(self, entity_id: str | None = None) -> dict[str, Any] | None:
+        current_id = entity_id or self.selected_entity_id
+        if current_id is None or self.window.document is None:
+            return None
+        for geometry in self.window.document.geometries.values():
+            if not isinstance(geometry, MorphologyGeometry):
+                continue
+            try:
+                return geometry.entity_info(current_id)
+            except KeyError:
+                continue
+        return None
+
+    def set_state(self, key: str, value: Any) -> None:
+        self.window.state[key] = value
+        if self.window.refresh_planner is not None:
+            self.window._apply_refresh_targets(self.window.refresh_planner.targets_for_state_change(key))
+
+    def show_status(self, message: str, timeout_ms: int | None = None) -> None:
+        self.window.statusBar().showMessage(message)
+        if timeout_ms is not None:
+            QtCore.QTimer.singleShot(timeout_ms, self.window.statusBar().clearMessage)
+
+    def clear_status(self) -> None:
+        self.window.statusBar().clearMessage()
+
+    def invoke_action(self, action_id: str, payload: dict[str, Any] | None = None) -> None:
+        if self.window.document is None:
+            return
+        action = self.window.document.actions.get(action_id)
+        if action is None:
+            return
+        resolved_payload = payload if payload is not None else {
+            key: resolve_value(value, self.window.state)
+            for key, value in action.payload.items()
+        }
+        self.window._send_action(action, resolved_payload)
+
+    def set_control(self, control_id: str, value: Any) -> None:
+        if self.window.document is None:
+            return
+        control = self.window.document.controls.get(control_id)
+        if control is None:
+            return
+        self.window._on_control_changed(control, value)
 
 
 def run_app(app_spec: AppSpec) -> None:

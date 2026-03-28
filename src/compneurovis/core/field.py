@@ -76,12 +76,96 @@ class Field:
             attrs=merged_attrs,
         )
 
-    def resolve_indexer(self, dim: str, selector: Any) -> int | slice:
+    def append(
+        self,
+        dim: str,
+        values: np.ndarray,
+        coord_values: np.ndarray,
+        *,
+        max_length: int | None = None,
+        attrs_update: Mapping[str, Any] | None = None,
+    ) -> Field:
+        axis = self.axis_index(dim)
+        append_values = np.asarray(values)
+        append_coords = _coerce_coord(coord_values)
+
+        if append_values.ndim != self.values.ndim:
+            raise ValueError(
+                f"Field '{self.id}' append values must have ndim {self.values.ndim}, "
+                f"got {append_values.ndim}"
+            )
+        if append_values.shape[axis] != len(append_coords):
+            raise ValueError(
+                f"Field '{self.id}' append coord '{dim}' has length {len(append_coords)}, "
+                f"expected {append_values.shape[axis]}"
+            )
+        for other_axis, other_dim in enumerate(self.dims):
+            if other_axis == axis:
+                continue
+            if append_values.shape[other_axis] != self.values.shape[other_axis]:
+                raise ValueError(
+                    f"Field '{self.id}' append shape mismatch on dim '{other_dim}': "
+                    f"{append_values.shape[other_axis]} != {self.values.shape[other_axis]}"
+                )
+
+        new_values = np.concatenate([self.values, append_values], axis=axis)
+        new_coords = dict(self.coords)
+        new_coords[dim] = np.concatenate([self.coords[dim], append_coords], axis=0)
+
+        if max_length is not None and max_length >= 0 and new_values.shape[axis] > max_length:
+            start = new_values.shape[axis] - int(max_length)
+            slicers = [slice(None)] * new_values.ndim
+            slicers[axis] = slice(start, None)
+            new_values = new_values[tuple(slicers)]
+            new_coords[dim] = new_coords[dim][start:]
+
+        merged_attrs = dict(self.attrs)
+        if attrs_update:
+            merged_attrs.update(attrs_update)
+
+        return Field(
+            id=self.id,
+            values=new_values,
+            dims=self.dims,
+            coords=new_coords,
+            unit=self.unit,
+            attrs=merged_attrs,
+        )
+
+    def resolve_indexer(self, dim: str, selector: Any) -> int | slice | np.ndarray:
         coord = self.coord(dim)
         if isinstance(selector, slice):
             return selector
         if isinstance(selector, (int, np.integer)):
             return int(selector)
+        if isinstance(selector, (list, tuple, np.ndarray)):
+            selector_array = np.asarray(selector)
+            if selector_array.ndim != 1:
+                raise TypeError(
+                    f"Unsupported selector shape {selector_array.shape!r} for field '{self.id}' dim '{dim}'"
+                )
+            if selector_array.size == 0:
+                return np.asarray([], dtype=np.int32)
+            if np.issubdtype(selector_array.dtype, np.integer):
+                return selector_array.astype(np.int32)
+            if np.issubdtype(selector_array.dtype, np.floating):
+                if not np.issubdtype(coord.dtype, np.number):
+                    raise TypeError(
+                        f"Field '{self.id}' coord '{dim}' is not numeric, cannot resolve float selectors"
+                    )
+                indices = [int(np.argmin(np.abs(coord.astype(float) - float(value)))) for value in selector_array]
+                return np.asarray(indices, dtype=np.int32)
+            selector_strings = selector_array.astype(str)
+            resolved = []
+            coord_strings = coord.astype(str)
+            for value in selector_strings:
+                matches = np.where(coord_strings == value)[0]
+                if not len(matches):
+                    raise KeyError(
+                        f"Field '{self.id}' coord '{dim}' does not contain label '{value}'"
+                    )
+                resolved.append(int(matches[0]))
+            return np.asarray(resolved, dtype=np.int32)
         if isinstance(selector, str):
             matches = np.where(coord.astype(str) == selector)[0]
             if not len(matches):
@@ -100,24 +184,26 @@ class Field:
         )
 
     def select(self, selectors: Mapping[str, Any]) -> Field:
-        indexers: list[Any] = [slice(None)] * len(self.dims)
         remaining_dims: list[str] = list(self.dims)
         remaining_coords = dict(self.coords)
+        values = self.values
 
         for dim, selector in selectors.items():
-            axis = self.axis_index(dim)
+            axis = remaining_dims.index(dim)
             indexer = self.resolve_indexer(dim, selector)
-            indexers[axis] = indexer
-            if not isinstance(indexer, slice):
-                remaining_dims.remove(dim)
-                remaining_coords.pop(dim, None)
-
-        values = self.values[tuple(indexers)]
-
-        for dim, indexer in selectors.items():
-            axis = self.axis_index(dim)
             if isinstance(indexer, slice):
+                slicers = [slice(None)] * values.ndim
+                slicers[axis] = indexer
+                values = values[tuple(slicers)]
                 remaining_coords[dim] = remaining_coords[dim][indexer]
+                continue
+            if isinstance(indexer, np.ndarray):
+                values = np.take(values, indexer, axis=axis)
+                remaining_coords[dim] = remaining_coords[dim][indexer]
+                continue
+            values = np.take(values, indexer, axis=axis)
+            remaining_dims.remove(dim)
+            remaining_coords.pop(dim, None)
 
         ordered_coords = {dim: remaining_coords[dim] for dim in remaining_dims}
         return Field(
@@ -128,4 +214,3 @@ class Field:
             unit=self.unit,
             attrs=dict(self.attrs),
         )
-

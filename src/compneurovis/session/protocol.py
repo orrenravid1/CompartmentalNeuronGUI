@@ -54,6 +54,16 @@ class FieldUpdate(SessionUpdate):
 
 
 @dataclass(frozen=True, slots=True)
+class FieldAppend(SessionUpdate):
+    field_id: str
+    append_dim: str
+    values: np.ndarray
+    coord_values: np.ndarray
+    max_length: int | None = None
+    attrs_update: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class DocumentPatch(SessionUpdate):
     view_updates: dict[str, dict[str, Any]] = field(default_factory=dict)
     control_updates: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -68,4 +78,3 @@ class Status(SessionUpdate):
 @dataclass(frozen=True, slots=True)
 class Error(SessionUpdate):
     message: str
-

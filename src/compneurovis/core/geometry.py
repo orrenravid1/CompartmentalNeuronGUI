@@ -68,6 +68,16 @@ class MorphologyGeometry(Geometry):
     def label_for(self, entity_id: str) -> str:
         return self.labels[self.entity_index(entity_id)]
 
+    def entity_info(self, entity_id: str) -> dict[str, Any]:
+        idx = self.entity_index(str(entity_id))
+        return {
+            "index": idx,
+            "entity_id": self.entity_ids[idx],
+            "section_name": self.section_names[idx],
+            "xloc": float(self.xlocs[idx]),
+            "label": self.labels[idx],
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class GridGeometry(Geometry):
@@ -90,4 +100,3 @@ class GridGeometry(Geometry):
         object.__setattr__(self, "dims", dims)
         object.__setattr__(self, "coords", coords)
         object.__setattr__(self, "metadata", dict(self.metadata))
-

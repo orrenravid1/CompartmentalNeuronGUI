@@ -67,3 +67,9 @@ class LinePlotViewSpec(ViewSpec):
     background_color: ValueOrBinding = "w"
     show_legend: bool = True
     series_colors: dict[str, ValueOrBinding] = field(default_factory=dict)
+    rolling_window: float | None = None
+    trim_to_rolling_window: bool = False
+    y_min: float | None = None
+    y_max: float | None = None
+    x_major_tick_spacing: float | None = None
+    x_minor_tick_spacing: float | None = None

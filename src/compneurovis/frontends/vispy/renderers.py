@@ -280,15 +280,20 @@ class MorphologyRenderer:
         cap.instance_colors = self.id_colors_caps
         img = canvas.render(region=(xf, yf, 1, 1), size=(1, 1), alpha=False)
         side.instance_colors, cap.instance_colors = old_side, old_cap
-
-        pix = img[0, 0]
-        if pix.dtype != np.uint8:
-            pix = np.round(pix * 255).astype(int)
-        cid = int(pix[0]) | (int(pix[1]) << 8) | (int(pix[2]) << 16)
-        idx = cid - 1 if cid > 0 else None
+        idx = self._decode_pick_index(img)
         if idx is None or idx >= len(self.geometry.entity_ids):
             return None
         return self.geometry.entity_ids[idx]
+
+    def _decode_pick_index(self, img: np.ndarray) -> int | None:
+        pixels = np.asarray(img)
+        if pixels.ndim != 3 or pixels.shape[2] < 3 or pixels.shape[0] == 0 or pixels.shape[1] == 0:
+            return None
+        if pixels.dtype != np.uint8:
+            pixels = np.round(pixels * 255).astype(np.uint8)
+        pix = pixels[0, 0]
+        cid = int(pix[0]) | (int(pix[1]) << 8) | (int(pix[2]) << 16)
+        return cid - 1 if cid > 0 else None
 
     def update_colors(self, data: np.ndarray, color_map: str) -> None:
         if self.collection is None:

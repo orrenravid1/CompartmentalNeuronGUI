@@ -5,5 +5,4 @@ from compneurovis.core import AppSpec
 
 
 def build_neuron_app(session: NeuronSession, *, title: str | None = None) -> AppSpec:
-    return AppSpec(document=None, session=session, title=title or session.title)
-
+    return AppSpec(document=None, session=session, interaction_target=session, title=title or session.title)

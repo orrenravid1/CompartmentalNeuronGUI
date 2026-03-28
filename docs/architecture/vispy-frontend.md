@@ -1,28 +1,84 @@
 ---
 title: VisPy Frontend
-summary: Current frontend structure and the responsibilities of panels and renderers.
+summary: Panel structure, refresh planning, state binding, interaction hooks, and how to extend the frontend.
 ---
 
 # VisPy Frontend
 
-The current frontend is intentionally simple:
+The frontend is `VispyFrontendWindow` (a `QMainWindow`) with three panels:
 
-- `Viewport3DPanel` renders morphology or surfaces
-- `LinePlotPanel` renders field slices as 2D traces, including multi-series fields
-- `ControlsPanel` owns frontend state changes and optional session control dispatch
-- `VispyFrontendWindow` coordinates document loading, transport polling, refresh planning, and targeted panel invalidation
+| Panel | Class | Responsibility |
+|---|---|---|
+| 3D viewport | `Viewport3DPanel` | Renders morphology (capped cylinders) or surface mesh; handles entity picking |
+| Line plot | `LinePlotPanel` | Renders 1-D slices or multi-series traces via pyqtgraph |
+| Controls | `ControlsPanel` | Renders sliders, spinboxes, dropdowns; emits `SetControl` on change |
 
-Selection is frontend state, not backend state.
+Layout is driven by `LayoutSpec`. If `main_3d_view_id` is `None`, the viewport is hidden and the right panel fills the window.
 
-Performance-sensitive updates use explicit refresh targets rather than a whole-window redraw. The current invalidation split is:
+## Refresh Planning
 
-- morphology refresh
-- surface visual refresh
-- surface axes refresh
-- surface slice overlay refresh
-- line-plot refresh
-- controls refresh
+The frontend never redraws everything on every update. `RefreshPlanner` maps incoming changes to a minimal set of `RefreshTarget`s:
 
-This keeps common interactions narrow. For example, changing the cross-section slider updates the slice overlay and the derived line plot, but does not rebuild the surface mesh.
+```
+CONTROLS        — ControlsPanel
+MORPHOLOGY      — Viewport3DPanel (morphology path)
+SURFACE_VISUAL  — Viewport3DPanel (surface mesh + colormap)
+SURFACE_AXES    — Viewport3DPanel (axes overlay)
+SURFACE_SLICE   — Viewport3DPanel (slice plane overlay)
+LINE_PLOT       — LinePlotPanel
+```
 
-If a document omits `main_3d_view_id`, the frontend collapses to a plot-and-controls layout instead of reserving empty space for a hidden viewport.
+Three trigger sources:
+
+- **`FieldUpdate` / `FieldAppend`** → `targets_for_field_update(field_id)`: marks whichever panels reference that field
+- **State change** (control moved, entity clicked) → `targets_for_state_change(state_key)`: marks panels with a `StateBinding` on that key
+- **`DocumentPatch`** → `targets_for_view_patch(view_id, changed_props)`: marks panels based on which props changed
+
+The full refresh on `DocumentReady` marks every target that the current document's layout requires.
+
+## State and StateBinding
+
+The frontend holds a `state: dict[str, Any]` that maps string keys to values. Controls, selections, and slice positions all live here.
+
+`StateBinding(key)` is a placeholder on a `ViewSpec` property that defers to `state[key]` at render time:
+
+```python
+SurfaceViewSpec(
+    ...
+    background_color=StateBinding("background_color"),  # resolved at refresh
+    tick_count=StateBinding("tick_count"),
+)
+```
+
+At refresh, `resolve_value(view_prop, state)` replaces any `StateBinding` with its current value. This is how controls drive visual properties without the backend being involved.
+
+## Interaction Hooks
+
+When a `Session` (or custom `interaction_target`) implements these methods, the frontend calls them on the corresponding events:
+
+```python
+def on_entity_clicked(self, entity_id: str, ctx: FrontendInteractionContext) -> bool: ...
+def on_key_press(self, key: str, ctx: FrontendInteractionContext) -> bool: ...
+def on_action(self, action_id: str, payload: dict, ctx: FrontendInteractionContext) -> bool: ...
+```
+
+Return `True` to consume the event (prevents default handling). `FrontendInteractionContext` provides:
+- `ctx.document` — current Document
+- `ctx.selected_entity_id` — currently selected entity
+- `ctx.entity_info(entity_id)` — section name, xloc, label
+- `ctx.set_state(key, value)` — set frontend state and trigger refresh
+- `ctx.show_status(message)` — status bar message
+- `ctx.invoke_action(action_id, payload)` — programmatically fire an action
+- `ctx.set_control(control_id, value)` — programmatically change a control
+
+## Adding a New Panel
+
+See the `add-view-panel` skill for the full workflow. The key steps:
+
+1. Add a `ViewSpec` subclass in `src/compneurovis/core/views.py`
+2. Add `RefreshTarget` entries in `frontend.py` and extend `RefreshPlanner` property sets
+3. Implement the panel in `src/compneurovis/frontends/vispy/panels.py`
+4. Add a `_refresh_<panel>()` method in `VispyFrontendWindow` and call it from `_apply_refresh_targets()`
+5. Wire visibility into `_update_panel_visibility()` and `LayoutSpec` as needed
+
+Reference: `MorphologyRenderer` and `SurfaceRenderer` in `src/compneurovis/frontends/vispy/renderers.py`.

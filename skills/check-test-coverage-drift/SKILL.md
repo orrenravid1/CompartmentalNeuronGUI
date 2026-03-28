@@ -5,8 +5,6 @@ description: Audit whether a CompNeuroVis change set is still covered by the cur
 
 # Check Test Coverage Drift
 
-Read `AGENTS.md` first.
-
 Run this workflow after implementation changes and before calling a change PR-ready.
 
 1. Identify the touched code paths and the user-visible behavior or invariants they changed.

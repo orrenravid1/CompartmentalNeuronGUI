@@ -15,6 +15,7 @@ class LayoutSpec:
     main_3d_view_id: str | None = None
     line_plot_view_id: str | None = None
     control_ids: tuple[str, ...] = ()
+    action_ids: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -36,6 +37,8 @@ class Document:
         self.metadata = dict(self.metadata)
         if not self.layout.control_ids:
             self.layout.control_ids = tuple(self.controls.keys())
+        if not self.layout.action_ids:
+            self.layout.action_ids = tuple(self.actions.keys())
 
     def replace_view(self, view_id: str, updates: dict[str, Any]) -> None:
         self.views[view_id] = replace(self.views[view_id], **updates)
@@ -48,5 +51,5 @@ class Document:
 class AppSpec:
     document: Document | None = None
     session: Any = None
+    interaction_target: Any = None
     title: str | None = None
-

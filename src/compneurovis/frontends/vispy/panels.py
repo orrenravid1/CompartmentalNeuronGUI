@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any
 
 import numpy as np
@@ -10,7 +11,7 @@ from PyQt6.QtCore import Qt
 from vispy import scene
 from vispy.scene.cameras import TurntableCamera
 
-from compneurovis.core.controls import ControlSpec
+from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
 from compneurovis.core.state import StateBinding
@@ -213,13 +214,14 @@ class LinePlotPanel(pg.PlotWidget):
         self.setBackground("w")
         self._plot_item = self.plot([], [], pen="k")
         self._series_items: dict[str, pg.PlotDataItem] = {}
-        self._legend_added = False
+        self._legend_signature: tuple[str, ...] | None = None
 
     def refresh(self, view: LinePlotViewSpec | None, field: Field | None, state: dict[str, Any], geometry_lookup: dict[str, MorphologyGeometry]) -> None:
         if view is None or field is None:
             self._clear_series()
             self._plot_item.setData([], [])
             self.setTitle("")
+            self._reset_view_ranges()
             return
 
         background = resolve_binding(view.background_color, state)
@@ -233,12 +235,14 @@ class LinePlotPanel(pg.PlotWidget):
                 self._plot_item.setData([], [])
                 return
             x, y, x_dim, slice_dim, slice_value = line
+            x, y = self._trim_line_data(view, x, y)
             self.setLabel("bottom", x_dim, view.x_unit)
             self.setLabel("left", view.y_label, view.y_unit)
             title = view.title or field.id
             self.setTitle(f"{title} at {slice_dim} = {slice_value:.3f}")
             self._plot_item.setPen(pg.mkPen(resolve_binding(view.pen, state), width=2))
             self._plot_item.setData(x, y)
+            self._apply_view_ranges(view, x)
             return
 
         resolved_selectors = {}
@@ -262,6 +266,7 @@ class LinePlotPanel(pg.PlotWidget):
 
         x = np.asarray(sliced.coord(x_dim), dtype=np.float32)
         y = np.asarray(sliced.values, dtype=np.float32)
+        x, y = self._trim_line_data(view, x, y)
         self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
         self.setLabel("left", view.y_label, view.y_unit)
         title = view.title or field.id
@@ -274,6 +279,7 @@ class LinePlotPanel(pg.PlotWidget):
         self.setTitle(title)
         self._plot_item.setPen(pg.mkPen(resolve_binding(view.pen, state), width=2))
         self._plot_item.setData(x, y)
+        self._apply_view_ranges(view, x)
 
     def _ensure_legend(self, enabled: bool) -> None:
         if enabled and self.plotItem.legend is None:
@@ -281,6 +287,7 @@ class LinePlotPanel(pg.PlotWidget):
         elif not enabled and self.plotItem.legend is not None:
             self.plotItem.legend.scene().removeItem(self.plotItem.legend)
             self.plotItem.legend = None
+            self._legend_signature = None
 
     def _clear_series(self) -> None:
         if self._series_items:
@@ -289,6 +296,7 @@ class LinePlotPanel(pg.PlotWidget):
             self._series_items.clear()
         if self.plotItem.legend is not None:
             self.plotItem.legend.clear()
+        self._legend_signature = None
 
     def _refresh_series(self, view: LinePlotViewSpec, field: Field, x_dim: str, state: dict[str, Any]) -> None:
         series_dim = view.series_dim
@@ -306,6 +314,7 @@ class LinePlotPanel(pg.PlotWidget):
 
         x = np.asarray(field.coord(x_dim), dtype=np.float32)
         series_labels = [str(label) for label in field.coord(series_dim)]
+        x, values = self._trim_series_data(view, x, values)
         self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
         self.setLabel("left", view.y_label, view.y_unit)
         self.setTitle(view.title or field.id)
@@ -315,9 +324,6 @@ class LinePlotPanel(pg.PlotWidget):
         for label in stale:
             self.removeItem(self._series_items[label])
             del self._series_items[label]
-
-        if self.plotItem.legend is not None:
-            self.plotItem.legend.clear()
 
         for idx, label in enumerate(series_labels):
             color = view.series_colors.get(label, view.pen)
@@ -329,20 +335,134 @@ class LinePlotPanel(pg.PlotWidget):
             else:
                 item.setPen(pen)
             item.setData(x, values[idx])
-            if self.plotItem.legend is not None:
-                self.plotItem.legend.addItem(item, label)
+        if self.plotItem.legend is not None:
+            legend_signature = tuple(series_labels)
+            if legend_signature != self._legend_signature:
+                self.plotItem.legend.clear()
+                for label in series_labels:
+                    self.plotItem.legend.addItem(self._series_items[label], label)
+                self._legend_signature = legend_signature
+        else:
+            self._legend_signature = None
+        self._apply_view_ranges(view, x)
+
+    def _reset_view_ranges(self) -> None:
+        vb = self.plotItem.getViewBox()
+        vb.enableAutoRange(x=True, y=True)
+        vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+        self._reset_tick_spacing()
+
+    def _apply_view_ranges(self, view: LinePlotViewSpec, x: np.ndarray) -> None:
+        vb = self.plotItem.getViewBox()
+        xmin = 0.0
+        xmax = 0.0
+
+        if view.y_min is not None or view.y_max is not None:
+            y_min = view.y_min
+            y_max = view.y_max
+            vb.enableAutoRange(y=False)
+            vb.setLimits(yMin=y_min, yMax=y_max)
+            if y_min is not None and y_max is not None:
+                vb.setYRange(float(y_min), float(y_max), padding=0)
+        else:
+            vb.enableAutoRange(y=True)
+            vb.setLimits(yMin=None, yMax=None)
+
+        if view.rolling_window is not None and len(x):
+            xmax = float(x[-1])
+            xmin = xmax - float(view.rolling_window)
+            vb.enableAutoRange(x=False)
+            vb.setXRange(xmin, xmax, padding=0)
+        else:
+            if len(x):
+                xmin = float(np.min(x))
+                xmax = float(np.max(x))
+            vb.enableAutoRange(x=True)
+            vb.setLimits(xMin=None, xMax=None)
+
+        self._apply_tick_spacing(view, xmin, xmax)
+
+    def _trim_line_data(self, view: LinePlotViewSpec, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        if not view.trim_to_rolling_window or view.rolling_window is None or len(x) == 0:
+            return x, y
+        xmin = float(x[-1]) - float(view.rolling_window)
+        mask = x >= xmin
+        return x[mask], y[mask]
+
+    def _trim_series_data(
+        self,
+        view: LinePlotViewSpec,
+        x: np.ndarray,
+        values: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        if not view.trim_to_rolling_window or view.rolling_window is None or len(x) == 0:
+            return x, values
+        xmin = float(x[-1]) - float(view.rolling_window)
+        mask = x >= xmin
+        return x[mask], values[:, mask]
+
+    def _apply_tick_spacing(self, view: LinePlotViewSpec, xmin: float, xmax: float) -> None:
+        axis = self.plotItem.getAxis("bottom")
+        if view.x_major_tick_spacing is not None or view.x_minor_tick_spacing is not None:
+            major = view.x_major_tick_spacing
+            minor = view.x_minor_tick_spacing
+            if minor is None and major is not None:
+                minor = major / 5.0
+            axis.setTicks(self._manual_tick_levels(xmin, xmax, major, minor))
+        else:
+            self._reset_tick_spacing()
+
+    def _reset_tick_spacing(self) -> None:
+        axis = self.plotItem.getAxis("bottom")
+        axis.setTicks(None)
+        axis.setTickSpacing()
+
+    def _manual_tick_levels(self, xmin: float, xmax: float, major: float | None, minor: float | None):
+        if major is None:
+            return None
+        if xmax < xmin:
+            xmin, xmax = xmax, xmin
+        major_ticks = self._build_tick_values(xmin, xmax, major)
+        minor_ticks = self._build_tick_values(xmin, xmax, minor) if minor is not None and minor > 0 else []
+        major_values = {round(value, 9) for value in major_ticks}
+        minor_ticks = [value for value in minor_ticks if round(value, 9) not in major_values]
+        return [
+            [(value, self._format_tick_label(value, major)) for value in major_ticks],
+            [(value, "") for value in minor_ticks],
+        ]
+
+    def _build_tick_values(self, xmin: float, xmax: float, spacing: float | None) -> list[float]:
+        if spacing is None or spacing <= 0:
+            return []
+        start = math.ceil((xmin - 1e-9) / spacing) * spacing
+        values = []
+        value = start
+        while value <= xmax + 1e-9:
+            values.append(round(value, 9))
+            value += spacing
+        return values
+
+    def _format_tick_label(self, value: float, spacing: float) -> str:
+        if spacing >= 1 and abs(value - round(value)) < 1e-9:
+            return str(int(round(value)))
+        decimals = max(0, min(6, int(math.ceil(-math.log10(spacing))) if spacing < 1 else 0))
+        text = f"{value:.{decimals}f}"
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text
 
 
 class ControlsPanel(QtWidgets.QWidget):
-    def __init__(self, on_value_changed, parent=None):
+    def __init__(self, on_value_changed, on_action_invoked=None, parent=None):
         super().__init__(parent)
         self.on_value_changed = on_value_changed
+        self.on_action_invoked = on_action_invoked
         self.widgets: dict[str, QtWidgets.QWidget] = {}
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.setContentsMargins(6, 6, 6, 6)
         self.layout.setSpacing(6)
 
-    def set_controls(self, controls: list[ControlSpec], state: dict[str, Any]) -> None:
+    def set_controls(self, controls: list[ControlSpec], actions: list[ActionSpec], state: dict[str, Any]) -> None:
         while self.layout.count():
             item = self.layout.takeAt(0)
             widget = item.widget()
@@ -419,7 +539,31 @@ class ControlsPanel(QtWidgets.QWidget):
 
             self.layout.addWidget(row)
 
+        if actions:
+            if controls:
+                divider = QtWidgets.QFrame()
+                divider.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+                divider.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+                self.layout.addWidget(divider)
+
+            for action in actions:
+                button = QtWidgets.QPushButton(action.label)
+                button.clicked.connect(lambda _checked=False, spec=action: self._invoke_action(spec, state))
+                if action.shortcuts:
+                    button.setToolTip(f"Shortcut: {', '.join(action.shortcuts)}")
+                self.layout.addWidget(button)
+                self.widgets[action.id] = button
+
         self.layout.addStretch(1)
+
+    def _invoke_action(self, action: ActionSpec, state: dict[str, Any]) -> None:
+        if self.on_action_invoked is None:
+            return
+        payload = {
+            key: resolve_binding(value, state)
+            for key, value in action.payload.items()
+        }
+        self.on_action_invoked(action, payload)
 
 
 def resolve_binding(value, state: dict[str, Any]):

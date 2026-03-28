@@ -5,7 +5,7 @@ description: Debug dataflow, transport, and session/frontend integration issues 
 
 # Debug Protocol Dataflow
 
-Read `AGENTS.md` and `docs/architecture/session-protocol.md` first.
+Read `docs/architecture/session-protocol.md` first.
 
 Debug in this order:
 
