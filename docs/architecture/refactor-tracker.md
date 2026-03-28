@@ -67,8 +67,13 @@ Target outcomes:
 
 - generic layout system with a default arrangement and customizable panel composition
 - better builder/default APIs so domain users rarely touch document plumbing directly
+- tiered authoring surface:
+  - very declarative defaults for common scientific workflows
+  - light customization via small semantic hooks and callbacks
+  - full escape hatches for advanced users
 - cleaner interaction model based on strong defaults plus small semantic hooks
 - clearer plot/view composition model once multiple plot panels and more editor-like workflows are added
+- real research-facing examples such as signaling-cascade and pharynx scripts should read more like simple plotting or lightweight simulation code than frontend-framework code
 
 ### Phase 3: Alternate Frontends, Transports, and Editing Workflows
 
@@ -126,6 +131,8 @@ Target outcomes:
 
 - The internal architecture may use tools/controllers/manipulators, but the default user-facing API should not require users to think in those terms.
 - For the intended audience, custom interactions should be expressible with a few small callbacks and strong defaults.
+- The intended audience is closer to SciPy, matplotlib, NEURON, PyTorch, and Plotly users than engine/tool authors.
+- Public authoring should therefore optimize for declarative configuration plus small semantic callbacks, not explicit controller or document assembly.
 - The framework should expose semantic frontend hooks such as:
   - action/button invocation
   - key press
@@ -171,6 +178,9 @@ Target outcomes:
 - `Document`/`ViewSpec`/layout internals are acceptable framework building blocks, but they are too low-level as the primary authoring surface for domain users.
 - If a user has to override document construction just to reorder controls, tune the default trace plot, or express a simple click-mode workflow, the public API is still too exposed.
 - The default NEURON-style path should prefer small hook methods and simple overrides over forcing authors to manually assemble interaction machinery.
+- Refactored app examples should be treated as usability benchmarks:
+  - if a pharynx or signaling-cascade app still reads like framework plumbing, the public API is not done
+  - the target is code that feels comparable in complexity to a plotting script or a lightweight simulation harness
 
 ## Deferred Work
 
@@ -217,6 +227,8 @@ Target outcomes:
   - keep richer controller/tool internals available
   - prefer callback-driven or declarative-simple interaction hooks for common app authoring
   - avoid baking one workflow model into `ActionSpec`
+- Near-term priority:
+  - simplify the public NEURON-facing authoring layer so real apps like the pharynx workflow can be expressed with mostly defaults, concise configuration, and small semantic callbacks
 
 ## Open Questions
 
