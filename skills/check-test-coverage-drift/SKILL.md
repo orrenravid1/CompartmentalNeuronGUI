@@ -23,6 +23,7 @@ Run this workflow after implementation changes and before calling a change PR-re
 4. Add or update tests when a change introduces new branches, new public contracts, or new failure modes.
 5. Run the smallest meaningful verification first, then expand:
    - targeted `pytest` modules
+   - optional backend suites such as `pytest --run-jaxley tests/test_jaxley_backend.py` when the change touches that backend
    - `pytest`
    - `python -m compileall src examples tests`
 

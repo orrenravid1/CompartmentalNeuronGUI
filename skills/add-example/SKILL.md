@@ -9,6 +9,7 @@ Reference implementations: `examples/static_surface_visualizer.py` (static) and 
 
 1. Place the file under `examples/`:
    - `examples/neuron/` for NEURON-backed live examples
+   - `examples/jaxley/` for Jaxley-backed live examples
    - `examples/` root for static or replay examples
 
 2. Structure the file in this order:

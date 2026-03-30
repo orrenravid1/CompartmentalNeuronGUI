@@ -49,3 +49,13 @@ except Exception:  # pragma: no cover - optional import
     build_neuron_app = None
 else:
     __all__.extend(["NeuronDocumentBuilder", "NeuronSession", "build_neuron_app"])
+
+try:  # optional backend dependency
+    from compneurovis.backends.jaxley import JaxleyDocumentBuilder, JaxleySession
+    from compneurovis.builders.jaxley import build_jaxley_app
+except Exception:  # pragma: no cover - optional import
+    JaxleyDocumentBuilder = None
+    JaxleySession = None
+    build_jaxley_app = None
+else:
+    __all__.extend(["JaxleyDocumentBuilder", "JaxleySession", "build_jaxley_app"])

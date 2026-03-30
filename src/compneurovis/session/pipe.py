@@ -81,6 +81,7 @@ class PipeTransport(QtCore.QObject):
         super().__init__(parent)
         self.session = session
         self._mode = "pipe"
+        self._dead = False
         self._children = ()
         self.thread = None
         self._stop_event = None
@@ -116,8 +117,14 @@ class PipeTransport(QtCore.QObject):
     def poll_updates(self) -> list[SessionUpdate]:
         updates: list[SessionUpdate] = []
         if self._mode == "pipe":
-            while self.update_parent.poll():
-                updates.append(self.update_parent.recv())
+            if self._dead:
+                return updates
+            try:
+                while self.update_parent.poll():
+                    updates.append(self.update_parent.recv())
+            except (BrokenPipeError, EOFError, OSError) as exc:
+                self._dead = True
+                updates.append(Error(f"Worker process ended unexpectedly: {exc}"))
         else:
             while True:
                 try:

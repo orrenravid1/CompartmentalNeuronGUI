@@ -8,10 +8,14 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 ## Packages
 - `src/compneurovis/__init__.py`
 - `src/compneurovis/backends/__init__.py`
+- `src/compneurovis/backends/jaxley/__init__.py`
+- `src/compneurovis/backends/jaxley/document.py`
+- `src/compneurovis/backends/jaxley/session.py`
 - `src/compneurovis/backends/neuron/__init__.py`
 - `src/compneurovis/backends/neuron/document.py`
 - `src/compneurovis/backends/neuron/session.py`
 - `src/compneurovis/builders/__init__.py`
+- `src/compneurovis/builders/jaxley.py`
 - `src/compneurovis/builders/neuron.py`
 - `src/compneurovis/builders/replay.py`
 - `src/compneurovis/builders/surface.py`
@@ -27,6 +31,9 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/frontends/vispy/frontend.py`
 - `src/compneurovis/frontends/vispy/panels.py`
 - `src/compneurovis/frontends/vispy/renderers.py`
+- `src/compneurovis/jaxleyutils/__init__.py`
+- `src/compneurovis/jaxleyutils/layout.py`
+- `src/compneurovis/jaxleyutils/swc_utils.py`
 - `src/compneurovis/neuronutils/json_utils.py`
 - `src/compneurovis/neuronutils/layout.py`
 - `src/compneurovis/neuronutils/swc_utils.py`
@@ -37,6 +44,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/vispyutils/cappedcylindercollection.py`
 
 ## Examples
+- `examples/jaxley/multicell_example.py`
 - `examples/neuron/c_elegans_visualizer.py`
 - `examples/neuron/multicell_example.py`
 - `examples/neuron/visualizer_example.py`

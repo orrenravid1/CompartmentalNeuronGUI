@@ -10,7 +10,9 @@ CompNeuroVis is a neuroscience visualization toolkit with a core data model buil
 - `src/compneurovis/session`: session base classes, protocol types, and pipe transport
 - `src/compneurovis/frontends/vispy`: current frontend window, panels, and renderers
 - `src/compneurovis/backends/neuron`: live NEURON session and morphology document builder
+- `src/compneurovis/backends/jaxley`: live Jaxley session and morphology document builder
 - `src/compneurovis/builders`: high-level app builders for neuron, surface, and replay workflows
+- `src/compneurovis/jaxleyutils`: Jaxley-specific SWC, cache, and geometry helpers
 
 Read the package-local `README.md` in those directories before making structural changes there.
 
@@ -23,7 +25,8 @@ Key names:
 - Core types: `Field`, `Document`, `LayoutSpec`, `MorphologyGeometry`, `GridGeometry`
 - View types: `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
 - Backend/session: `NeuronSession`, `ReplaySession`
-- Builders: `build_neuron_app`, `build_surface_app`, `build_replay_app`, `grid_field`
+- Backend/session: `NeuronSession`, `JaxleySession`, `ReplaySession`
+- Builders: `build_neuron_app`, `build_jaxley_app`, `build_surface_app`, `build_replay_app`, `grid_field`
 - Frontend entrypoint: `run_app`
 
 ## Extension Points
@@ -37,7 +40,8 @@ Key names:
 
 - Install: `pip install -e .`
 - Compile check: `python -m compileall src examples`
-- Run tests: `pytest`
+- Run fast tests: `pytest`
+- Run Jaxley backend tests: `pytest --run-jaxley tests/test_jaxley_backend.py`
 - Check architecture invariants: `python scripts/check_architecture_invariants.py`
 - Regenerate reference indexes: `python scripts/generate_indexes.py`
 - Check generated indexes: `python scripts/generate_indexes.py --check`

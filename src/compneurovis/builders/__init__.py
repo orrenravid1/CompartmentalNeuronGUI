@@ -9,3 +9,10 @@ except Exception:  # pragma: no cover - optional import
     build_neuron_app = None
 else:
     __all__.append("build_neuron_app")
+
+try:  # optional backend dependency
+    from compneurovis.builders.jaxley import build_jaxley_app
+except Exception:  # pragma: no cover - optional import
+    build_jaxley_app = None
+else:
+    __all__.append("build_jaxley_app")

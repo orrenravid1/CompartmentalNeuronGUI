@@ -17,3 +17,4 @@ Reference implementation: `src/compneurovis/backends/neuron/session.py`.
 6. Update the backend package `README.md`.
 7. Update `AGENTS.md` package map and extension points if the public surface changes.
 8. Regenerate reference indexes: `python scripts/generate_indexes.py`.
+9. When validating backend import/build performance, use representative small fixtures first and put explicit time bounds on large-asset probes. Do not benchmark giant morphology files by default.

@@ -435,7 +435,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     pending_targets.add(RefreshTarget.CONTROLS)
                 self.document.metadata.update(update.metadata_updates)
             else:
-                pending_status = getattr(update, "message", str(update))
+                msg = getattr(update, "message", str(update))
+                pending_status = msg
+                if getattr(self.transport, "_dead", False):
+                    # Worker process died — stop polling and surface the error clearly.
+                    self.timer.stop()
+                    self.transport = None
+                    QtWidgets.QMessageBox.critical(self, "Session error", msg)
+                    return
         if pending_targets:
             self._apply_refresh_targets(pending_targets)
         if pending_status is not None:

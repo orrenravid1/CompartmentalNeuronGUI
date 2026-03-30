@@ -5,6 +5,7 @@ summary: Generated list of runnable examples grouped by directory.
 
 # Example Index
 
+- `examples/jaxley/multicell_example.py`
 - `examples/neuron/c_elegans_visualizer.py`
 - `examples/neuron/multicell_example.py`
 - `examples/neuron/visualizer_example.py`

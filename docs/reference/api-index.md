@@ -28,3 +28,6 @@ summary: Generated list of names exported by compneurovis.__init__.
 - `NeuronDocumentBuilder`
 - `NeuronSession`
 - `build_neuron_app`
+- `JaxleyDocumentBuilder`
+- `JaxleySession`
+- `build_jaxley_app`
