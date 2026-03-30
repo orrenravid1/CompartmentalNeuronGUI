@@ -1,3 +1,16 @@
+"""
+Static surface visualizer — renders a 3-D surface from a 2-D height field with interactive axes
+and appearance controls. No simulation or session is involved; the surface is computed once at
+startup and the UI controls update only the visual properties (colors, transparency, axis style).
+
+Patterns shown:
+  - grid_field() to create a Field + GridGeometry from a 2-D array
+  - SurfaceViewSpec with axes and colormap
+  - StateBinding to wire controls directly to ViewSpec properties without a session
+
+Run: python examples/surface_plot/static_surface_visualizer.py
+"""
+
 import numpy as np
 
 from compneurovis import ControlSpec, StateBinding, SurfaceViewSpec, build_surface_app, grid_field, run_app
@@ -5,7 +18,7 @@ from compneurovis import ControlSpec, StateBinding, SurfaceViewSpec, build_surfa
 
 COLOR_OPTIONS = ("black", "white", "gray", "red", "green", "blue", "orange", "purple")
 
-
+# Build a 2-D sinc surface. grid_field() expects values with shape (len(y), len(x)).
 x = np.linspace(-3.0, 3.0, 120, dtype=np.float32)
 y = np.linspace(-3.0, 3.0, 120, dtype=np.float32)
 X, Y = np.meshgrid(x, y)
@@ -21,6 +34,7 @@ field, geometry = grid_field(
     y_dim="y",
 )
 
+# Controls define UI widgets. Their ids become state keys that StateBinding references below.
 controls = {
     "axis_color": ControlSpec("axis_color", "enum", "Axis color", "black", options=COLOR_OPTIONS),
     "text_color": ControlSpec("text_color", "enum", "Text color", "black", options=COLOR_OPTIONS),
@@ -33,6 +47,8 @@ controls = {
     "axis_alpha": ControlSpec("axis_alpha", "float", "Axes alpha", 1.0, min=0.0, max=1.0, steps=100),
 }
 
+# StateBinding("key") defers value resolution to the frontend state dict at render time.
+# Literal values (e.g. cmap="fire") are fixed; StateBinding values update live when controls change.
 surface_view = SurfaceViewSpec(
     id="surface",
     title="interactive sinc surface",
@@ -60,6 +76,5 @@ app = build_surface_app(
     surface_view=surface_view,
     controls=controls,
 )
-
 
 run_app(app)

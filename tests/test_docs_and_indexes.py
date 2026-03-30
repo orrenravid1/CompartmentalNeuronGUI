@@ -17,6 +17,14 @@ def test_generated_indexes_are_in_sync():
     )
 
 
+def test_architecture_invariants_hold():
+    subprocess.run(
+        [sys.executable, "scripts/check_architecture_invariants.py"],
+        cwd=ROOT,
+        check=True,
+    )
+
+
 def test_docs_and_skills_have_front_matter():
     markdown_files = list((ROOT / "docs").rglob("*.md")) + list((ROOT / "skills").rglob("SKILL.md"))
     assert markdown_files

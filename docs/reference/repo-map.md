@@ -37,12 +37,13 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/vispyutils/cappedcylindercollection.py`
 
 ## Examples
-- `examples/lfp_csd_surface_visualizer.py`
 - `examples/neuron/c_elegans_visualizer.py`
 - `examples/neuron/multicell_example.py`
 - `examples/neuron/visualizer_example.py`
-- `examples/static_surface_visualizer.py`
-- `examples/surface_cross_section_visualizer.py`
+- `examples/surface_plot/animated_surface_live.py`
+- `examples/surface_plot/animated_surface_replay.py`
+- `examples/surface_plot/static_surface_visualizer.py`
+- `examples/surface_plot/surface_cross_section_visualizer.py`
 
 ## Skills
 - `add-example`: `skills/add-example/SKILL.md`
@@ -50,6 +51,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `add-static-field-visualization`: `skills/add-static-field-visualization/SKILL.md`
 - `add-view-panel`: `skills/add-view-panel/SKILL.md`
 - `audit-skill-coverage`: `skills/audit-skill-coverage/SKILL.md`
+- `breaking-rename-sweep`: `skills/breaking-rename-sweep/SKILL.md`
 - `check-change-impact`: `skills/check-change-impact/SKILL.md`
 - `check-test-coverage-drift`: `skills/check-test-coverage-drift/SKILL.md`
 - `debug-protocol-dataflow`: `skills/debug-protocol-dataflow/SKILL.md`

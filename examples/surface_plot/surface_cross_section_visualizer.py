@@ -1,3 +1,17 @@
+"""
+Surface cross-section visualizer — renders a 3-D height field with a moveable cutting plane and a
+linked line plot showing the curve along that slice. Two controls let you choose the slice
+axis (x or y) and drag the cutting position; both the surface overlay and the line plot update
+together in real time. No simulation or session is involved.
+
+Patterns shown:
+  - slice_axis_state_key / slice_position_state_key on SurfaceViewSpec to drive a cutting-plane overlay
+  - LinePlotViewSpec with orthogonal_slice_state_key / orthogonal_position_state_key to mirror the slice as a trace
+  - Two independent panels driven by the same pair of controls
+
+Run: python examples/surface_plot/surface_cross_section_visualizer.py
+"""
+
 import numpy as np
 
 from compneurovis import ControlSpec, LinePlotViewSpec, SurfaceViewSpec, build_surface_app, grid_field, run_app
@@ -18,6 +32,7 @@ def build_demo_surface():
 
 
 x, y, z = build_demo_surface()
+# grid_field returns a (Field, GridGeometry) pair. Both are referenced by id in the ViewSpecs below.
 field, geometry = grid_field(
     field_id="cross-section-height",
     values=z,
@@ -27,6 +42,8 @@ field, geometry = grid_field(
     y_dim="y",
 )
 
+# slice_axis selects which dimension is sliced; slice_position is a 0–1 normalised position along that axis.
+# Both are consumed by the surface overlay and the line plot simultaneously.
 controls = {
     "slice_axis": ControlSpec("slice_axis", "enum", "Slice axis", "x", options=("x", "y")),
     "slice_position": ControlSpec("slice_position", "float", "Slice position", 0.0, min=0.0, max=1.0, steps=200),
@@ -54,6 +71,8 @@ surface_view = SurfaceViewSpec(
     slice_position_state_key="slice_position",
 )
 
+# orthogonal_slice_state_key names the dim being sliced; orthogonal_position_state_key is its normalised position.
+# The line plot renders the 1-D cross-section of the field at the current slice position.
 line_view = LinePlotViewSpec(
     id="cross-section",
     title="Cross section",

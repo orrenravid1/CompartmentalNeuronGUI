@@ -1,0 +1,38 @@
+{
+  "banned_terms": [
+    {
+      "term": "FieldUpdate",
+      "paths": [
+        "AGENTS.md",
+        "docs",
+        "examples",
+        "skills",
+        "src",
+        "tests"
+      ],
+      "exclude_paths": [
+        "docs/architecture/invariants.json"
+      ]
+    },
+    {
+      "term": "targets_for_field_update",
+      "paths": [
+        "docs",
+        "examples",
+        "skills",
+        "src",
+        "tests"
+      ],
+      "exclude_paths": [
+        "docs/architecture/invariants.json"
+      ]
+    }
+  ],
+  "commands": [
+    [
+      "python",
+      "scripts/generate_indexes.py",
+      "--check"
+    ]
+  ]
+}

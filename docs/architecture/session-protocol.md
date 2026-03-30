@@ -85,6 +85,16 @@ Use `FieldReplace` when the entire field should be replaced:
 self.emit(FieldReplace(field_id="voltage", values=new_voltages))
 ```
 
+Pass `coords=None` (the default) when grid coordinates are unchanged — the frontend will skip re-uploading x/y vertex data to the GPU and skip rebuilding axes. Pass explicit `coords` only when the coordinate arrays themselves change:
+
+```python
+# Value-only update — fast path, no coord re-upload, no axes rebuild
+self.emit(FieldReplace(field_id="height", values=new_z))
+
+# Coordinate update — full refresh including axes
+self.emit(FieldReplace(field_id="height", values=new_z, coords={"x": new_x, "y": new_y}))
+```
+
 Use `FieldAppend` when live data should extend an existing field along one axis:
 
 ```python

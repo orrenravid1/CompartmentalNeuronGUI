@@ -78,7 +78,3 @@ class Status(SessionUpdate):
 @dataclass(frozen=True, slots=True)
 class Error(SessionUpdate):
     message: str
-
-
-# Backward-compatible alias. Prefer FieldReplace in new code.
-FieldUpdate = FieldReplace

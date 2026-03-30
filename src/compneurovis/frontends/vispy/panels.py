@@ -51,6 +51,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
         self._active_geometry = None
         self._active_mode: str | None = None
         self._surface_scene: SurfaceSceneData | None = None
+        self._surface_coord_key: tuple | None = None
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -87,6 +88,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
         if mode != "surface":
             self.renderer_surface.clear()
             self._surface_scene = None
+            self._surface_coord_key = None
         self._active_mode = mode
 
     def clear(self) -> None:
@@ -127,7 +129,34 @@ class Viewport3DPanel(QtWidgets.QWidget):
         self._set_mode("surface")
         self.canvas.native.setVisible(True)
         self.canvas.bgcolor = resolved_state[f"{surface_view.id}:background_color"]
-        self._surface_scene = surface_scene_from_field(surface_field, grid_geometry)
+
+        # Build a coord key from the grid source. Shape-based identity is sufficient —
+        # if shape matches, coordinates are the same for all practical animation use cases.
+        if grid_geometry is not None:
+            coord_key = (grid_geometry.id,) + tuple(c.shape for c in grid_geometry.coords.values())
+        else:
+            coord_key = (surface_field.id,) + tuple(c.shape for c in surface_field.coords.values())
+
+        coords_changed = coord_key != self._surface_coord_key
+        if coords_changed:
+            self._surface_scene = surface_scene_from_field(surface_field, grid_geometry)
+            self._surface_coord_key = coord_key
+        else:
+            # Reuse cached x_grid/y_grid — only update z values.
+            z = surface_field.values
+            if surface_field.dims != (self._surface_scene.y_dim, self._surface_scene.x_dim):
+                axis_map = {dim: idx for idx, dim in enumerate(surface_field.dims)}
+                z = np.transpose(z, (axis_map[self._surface_scene.y_dim], axis_map[self._surface_scene.x_dim]))
+            self._surface_scene = SurfaceSceneData(
+                field_id=self._surface_scene.field_id,
+                x_dim=self._surface_scene.x_dim,
+                y_dim=self._surface_scene.y_dim,
+                x_grid=self._surface_scene.x_grid,
+                y_grid=self._surface_scene.y_grid,
+                z=np.asarray(z, dtype=np.float32),
+                coords=self._surface_scene.coords,
+            )
+
         self.renderer_surface.update_surface(
             self._surface_scene.x_grid,
             self._surface_scene.y_grid,
@@ -137,6 +166,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
             colors=None,
             color_by=resolved_state[f"{surface_view.id}:color_by"],
             surface_alpha=resolved_state[f"{surface_view.id}:surface_alpha"],
+            coords_changed=coords_changed,
         )
 
     def refresh_surface_axes(

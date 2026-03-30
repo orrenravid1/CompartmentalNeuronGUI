@@ -19,10 +19,10 @@ Audit changes in this order:
    - skills
    - generated reference indexes
 4. Run the smallest useful verification:
+   - `python scripts/check_architecture_invariants.py` when public terminology, protocol names, or other architectural vocabulary changed
    - `python -m compileall src examples tests`
    - `pytest`
    - `python scripts/generate_indexes.py --check`
 5. Report missing follow-up edits explicitly instead of assuming docs are still correct.
 
 When the change alters public concepts, package boundaries, or workflows, treat docs updates as required work, not optional cleanup.
-

@@ -1,3 +1,16 @@
+"""
+Multi-cell network visualizer — three procedurally-built cells connected by synapses.
+
+Patterns shown:
+  - Programmatic section construction (no SWC) for three different morphology types
+  - ExpSyn synapses with NetCon for feedforward connectivity
+  - generate_layout() to assign 3-D spatial positions when sections have no pt3d coordinates
+  - cell_connections parameter to space cells apart in the layout
+
+Requires: NEURON
+Run: python examples/neuron/multicell_example.py
+"""
+
 import time
 
 from neuron import h
@@ -116,6 +129,7 @@ class MultiCellSession(NeuronSession):
         for sec in sections:
             sec.insert("hh")
 
+        # Feedforward ring: cell1 axon → cell2 soma → cell3 soma → cell1 dendrite
         syn1 = h.ExpSyn(self.cell2_secs[0](0.5))
         syn1.tau = 2.0
         syn1.e = 0.0
@@ -148,6 +162,9 @@ class MultiCellSession(NeuronSession):
             icl.amp = amp
             self.iclamps.append(icl)
 
+        # Sections built programmatically have no pt3d coordinates — generate_layout() walks the
+        # section tree and assigns positions via pt3dadd. cell_connections specifies inter-cell
+        # root attachments used only for spatial layout, not for NEURON topology.
         generate_layout(
             sections,
             cell_connections=[

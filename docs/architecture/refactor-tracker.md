@@ -139,6 +139,12 @@ Target outcomes:
   - if a backend or frontend wants broader updates, it should ask for them explicitly
   - the framework should not force broad refreshes unless the change is genuinely structural
 
+### Architectural automation
+
+- Important vocabulary and protocol taxonomy decisions should not live only in prose.
+- If the repo decides that a term is retired or canonical, that decision should be encoded in machine-readable checks.
+- Breaking terminology changes should prefer immediate convergence plus automated detection of stale names over compatibility aliases that let drift persist unnoticed.
+
 ### Public interaction API
 
 - The internal architecture may use tools/controllers/manipulators, but the default user-facing API should not require users to think in those terms.
@@ -183,6 +189,15 @@ Target outcomes:
   - patch or append whenever the changed region can be described cleanly
   - reserve bundled value replacement for cases where incremental semantics would be misleading, fragile, or more complex than the full replace
 
+### Rename drift and compatibility shims
+
+- Compatibility aliases can hide incomplete architectural migrations by keeping tests green while docs, skills, or generated references remain semantically stale.
+- For deliberate internal taxonomy changes, the preferred repo policy is:
+  - remove the old term
+  - encode the old term as banned in machine-readable invariants
+  - regenerate derived docs
+  - let tests and invariant checks surface any missed sites
+
 ### NumPy masked divide behavior
 
 - `np.divide(..., where=...)` without `out=...` can leave masked entries undefined and produce warnings.
@@ -198,6 +213,15 @@ Target outcomes:
   - the target is code that feels comparable in complexity to a plotting script or a lightweight simulation harness
 
 ## Deferred Work
+
+### Callable-based animated surface builder
+
+- Writing an animated surface currently requires subclassing `BufferedSession` directly, which exposes session internals to users who just want to express "call this function each frame."
+- The right Phase 2 primitive is a builder with a callable — `build_animated_surface_app(fn=compute_frame, ...)` — where the session is an internal implementation detail invisible to the author.
+- `FuncSession` (a `BufferedSession` that calls `fn()` in `advance()`) is a valid *internal* implementation of that builder, but should not be a public primitive — it still requires users to think in terms of sessions.
+- The builder should also accept `on_control` and `on_action` callbacks so parameter-driven computation (e.g., a speed slider that changes `fn`'s behaviour) remains expressible without a full session subclass.
+- Controls that only drive visual properties (colors, axes) via `StateBinding` should not need to involve the session at all — the builder should distinguish those from controls that require `send_to_session=True`.
+- Current workaround: subclass `BufferedSession` directly, as in `examples/surface_plot/animated_surface_live.py` and `animated_surface_replay.py`.
 
 ### Session bootstrap API
 

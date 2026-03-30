@@ -370,7 +370,7 @@ class SurfaceRenderer:
         idx = np.clip((norm * (len(lut) - 1)).astype(np.int32), 0, len(lut) - 1)
         return lut[idx]
 
-    def update_surface(self, x, y, z, *, cmap, clim, colors, color_by, surface_alpha):
+    def update_surface(self, x, y, z, *, cmap, clim, colors, color_by, surface_alpha, coords_changed=True):
         x = np.asarray(x, dtype=np.float32)
         y = np.asarray(y, dtype=np.float32)
         z = np.asarray(z, dtype=np.float32)
@@ -395,9 +395,17 @@ class SurfaceRenderer:
             )
             self.surface.set_gl_state("translucent", depth_test=True, cull_face=False)
             self._grid_shape = grid_shape
-        if colors is not None:
-            self.surface.set_data(x=x, y=y, z=z, colors=colors)
+        elif coords_changed:
+            # Grid shape is the same but x/y coordinates changed — full data upload.
+            if colors is not None:
+                self.surface.set_data(x=x, y=y, z=z, colors=colors)
+            else:
+                self.surface.set_data(x=x, y=y, z=z, color=(0.5, 0.6, 0.8, surface_alpha))
         else:
-            self.surface.set_data(x=x, y=y, z=z, color=(0.5, 0.6, 0.8, surface_alpha))
+            # Only z (and colors) changed — skip x/y GPU upload.
+            if colors is not None:
+                self.surface.set_data(z=z, colors=colors)
+            else:
+                self.surface.set_data(z=z, color=(0.5, 0.6, 0.8, surface_alpha))
         if recreate_surface:
             self.view.camera.set_range()

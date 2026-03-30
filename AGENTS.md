@@ -38,6 +38,7 @@ Key names:
 - Install: `pip install -e .`
 - Compile check: `python -m compileall src examples`
 - Run tests: `pytest`
+- Check architecture invariants: `python scripts/check_architecture_invariants.py`
 - Regenerate reference indexes: `python scripts/generate_indexes.py`
 - Check generated indexes: `python scripts/generate_indexes.py --check`
 - Run a live example: `python examples/neuron/visualizer_example.py`
@@ -50,6 +51,7 @@ Key names:
 - `skills/add-static-field-visualization/SKILL.md`
 - `skills/add-view-panel/SKILL.md`
 - `skills/audit-skill-coverage/SKILL.md`
+- `skills/breaking-rename-sweep/SKILL.md`
 - `skills/check-change-impact/SKILL.md`
 - `skills/check-test-coverage-drift/SKILL.md`
 - `skills/debug-protocol-dataflow/SKILL.md`
@@ -65,6 +67,7 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 - Architecture overview: `docs/architecture/core-model.md`
 - Refactor tracker: `docs/architecture/refactor-tracker.md`
 - Session protocol: `docs/architecture/session-protocol.md`
+- Architecture invariants: `docs/architecture/invariants.json`
 - VisPy frontend: `docs/architecture/vispy-frontend.md`
 - Field semantics: `docs/concepts/field-model.md`
 - Static surface tutorial: `docs/tutorials/build-a-static-surface.md`
@@ -77,6 +80,7 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 
 - Treat `Field` as the core data primitive; do not introduce new foundational “timeseries” or “surface” types when a labeled field plus a view is sufficient.
 - Frontends own UI state such as selection and slice position. Backends receive semantic commands, not raw GUI events.
-- `FieldUpdate` replaces field values and may update coordinates; schema changes should rebuild or patch the document explicitly.
+- `FieldReplace` replaces field values and may update coordinates; schema changes should rebuild or patch the document explicitly.
 - `DocumentPatch` is intended for metadata/view/control changes, not arbitrary structural rewrites.
+- Architectural vocabulary changes should be encoded in `docs/architecture/invariants.json` and enforced with `python scripts/check_architecture_invariants.py`.
 - Keep docs and skills concise and cross-reference canonical docs instead of duplicating large explanations.

@@ -123,7 +123,7 @@ class RefreshPlanner:
 
         return targets
 
-    def targets_for_field_replace(self, field_id: str) -> set[RefreshTarget]:
+    def targets_for_field_replace(self, field_id: str, coords_changed: bool = True) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
         morph_view = self.morphology_view()
         if morph_view is not None and morph_view.color_field_id == field_id:
@@ -131,7 +131,13 @@ class RefreshPlanner:
 
         surface_view = self.surface_view()
         if surface_view is not None and surface_view.field_id == field_id:
-            targets.update({RefreshTarget.SURFACE_VISUAL, RefreshTarget.SURFACE_AXES, RefreshTarget.SURFACE_SLICE})
+            targets.add(RefreshTarget.SURFACE_VISUAL)
+            if coords_changed or surface_view.clim is None:
+                # Axes z-ticks depend on z range — safe to skip when coords are unchanged and
+                # clim is fixed (z-range for display is constant). ~48 VisPy objects rebuilt otherwise.
+                targets.add(RefreshTarget.SURFACE_AXES)
+            if coords_changed or surface_view.clim is None:
+                targets.add(RefreshTarget.SURFACE_SLICE)
 
         line_view = self.line_view()
         if line_view is not None and getattr(line_view, "field_id", None) == field_id:
@@ -399,10 +405,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 if self.document is None:
                     continue
                 current = self.document.fields[update.field_id]
+                coords_changed = update.coords is not None
                 coords = current.coords if update.coords is None else update.coords
                 self.document.fields[update.field_id] = current.with_values(update.values, coords=coords, attrs_update=update.attrs_update)
                 if self.refresh_planner is not None:
-                    pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id))
+                    pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id, coords_changed=coords_changed))
             elif isinstance(update, FieldAppend):
                 if self.document is None:
                     continue
