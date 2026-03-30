@@ -46,6 +46,13 @@ Key names:
 
 ## Skill Catalog
 
+## Skill Usage
+
+- Repo-local skills live under `skills/<name>/SKILL.md` and are the canonical workflow instructions for recurring repo tasks.
+- Any agent working in this repo should consult the relevant `SKILL.md` before executing a task that matches the skill description.
+- If a task matches one of the cataloged skills below, read that skill first, then follow its workflow.
+- Use `docs/reference/skill-index.md` to discover which skill best matches a task.
+
 - `skills/add-example/SKILL.md`
 - `skills/add-simulator-backend/SKILL.md`
 - `skills/add-static-field-visualization/SKILL.md`
