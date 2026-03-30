@@ -9,6 +9,7 @@ from neuron import h
 
 from compneurovis.core.controls import ControlSpec
 from compneurovis.core.document import Document
+from compneurovis.core.views import LinePlotViewSpec
 from compneurovis.session import BufferedSession, FieldAppend, FieldReplace, InvokeAction, Reset, SetControl
 from compneurovis.backends.neuron.document import NeuronDocumentBuilder
 
@@ -34,6 +35,7 @@ class NeuronSession(BufferedSession, ABC):
         self._segment_refs = None
         self._segment_vector = None
         self._runtime_handles = None
+        self._field_max_samples: dict[str, int] = {}
 
     @abstractmethod
     def build_sections(self):
@@ -106,11 +108,17 @@ class NeuronSession(BufferedSession, ABC):
         h.dt = self.dt
         h.finitialize(self.v_init)
         time_value, voltage_values = self._sample()
-        return self.build_document(
+        document = self.build_document(
             geometry=self.geometry,
             voltage_values=voltage_values,
             time_value=time_value,
         )
+        self._field_max_samples["voltage"] = self._resolved_field_max_samples(
+            document,
+            field_id="voltage",
+            append_dim="time",
+        )
+        return document
 
     def _prepare_recorders(self):
         idx_by_name = {}
@@ -144,6 +152,22 @@ class NeuronSession(BufferedSession, ABC):
             raise ValueError("NeuronSession display_dt must be positive or None")
         return max(1, int(math.ceil(float(self.display_dt) / float(self.dt))))
 
+    def _resolved_field_max_samples(self, document: Document, *, field_id: str, append_dim: str) -> int:
+        required = int(self.max_samples)
+        if self.dt <= 0:
+            return required
+        for view in document.views.values():
+            if not isinstance(view, LinePlotViewSpec):
+                continue
+            if view.field_id != field_id:
+                continue
+            if view.x_dim != append_dim:
+                continue
+            if view.rolling_window is None:
+                continue
+            required = max(required, int(math.ceil(float(view.rolling_window) / float(self.dt))) + 1)
+        return required
+
     def advance(self) -> None:
         samples: list[np.ndarray] = []
         times: list[float] = []
@@ -162,7 +186,7 @@ class NeuronSession(BufferedSession, ABC):
                 append_dim="time",
                 values=np.stack(samples, axis=1),
                 coord_values=np.asarray(times, dtype=np.float32),
-                max_length=self.max_samples,
+                max_length=self._field_max_samples.get("voltage", self.max_samples),
             )
         )
 

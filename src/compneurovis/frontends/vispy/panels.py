@@ -361,6 +361,8 @@ class LinePlotPanel(pg.PlotWidget):
         vb = self.plotItem.getViewBox()
         xmin = 0.0
         xmax = 0.0
+        data_xmin = 0.0
+        data_xmax = 0.0
 
         if view.y_min is not None or view.y_max is not None:
             y_min = view.y_min
@@ -373,15 +375,19 @@ class LinePlotPanel(pg.PlotWidget):
             vb.enableAutoRange(y=True)
             vb.setLimits(yMin=None, yMax=None)
 
+        if len(x):
+            data_xmin = float(np.min(x))
+            data_xmax = float(np.max(x))
+
         if view.rolling_window is not None and len(x):
-            xmax = float(x[-1])
-            xmin = xmax - float(view.rolling_window)
+            xmax = data_xmax
+            xmin = max(data_xmin, xmax - float(view.rolling_window))
             vb.enableAutoRange(x=False)
             vb.setXRange(xmin, xmax, padding=0)
         else:
             if len(x):
-                xmin = float(np.min(x))
-                xmax = float(np.max(x))
+                xmin = data_xmin
+                xmax = data_xmax
             vb.enableAutoRange(x=True)
             vb.setLimits(xMin=None, xMax=None)
 
@@ -390,8 +396,7 @@ class LinePlotPanel(pg.PlotWidget):
     def _trim_line_data(self, view: LinePlotViewSpec, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         if not view.trim_to_rolling_window or view.rolling_window is None or len(x) == 0:
             return x, y
-        xmin = float(x[-1]) - float(view.rolling_window)
-        mask = x >= xmin
+        mask = self._rolling_window_mask(x, float(view.rolling_window))
         return x[mask], y[mask]
 
     def _trim_series_data(
@@ -402,9 +407,19 @@ class LinePlotPanel(pg.PlotWidget):
     ) -> tuple[np.ndarray, np.ndarray]:
         if not view.trim_to_rolling_window or view.rolling_window is None or len(x) == 0:
             return x, values
-        xmin = float(x[-1]) - float(view.rolling_window)
-        mask = x >= xmin
+        mask = self._rolling_window_mask(x, float(view.rolling_window))
         return x[mask], values[:, mask]
+
+    def _rolling_window_mask(self, x: np.ndarray, window: float) -> np.ndarray:
+        xmin = float(x[-1]) - window
+        mask = x >= xmin
+        if np.any(mask):
+            first_visible = int(np.argmax(mask))
+            if first_visible > 0:
+                # Keep the sample immediately before the window so the plotted line
+                # enters at the left boundary instead of appearing after a gap.
+                mask[first_visible - 1] = True
+        return mask
 
     def _apply_tick_spacing(self, view: LinePlotViewSpec, xmin: float, xmax: float) -> None:
         axis = self.plotItem.getAxis("bottom")

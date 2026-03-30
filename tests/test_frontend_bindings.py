@@ -277,6 +277,29 @@ def test_line_plot_panel_applies_rolling_window_and_y_range():
     app.quit()
 
 
+def test_line_plot_panel_clamps_rolling_window_to_available_history():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    field = Field(
+        id="trace",
+        values=np.array([1.0, 2.0, 3.0], dtype=np.float32),
+        dims=("time",),
+        coords={"time": np.array([0.0, 50.0, 100.0], dtype=np.float32)},
+    )
+    view = LinePlotViewSpec(
+        id="trace-plot",
+        field_id=field.id,
+        x_dim="time",
+        rolling_window=120.0,
+    )
+
+    panel.refresh(view, field, {}, {})
+    view_range = panel.plotItem.getViewBox().viewRange()
+
+    assert np.allclose(view_range[0], [0.0, 100.0])
+    app.quit()
+
+
 def test_line_plot_panel_can_trim_data_to_rolling_window():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = LinePlotPanel()
@@ -297,8 +320,8 @@ def test_line_plot_panel_can_trim_data_to_rolling_window():
     panel.refresh(view, field, {}, {})
     x_data, y_data = panel._plot_item.getData()
 
-    assert np.allclose(x_data, np.array([2.0, 3.0], dtype=np.float32))
-    assert np.allclose(y_data, np.array([3.0, 4.0], dtype=np.float32))
+    assert np.allclose(x_data, np.array([1.0, 2.0, 3.0], dtype=np.float32))
+    assert np.allclose(y_data, np.array([2.0, 3.0, 4.0], dtype=np.float32))
     app.quit()
 
 
@@ -327,10 +350,30 @@ def test_multi_series_line_plot_can_trim_data_to_rolling_window():
     ligand_x, ligand_y = panel._series_items["ligand"].getData()
     receptor_x, receptor_y = panel._series_items["receptor"].getData()
 
-    assert np.allclose(ligand_x, np.array([2.0, 3.0], dtype=np.float32))
-    assert np.allclose(ligand_y, np.array([3.0, 4.0], dtype=np.float32))
-    assert np.allclose(receptor_x, np.array([2.0, 3.0], dtype=np.float32))
-    assert np.allclose(receptor_y, np.array([30.0, 40.0], dtype=np.float32))
+    assert np.allclose(ligand_x, np.array([1.0, 2.0, 3.0], dtype=np.float32))
+    assert np.allclose(ligand_y, np.array([2.0, 3.0, 4.0], dtype=np.float32))
+    assert np.allclose(receptor_x, np.array([1.0, 2.0, 3.0], dtype=np.float32))
+    assert np.allclose(receptor_y, np.array([20.0, 30.0, 40.0], dtype=np.float32))
+    app.quit()
+
+
+def test_line_plot_trim_keeps_last_sample_before_window_boundary():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    x = np.array([0.0, 1.0, 2.0, 3.0], dtype=np.float32)
+    y = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+    view = LinePlotViewSpec(
+        id="trace-plot",
+        field_id="trace",
+        x_dim="time",
+        rolling_window=1.5,
+        trim_to_rolling_window=True,
+    )
+
+    trimmed_x, trimmed_y = panel._trim_line_data(view, x, y)
+
+    assert np.allclose(trimmed_x, np.array([1.0, 2.0, 3.0], dtype=np.float32))
+    assert np.allclose(trimmed_y, np.array([2.0, 3.0, 4.0], dtype=np.float32))
     app.quit()
 
 
@@ -386,8 +429,9 @@ def test_line_plot_panel_applies_explicit_x_tick_spacing():
     assert ticks is not None
     major = ticks[0]
     minor = ticks[1]
-    assert [value for value, _ in major] == [-25.0, -20.0, -15.0, -10.0, -5.0, 0.0]
-    assert [label for _, label in major] == ["-25", "-20", "-15", "-10", "-5", "0"]
+    assert [value for value, _ in major] == [0.0]
+    assert [label for _, label in major] == ["0"]
+    assert [value for value, _ in minor] == [1.0, 2.0, 3.0]
     assert all(label == "" for _, label in minor)
     app.quit()
 
@@ -765,6 +809,39 @@ def test_neuron_session_defaults_to_batched_display_updates():
     session = DummyNeuronSession()
 
     assert session.steps_per_update() == 5
+
+
+class WindowBudgetNeuronSession(NeuronSession):
+    def __init__(self):
+        super().__init__(dt=0.1, max_samples=1000, title="Window budget")
+
+    def build_sections(self):
+        return []
+
+    def trace_view_updates(self):
+        return {"rolling_window": 120.0}
+
+
+def test_neuron_session_expands_history_budget_to_cover_trace_window():
+    session = WindowBudgetNeuronSession()
+    geometry = MorphologyGeometry(
+        id="morphology",
+        positions=np.zeros((1, 3), dtype=np.float32),
+        orientations=np.eye(3, dtype=np.float32)[None, :, :],
+        radii=np.ones(1, dtype=np.float32),
+        lengths=np.ones(1, dtype=np.float32),
+        entity_ids=("seg-a",),
+        section_names=("sec-a",),
+        xlocs=np.array([0.5], dtype=np.float32),
+        labels=("sec-a@0.5",),
+    )
+    document = session.build_document(
+        geometry=geometry,
+        voltage_values=np.array([1.0], dtype=np.float32),
+        time_value=0.0,
+    )
+
+    assert session._resolved_field_max_samples(document, field_id="voltage", append_dim="time") == 1201
 
 
 def test_frontend_applies_field_append_updates_incrementally():
