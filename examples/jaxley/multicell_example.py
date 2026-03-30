@@ -18,7 +18,7 @@ from jaxley.channels import HH
 from jaxley.connect import connect
 from jaxley.synapses import IonotropicSynapse
 
-from compneurovis import JaxleySession, build_jaxley_app, run_app
+from compneurovis import ControlSpec, JaxleySession, build_jaxley_app, run_app
 from compneurovis.jaxleyutils import translate_cells_xyzr
 
 
@@ -86,6 +86,133 @@ def make_branching_cell(name: str):
 class MultiCellSession(JaxleySession):
     def __init__(self):
         super().__init__(title="Multi-cell Jaxley viewer", dt=0.1)
+        self.stim_amp = 0.5
+        self.stim_dur = 5.0
+        self.syn_gs = 5e-4
+        self.syn_e_syn = 0.0
+        self.syn_k_minus = 0.025
+        self.syn_v_th = -35.0
+        self.syn_delta = 10.0
+        self.hh_gna = 0.12
+        self.hh_gk = 0.036
+        self.hh_gleak = 3e-4
+
+    def control_specs(self):
+        return {
+            "display_dt": ControlSpec(
+                "display_dt",
+                "float",
+                "Visual update interval (ms sim/update)",
+                self.display_dt,
+                min=self.dt,
+                max=5.0,
+                steps=98,
+                send_to_session=True,
+            ),
+            "stim_amp": ControlSpec(
+                "stim_amp",
+                "float",
+                "Stimulus amplitude (nA)",
+                self.stim_amp,
+                min=0.0,
+                max=5.0,
+                steps=200,
+                send_to_session=True,
+            ),
+            "stim_dur": ControlSpec(
+                "stim_dur",
+                "float",
+                "Stimulus duration (ms)",
+                self.stim_dur,
+                min=1.0,
+                max=20.0,
+                steps=190,
+                send_to_session=True,
+            ),
+            "syn_gs": ControlSpec(
+                "syn_gs",
+                "float",
+                "Synapse gS",
+                self.syn_gs,
+                min=1e-5,
+                max=1e-1,
+                steps=200,
+                scale="log",
+                send_to_session=True,
+            ),
+            "syn_e_syn": ControlSpec(
+                "syn_e_syn",
+                "float",
+                "Synapse reversal (mV)",
+                self.syn_e_syn,
+                min=-80.0,
+                max=60.0,
+                steps=280,
+                send_to_session=True,
+            ),
+            "syn_k_minus": ControlSpec(
+                "syn_k_minus",
+                "float",
+                "Synapse k_minus",
+                self.syn_k_minus,
+                min=1e-3,
+                max=1.0,
+                steps=200,
+                scale="log",
+                send_to_session=True,
+            ),
+            "syn_v_th": ControlSpec(
+                "syn_v_th",
+                "float",
+                "Synapse pre-V threshold (mV)",
+                self.syn_v_th,
+                min=-70.0,
+                max=10.0,
+                steps=160,
+                send_to_session=True,
+            ),
+            "syn_delta": ControlSpec(
+                "syn_delta",
+                "float",
+                "Synapse pre-V slope (mV)",
+                self.syn_delta,
+                min=1.0,
+                max=20.0,
+                steps=190,
+                send_to_session=True,
+            ),
+            "hh_gna": ControlSpec(
+                "hh_gna",
+                "float",
+                "HH gNa (S/cm^2)",
+                self.hh_gna,
+                min=0.01,
+                max=0.3,
+                steps=200,
+                send_to_session=True,
+            ),
+            "hh_gk": ControlSpec(
+                "hh_gk",
+                "float",
+                "HH gK (S/cm^2)",
+                self.hh_gk,
+                min=0.005,
+                max=0.12,
+                steps=200,
+                send_to_session=True,
+            ),
+            "hh_gleak": ControlSpec(
+                "hh_gleak",
+                "float",
+                "HH gLeak (S/cm^2)",
+                self.hh_gleak,
+                min=1e-5,
+                max=3e-3,
+                steps=200,
+                scale="log",
+                send_to_session=True,
+            ),
+        }
 
     def build_cells(self):
         cells = [
@@ -103,9 +230,46 @@ class MultiCellSession(JaxleySession):
         )
         return cells
 
+    def _pulse_schedule(self):
+        return [(2.0, self.stim_dur, self.stim_amp), (20.0, self.stim_dur, self.stim_amp), (40.0, self.stim_dur, self.stim_amp), (60.0, self.stim_dur, self.stim_amp), (80.0, self.stim_dur, self.stim_amp)]
+
+    def _apply_hh_parameters(self, network):
+        network.set("HH_gNa", self.hh_gna)
+        network.set("HH_gK", self.hh_gk)
+        network.set("HH_gLeak", self.hh_gleak)
+
+    def _apply_synapse_parameters(self, network):
+        edge_view = network.select(edges="all")
+        edge_view.set("IonotropicSynapse_gS", self.syn_gs)
+        edge_view.set("IonotropicSynapse_e_syn", self.syn_e_syn)
+        edge_view.set("IonotropicSynapse_k_minus", self.syn_k_minus)
+        edge_view.set("IonotropicSynapse_v_th", self.syn_v_th)
+        edge_view.set("IonotropicSynapse_delta", self.syn_delta)
+
+    def _rebuild_stimulus(self, network=None):
+        target = network if network is not None else self.network
+        if target is None:
+            return
+        target.delete_stimuli()
+        pulses = self._pulse_schedule()
+        t_max = pulses[-1][0] + pulses[-1][1] + 10.0
+        current = sum(
+            jx.step_current(
+                i_delay=delay,
+                i_dur=dur,
+                i_amp=amp,
+                delta_t=self.dt,
+                t_max=t_max,
+            )
+            for delay, dur, amp in pulses
+        )
+        target.cell(0).branch(0).loc(0.5).stimulate(current)
+        if network is None:
+            self.refresh_runtime_externals()
+
     def setup_model(self, network, cells):
-        for cell in cells:
-            cell.insert(HH())
+        network.insert(HH())
+        self._apply_hh_parameters(network)
 
         # Feedforward ring: cell1 axon -> cell2 soma -> cell3 soma -> cell1 dendrite.
         connect(
@@ -123,22 +287,71 @@ class MultiCellSession(JaxleySession):
             network.cell(0).branch(1).comp(4),
             IonotropicSynapse(),
         )
-        network.select(edges="all").set("IonotropicSynapse_gS", 5e-4)
+        self._apply_synapse_parameters(network)
+        self._rebuild_stimulus(network)
+        return {"stimulus": network.externals.get("i")}
 
-        pulses = [(2.0, 5.0, 0.5), (20.0, 5.0, 0.5), (40.0, 5.0, 0.5), (60.0, 5.0, 0.5), (80.0, 5.0, 0.5)]
-        t_max = pulses[-1][0] + pulses[-1][1] + 10.0
-        current = sum(
-            jx.step_current(
-                i_delay=delay,
-                i_dur=dur,
-                i_amp=amp,
-                delta_t=self.dt,
-                t_max=t_max,
-            )
-            for delay, dur, amp in pulses
-        )
-        network.cell(0).branch(0).loc(0.5).stimulate(current)
-        return {"stimulus": current}
+    def apply_control(self, control_id: str, value) -> bool:
+        if control_id == "display_dt":
+            self.display_dt = max(self.dt, float(value))
+            return True
+        if control_id == "stim_amp":
+            self.stim_amp = float(value)
+            self._rebuild_stimulus()
+            return True
+        if control_id == "stim_dur":
+            self.stim_dur = float(value)
+            self._rebuild_stimulus()
+            return True
+        if control_id == "syn_gs":
+            self.syn_gs = float(value)
+            if self.network is not None:
+                self._apply_synapse_parameters(self.network)
+                self.refresh_runtime_parameters()
+            return True
+        if control_id == "syn_e_syn":
+            self.syn_e_syn = float(value)
+            if self.network is not None:
+                self._apply_synapse_parameters(self.network)
+                self.refresh_runtime_parameters()
+            return True
+        if control_id == "syn_k_minus":
+            self.syn_k_minus = float(value)
+            if self.network is not None:
+                self._apply_synapse_parameters(self.network)
+                self.refresh_runtime_parameters()
+            return True
+        if control_id == "syn_v_th":
+            self.syn_v_th = float(value)
+            if self.network is not None:
+                self._apply_synapse_parameters(self.network)
+                self.refresh_runtime_parameters()
+            return True
+        if control_id == "syn_delta":
+            self.syn_delta = float(value)
+            if self.network is not None:
+                self._apply_synapse_parameters(self.network)
+                self.refresh_runtime_parameters()
+            return True
+        if control_id == "hh_gna":
+            self.hh_gna = float(value)
+            if self.network is not None:
+                self._apply_hh_parameters(self.network)
+                self.refresh_runtime_parameters()
+            return True
+        if control_id == "hh_gk":
+            self.hh_gk = float(value)
+            if self.network is not None:
+                self._apply_hh_parameters(self.network)
+                self.refresh_runtime_parameters()
+            return True
+        if control_id == "hh_gleak":
+            self.hh_gleak = float(value)
+            if self.network is not None:
+                self._apply_hh_parameters(self.network)
+                self.refresh_runtime_parameters()
+            return True
+        return super().apply_control(control_id, value)
 
-
-run_app(build_jaxley_app(MultiCellSession))
+if __name__ == "__main__":
+    run_app(build_jaxley_app(MultiCellSession))

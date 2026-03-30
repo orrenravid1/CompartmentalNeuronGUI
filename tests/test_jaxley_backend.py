@@ -145,3 +145,71 @@ def test_jaxley_programmatic_geometry_has_no_compartment_gaps():
     )
 
     assert result["max_gap"] < 1e-3
+
+
+def test_jaxley_multicell_example_controls_reconfigure_runtime():
+    example_path = ROOT / "examples" / "jaxley" / "multicell_example.py"
+    result = _run_python(
+        f"""
+        import json
+        import numpy as np
+        import jax
+
+        example_path = r"{example_path}"
+        text = open(example_path, "r", encoding="utf-8").read()
+        text = text.rsplit("run_app(build_jaxley_app(MultiCellSession))", 1)[0]
+        ns = {{}}
+        exec(compile(text, example_path, "exec"), ns)
+        MultiCellSession = ns["MultiCellSession"]
+
+        session = MultiCellSession()
+        session.initialize()
+
+        initial_gna = float(session.network.nodes["HH_gNa"].dropna().iloc[0])
+        initial_syn = float(session.network.edges["IonotropicSynapse_gS"].dropna().iloc[0])
+        initial_i_max = float(np.max(np.asarray(session._externals["i"])))
+
+        session.apply_control("hh_gna", 0.2)
+        session.apply_control("syn_gs", 1e-3)
+        session.apply_control("syn_e_syn", 20.0)
+        session.apply_control("stim_amp", 3.0)
+        session.apply_control("stim_dur", 8.0)
+
+        updated_gna = float(session.network.nodes["HH_gNa"].dropna().iloc[0])
+        updated_syn = float(session.network.edges["IonotropicSynapse_gS"].dropna().iloc[0])
+        updated_esyn = float(session.network.edges["IonotropicSynapse_e_syn"].dropna().iloc[0])
+        updated_i_max = float(np.max(np.asarray(session._externals["i"])))
+
+        print(json.dumps({{
+            "initial_gna": initial_gna,
+            "updated_gna": updated_gna,
+            "initial_syn": initial_syn,
+            "updated_syn": updated_syn,
+            "updated_esyn": updated_esyn,
+            "initial_i_max": initial_i_max,
+            "updated_i_max": updated_i_max,
+            "control_ids": sorted(session.control_specs().keys()),
+        }}))
+        """
+    )
+
+    assert result["initial_gna"] == pytest.approx(0.12)
+    assert result["updated_gna"] == pytest.approx(0.2)
+    assert result["initial_syn"] == pytest.approx(5e-4)
+    assert result["updated_syn"] == pytest.approx(1e-3)
+    assert result["updated_esyn"] == pytest.approx(20.0)
+    assert result["initial_i_max"] == pytest.approx(0.5)
+    assert result["updated_i_max"] == pytest.approx(3.0)
+    assert result["control_ids"] == [
+        "display_dt",
+        "hh_gk",
+        "hh_gleak",
+        "hh_gna",
+        "stim_amp",
+        "stim_dur",
+        "syn_delta",
+        "syn_e_syn",
+        "syn_gs",
+        "syn_k_minus",
+        "syn_v_th",
+    ]

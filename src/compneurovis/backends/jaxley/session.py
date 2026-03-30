@@ -352,6 +352,23 @@ class JaxleySession(BufferedSession, ABC):
                 externals[key] = values[..., step_index] if step_index < values.shape[-1] else np.zeros_like(values[..., 0])
         return externals
 
+    def refresh_runtime_parameters(self, *, preserve_state: bool = True) -> None:
+        if self.network is None or self._init_fn is None:
+            return
+        params = self.network.get_parameters()
+        current_state = self._state if preserve_state else None
+        self._state, self._all_params = self._init_fn(
+            params,
+            all_states=current_state,
+            delta_t=self.dt,
+        )
+
+    def refresh_runtime_externals(self) -> None:
+        if self.network is None:
+            return
+        self._externals = {key: np.asarray(value) for key, value in self.network.externals.copy().items()}
+        self._external_inds = {key: np.asarray(value) for key, value in self.network.external_inds.copy().items()}
+
     def advance(self) -> None:
         samples: list[np.ndarray] = []
         times: list[float] = []
