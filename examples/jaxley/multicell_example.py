@@ -141,4 +141,4 @@ class MultiCellSession(JaxleySession):
         return {"stimulus": current}
 
 
-run_app(build_jaxley_app(MultiCellSession()))
+run_app(build_jaxley_app(MultiCellSession))

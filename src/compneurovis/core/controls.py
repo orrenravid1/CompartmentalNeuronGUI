@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from compneurovis.core.bindings import AttributeRef
+
 
 @dataclass(frozen=True, slots=True)
 class ControlSpec:
@@ -17,6 +19,7 @@ class ControlSpec:
     state_key: str | None = None
     send_to_session: bool = False
     scale: str = "linear"
+    target: AttributeRef | None = None
 
     def resolved_state_key(self) -> str:
         return self.state_key or self.id

@@ -54,7 +54,15 @@ At refresh, `resolve_value(view_prop, state)` replaces any `StateBinding` with i
 
 ## Interaction Hooks
 
-When a `Session` (or custom `interaction_target`) implements these methods, the frontend calls them on the corresponding events:
+For worker-backed apps, the default interaction flow is semantic command routing to the session:
+
+- entity click -> `EntityClicked(entity_id)`
+- unhandled key press -> `KeyPressed(key)`
+- button/shortcut action -> `InvokeAction(action_id, payload)`
+
+The worker session can then emit `StatePatch`, `Status`, and normal field updates in response.
+
+An explicit frontend interaction target is still available as an advanced escape hatch. When such a target implements these methods, the frontend calls them on the corresponding events:
 
 ```python
 def on_entity_clicked(self, entity_id: str, ctx: FrontendInteractionContext) -> bool: ...
@@ -70,6 +78,8 @@ Return `True` to consume the event (prevents default handling). `FrontendInterac
 - `ctx.show_status(message)` — status bar message
 - `ctx.invoke_action(action_id, payload)` — programmatically fire an action
 - `ctx.set_control(control_id, value)` — programmatically change a control
+
+Worker-backed apps should use lazy session sources and session-side interaction hooks by default. User code should not need to split itself across frontend and backend classes just to make pipes work.
 
 ## Adding a New Panel
 

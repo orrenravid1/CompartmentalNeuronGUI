@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Deque
+from typing import Any, Callable, Deque, TypeAlias
 
 from compneurovis.core.document import Document
 from compneurovis.session.protocol import SessionCommand, SessionUpdate
@@ -47,3 +47,32 @@ class BufferedSession(Session):
         self._updates.clear()
         return updates
 
+
+SessionFactory: TypeAlias = Callable[[], Session]
+SessionSource: TypeAlias = type[Session] | SessionFactory
+
+
+def resolve_session_source(source: SessionSource) -> Session:
+    if isinstance(source, type):
+        if not issubclass(source, Session):
+            raise TypeError(f"Expected Session subclass, got {source!r}")
+        return source()
+    if isinstance(source, Session):
+        raise TypeError(
+            "Eager session instances are not supported for worker-backed apps. "
+            "Pass a Session subclass or a top-level zero-argument factory instead."
+        )
+    if callable(source):
+        session = source()
+        if not isinstance(session, Session):
+            raise TypeError(f"Session factory returned {type(session)!r}, expected Session")
+        return session
+    raise TypeError(f"Unsupported session source: {source!r}")
+def resolve_interaction_target_source(source: Any | None) -> Any | None:
+    if source is None:
+        return None
+    if isinstance(source, type):
+        return source()
+    if callable(source) and not any(hasattr(source, attr) for attr in ("on_action", "on_key_press", "on_entity_clicked")):
+        return source()
+    return source

@@ -24,6 +24,41 @@ Do not use this document as a file-by-file changelog.
 - Prefer typed append/patch messages over bundled full-state replacements when only part of the state changed.
 - Prefer builder-driven simple entrypoints for common workflows.
 - Prefer library-level cross-platform behavior over requiring unusual user script patterns.
+- Keep backend choice, feature choice, and layout choice orthogonal.
+
+## Current Transition Targets
+
+These are the main architectural mismatches still present in code. If work resumes after a pause, start here rather than scanning the whole tracker for clues.
+
+1. Generalize display/history field roles
+   Current issue:
+   default backend document builders still use voltage-specific field ids, labels, and color assumptions.
+   Needed direction:
+   morphology and surface views should bind to arbitrary display fields, with voltage treated as one preset rather than the architecture itself.
+
+2. Build a genuinely feature-composable public authoring layer
+   Current issue:
+   real apps such as signaling-cascade and pharynx still expose too much `Document`/session plumbing for the intended scientific user.
+   Needed direction:
+   users should declare features, controls, tracked series, and small hooks without needing to think about transport or low-level document assembly.
+
+3. Separate simulation cadence from presentation cadence
+   Current issue:
+   batching is currently doing double duty as both throughput control and perceived smoothness control.
+   Needed direction:
+   keep backend stepping, latest-state delivery, history capture, and playback/presentation smoothing as separable concerns.
+
+4. Replace the transitional layout shell with a generic workbench model
+   Current issue:
+   splitters and fixed panel slots are useful, but still encode a temporary layout model.
+   Needed direction:
+   one default layout plus generic panel composition, with future saved layouts and richer panel arrangements.
+
+5. Formalize replay/history semantics across backends
+   Current issue:
+   live history capture and replay/recorded history now share the same conceptual space, but the model is only partially explicit.
+   Needed direction:
+   replay should feel like the natural full-history form of the same architecture rather than a side path.
 
 ## Phased Roadmap
 
@@ -68,6 +103,9 @@ Target outcomes:
 
 - generic layout system with a default arrangement and customizable panel composition
 - better builder/default APIs so domain users rarely touch document plumbing directly
+- feature-composable high-level authoring:
+  - adding a trace plot, morphology view, surface view, or controls should mean adding another feature declaration
+  - users should not have to switch to a different app model because they want one more visualization mode
 - tiered authoring surface:
   - very declarative defaults for common scientific workflows
   - light customization via small semantic hooks and callbacks
@@ -93,6 +131,44 @@ Target outcomes:
 - transport-agnostic session model exercised by more than one transport
 - editor-style workflows living on the same core model rather than as separate infrastructure
 
+## Next 3 Implementation Steps
+
+These are the recommended next implementation steps in order. If only one thing is tackled next, start with step 1.
+
+1. Remove voltage-specific assumptions from default morphology-display and trace-history builders
+   Scope:
+   generalize backend document builders so default display/history roles are field-generic rather than voltage-named.
+   Concrete implications:
+   NEURON and Jaxley default builders should not encode voltage as the architectural field identity, title, or only display concept.
+   Why first:
+   this is already a known architectural mismatch and it blocks NeuroML-style and non-voltage display use cases cleanly.
+
+2. Add a feature-based high-level authoring layer for common scientific workflows
+   Scope:
+   let users declare controls, tracked series, morphology, surfaces, actions, and layout features without manual document plumbing.
+   Concrete implications:
+   signaling-cascade and pharynx-style apps should get materially shorter and stop exposing transport-aware structure.
+   Why second:
+   the architecture is now strong enough that the main remaining pain is authoring complexity.
+
+3. Split simulation batching from presentation smoothing
+   Scope:
+   separate backend stepping cadence, latest-state delivery cadence, history capture cadence, and optional playback smoothing.
+   Concrete implications:
+   heavy models should be able to stay efficient without forcing visibly jerky temporal playback.
+   Why third:
+   this is important, but it sits more cleanly on top of the generic display/history split than before it.
+
+## Phase 2 Entry Definition Of Done
+
+Phase 2 has meaningfully started only when all of the following are true:
+
+- default backend builders no longer imply that morphology coloring is inherently voltage-only
+- at least one higher-level, feature-composable builder path exists for common scientific apps
+- signaling-cascade and pharynx-style examples can be expressed without transport-aware author code
+- the tracker's current transition targets are reflected in code-level abstractions, not just prose
+- current parity examples still work while the new public authoring layer is introduced
+
 ## Confirmed Decisions
 
 ### Cross-platform launch behavior
@@ -100,6 +176,9 @@ Target outcomes:
 - User-facing launch code should work the same on Windows, Linux, and macOS.
 - `run_app(...)` must protect against spawned child imports internally.
 - `if __name__ == "__main__":` is allowed in user scripts, but should not be required by the library just to make examples work.
+- Session construction should be lazy by default for worker-backed apps.
+- The recommended public launch pattern is to pass a session class or top-level zero-argument factory, not an already-created session instance.
+- Eager session instances should not be supported for worker-backed apps.
 
 ### Frontend invalidation model
 
@@ -135,6 +214,18 @@ Target outcomes:
 - `FieldAppend` and `DocumentPatch` should be the normal path when they can express the change correctly.
 - `FieldReplace` remains the full-replacement field path and should be treated as the broader-cost option.
 - Full replacements are acceptable, but they should be treated as the explicit expensive path.
+- Latest-state display and captured history should be modeled as separate concerns.
+- The default live path should favor latest-state updates for current rendering.
+- Full history capture for retrospective trace inspection or playback should be an explicit opt-in feature, not the default cost of showing a live morphology or surface.
+- The shared policy name is `HistoryCaptureMode`:
+  - `ON_DEMAND` for the default split between latest display state and requested trace history
+  - `FULL` for all-entity history capture used by retrospective trace selection or playback
+- Display roles must be field-generic rather than voltage-specific.
+- Near-term priority: remove hard-coded voltage-oriented field ids and default assumptions from backend document builders where they imply the architecture itself is voltage-only.
+- The intended model is:
+  - arbitrary display fields for current morphology/surface coloring
+  - arbitrary history fields for retained traces or replay
+  with voltage treated as one common preset, not the defining concept.
 - The cost model should be opt-in:
   - if a backend or frontend wants broader updates, it should ask for them explicitly
   - the framework should not force broad refreshes unless the change is genuinely structural
@@ -151,11 +242,47 @@ Target outcomes:
 - For the intended audience, custom interactions should be expressible with a few small callbacks and strong defaults.
 - The intended audience is closer to SciPy, matplotlib, NEURON, PyTorch, and Plotly users than engine/tool authors.
 - Public authoring should therefore optimize for declarative configuration plus small semantic callbacks, not explicit controller or document assembly.
-- The framework should expose semantic frontend hooks such as:
+- The framework should expose semantic interaction hooks such as:
   - action/button invocation
   - key press
   - clicked morphology entity
+- For worker-backed apps, these hooks should live on the session and be driven by semantic commands rather than frontend-only callback objects.
 - Per-app interaction policy should stay outside core renderer/transport logic.
+
+### Public authoring surface
+
+- The simplified public API must stay feature-composable.
+- High-level helpers should assemble the same underlying `Document + Session + Frontend + Transport` model rather than introducing separate app families such as "trace app" vs "morphology app" vs "surface app".
+- Backend-specific helpers such as `build_neuron_app(...)` are acceptable as transitional conveniences, but they should not become the conceptual boundary of the library.
+- Backend choice, feature choice, and layout choice must stay orthogonal.
+- A NEURON-backed signaling cascade app with controls and traces but no morphology is still a valid first-class app shape.
+- The preferred user experience is:
+  - declare controls
+  - declare exposed series/fields
+  - declare views/layout features
+  - provide model lifecycle hooks
+  while the library owns document assembly, history buffering, and protocol packaging.
+- Adding morphology, surfaces, or extra plots to an existing app should mean adding declarations, not rewriting the app around a different abstraction.
+
+## Benchmark Apps
+
+These are the benchmark apps to use when validating architectural changes. If a change improves abstractions but degrades these workflows, the change is incomplete.
+
+- signaling-cascade
+  Purpose:
+  benchmark for "scientific plotting + controls + live updates" without morphology being the main story.
+- pharynx
+  Purpose:
+  benchmark for custom interactions, multi-trace selection, mode-like workflows, and real scientific authoring pressure.
+- complex NEURON morphology example
+  Purpose:
+  benchmark for heavy live morphology rendering, update cadence, and click-to-trace behavior under load.
+- Jaxley multicell
+  Purpose:
+  benchmark that the same architectural ideas work outside the NEURON backend.
+- surface cross-section / animated surface examples
+  Purpose:
+  benchmark for display/history separation, surface rendering invalidation, and replay-like thinking outside morphology.
 
 ## Lessons Learned
 
@@ -188,6 +315,34 @@ Target outcomes:
 - The same principle should extend beyond traces:
   - patch or append whenever the changed region can be described cleanly
   - reserve bundled value replacement for cases where incremental semantics would be misleading, fragile, or more complex than the full replace
+- On slow models, smaller simulation-time batches can still improve perceived smoothness even when wall-clock throughput is unchanged, because the displayed state advances in smaller temporal jumps.
+- This means simulation batching is not just a throughput parameter; it is also a presentation parameter. The architecture should leave room for:
+  - latest-state delivery cadence
+  - history capture cadence
+  - optional playback/presentation smoothing
+- The original NEURON viewer had a useful split:
+  - latest morphology values were streamed on the fly
+  - trace history was recorded only when the user opted into it
+- That split should return in typed form:
+  - default live fields for current state
+  - optional history fields or buffers for retrospective trace selection and replay
+- Full history for every entity remains valuable for features such as click-later trace inspection and replay, but it should be configurable rather than imposed on every live session.
+- The first implementation of that split currently uses voltage-specific names; this should be generalized soon so morphology coloring can bind cleanly to any field present on the geometry.
+
+### Lazy session construction
+
+- Worker-side error routing only applies to code that runs inside the worker.
+- If a user script constructs a session eagerly at module scope, constructor side effects and constructor exceptions happen before worker error handling can help.
+- The transport and builders should therefore prefer lazy session sources:
+  - session class
+  - top-level zero-argument factory
+- Frontend-only interaction state should be a separate concern from backend session construction.
+- The canonical architecture should not rely on instantiating a second full session in the UI process just to recover custom interactions.
+- The chosen default is session-side semantic interaction handling:
+  - `InvokeAction`
+  - `KeyPressed`
+  - `EntityClicked`
+  with session-emitted `StatePatch` / `Status` responses as needed.
 
 ### Rename drift and compatibility shims
 
@@ -208,27 +363,37 @@ Target outcomes:
 - `Document`/`ViewSpec`/layout internals are acceptable framework building blocks, but they are too low-level as the primary authoring surface for domain users.
 - If a user has to override document construction just to reorder controls, tune the default trace plot, or express a simple click-mode workflow, the public API is still too exposed.
 - The default NEURON-style path should prefer small hook methods and simple overrides over forcing authors to manually assemble interaction machinery.
+- Users must not have to reason about transport boundaries when deciding where interaction code belongs.
+- If a user has to ask "does this method go in the frontend object or the session object or it breaks pipes?", the authoring model has failed.
 - Refactored app examples should be treated as usability benchmarks:
   - if a pharynx or signaling-cascade app still reads like framework plumbing, the public API is not done
   - the target is code that feels comparable in complexity to a plotting script or a lightweight simulation harness
+
+### Declarative composition vs specialized app types
+
+- A narrowly simplified abstraction can still be wrong if it is not composable.
+- A user who starts with "plot a few live traces and expose sliders" must still be able to add morphology or a surface later without changing conceptual frameworks.
+- The right simplification is a feature-based authoring layer over the common core model, not separate specialized app categories with different mental models.
+- Backend-labeled helpers can become misleading if they imply a default visualization mode.
+- The long-term public model should read more like "choose a backend, then add features" than "pick an app type."
 
 ## Deferred Work
 
 ### Callable-based animated surface builder
 
 - Writing an animated surface currently requires subclassing `BufferedSession` directly, which exposes session internals to users who just want to express "call this function each frame."
-- The right Phase 2 primitive is a builder with a callable — `build_animated_surface_app(fn=compute_frame, ...)` — where the session is an internal implementation detail invisible to the author.
-- `FuncSession` (a `BufferedSession` that calls `fn()` in `advance()`) is a valid *internal* implementation of that builder, but should not be a public primitive — it still requires users to think in terms of sessions.
-- The builder should also accept `on_control` and `on_action` callbacks so parameter-driven computation (e.g., a speed slider that changes `fn`'s behaviour) remains expressible without a full session subclass.
-- Controls that only drive visual properties (colors, axes) via `StateBinding` should not need to involve the session at all — the builder should distinguish those from controls that require `send_to_session=True`.
-- Current workaround: subclass `BufferedSession` directly, as in `examples/surface_plot/animated_surface_live.py` and `animated_surface_replay.py`.
+- The right Phase 2 primitive is a builder with a callable, `build_animated_surface_app(fn=compute_frame, ...)`, where the session is an internal implementation detail invisible to the author.
+- `FuncSession` (a `BufferedSession` that calls `fn()` in `advance()`) is a valid internal implementation of that builder, but should not be a public primitive. It still requires users to think in terms of sessions.
+- The builder should also accept `on_control` and `on_action` callbacks so parameter-driven computation remains expressible without a full session subclass.
+- Controls that only drive visual properties via `StateBinding` should not need to involve the session at all. The builder should distinguish those from controls that require `send_to_session=True`.
+- Current workaround: subclass `BufferedSession` directly, as in `examples/surface_plot/animated_surface_live.py` and `examples/surface_plot/animated_surface_replay.py`.
 
 ### Session bootstrap API
 
 - The signaling cascade retrofit showed a need for a formal session-level bootstrap document hook.
 - Current workaround: construct a document before `run_app(...)` when possible.
 - Desired future design:
-  - a small formal API for “static document known before worker start”
+  - a small formal API for "static document known before worker start"
   - no ad hoc per-session bootstrap pattern
 
 ### Plot configuration model
@@ -241,6 +406,9 @@ Target outcomes:
   - independent y-axes or stacked plots
   - frontend-side ring buffers for very large live fields if simple append-and-trim becomes a bottleneck
   - richer incremental plot update paths when reslicing whole fields becomes too expensive for dense multi-trace live plots
+  - an explicit history-capture policy so plots can choose between:
+    - current-state streaming plus selected-trace buffering
+    - full all-entity history capture for retrospective selection and replay
 
 ### Frontend layout system
 
@@ -269,7 +437,15 @@ Target outcomes:
   - prefer callback-driven or declarative-simple interaction hooks for common app authoring
   - avoid baking one workflow model into `ActionSpec`
 - Near-term priority:
-  - simplify the public NEURON-facing authoring layer so real apps like the pharynx workflow can be expressed with mostly defaults, concise configuration, and small semantic callbacks
+  - simplify the public authoring layer so real apps like the pharynx workflow and signaling cascade can be expressed with mostly defaults, concise configuration, and small semantic callbacks
+
+### Transitional APIs And Assumptions To Retire
+
+- Voltage-specific default field ids such as `voltage_display` / `voltage_trace` as architectural concepts
+- Voltage-specific default builder assumptions where they imply morphology coloring is inherently voltage-driven
+- Backend-labeled builder mental models where the backend name implies the app shape
+- Any user-facing workflow that requires understanding transport boundaries to place code correctly
+- Temporary layout behavior that still encodes "main 3-D view plus one plot plus one control stack" as the conceptual model
 
 ## Open Questions
 

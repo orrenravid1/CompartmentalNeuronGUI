@@ -15,19 +15,44 @@ import os
 
 from neuron import h
 
-from compneurovis import NeuronSession, build_neuron_app, run_app
+from compneurovis import ControlSpec, NeuronSession, build_neuron_app, run_app
 from compneurovis.neuronutils.swc_utils import load_swc_neuron
 
 
 class ComplexCellSession(NeuronSession):
     def __init__(self):
-        super().__init__(title="Complex cell viewer")
+        super().__init__(title="Complex cell viewer", display_dt=0.5)
+        self.stim_amp = 1.0
 
     def build_sections(self):
         # load_swc_neuron imports via NEURON's Import3d and returns sections with pt3d coordinates set.
         curr_path = os.path.dirname(os.path.abspath(__file__))
         swc_path = os.path.join(curr_path, "..", "..", "res", "Animal_2_Basal_2.CNG.swc")
         return load_swc_neuron(swc_path)
+
+    def control_specs(self):
+        return {
+            "display_dt": ControlSpec(
+                "display_dt",
+                "float",
+                "Visual update interval (ms sim/update)",
+                self.display_dt,
+                min=self.dt,
+                max=5.0,
+                steps=98,
+                send_to_session=True,
+            ),
+            "stim_amp": ControlSpec(
+                "stim_amp",
+                "float",
+                "Stimulus amplitude (nA)",
+                self.stim_amp,
+                min=0.0,
+                max=2.0,
+                steps=100,
+                send_to_session=True,
+            ),
+        }
 
     def setup_model(self, sections):
         for sec in sections:
@@ -43,9 +68,20 @@ class ComplexCellSession(NeuronSession):
             clamp = h.IClamp(soma(0.5))
             clamp.delay = delay
             clamp.dur = dur
-            clamp.amp = amp
+            clamp.amp = self.stim_amp * amp
             self.iclamps.append(clamp)
         return {"iclamps": self.iclamps}
 
+    def apply_control(self, control_id: str, value) -> bool:
+        if control_id == "display_dt":
+            self.display_dt = max(self.dt, float(value))
+            return True
+        if control_id == "stim_amp":
+            self.stim_amp = float(value)
+            for clamp in getattr(self, "iclamps", []):
+                clamp.amp = self.stim_amp
+            return True
+        return super().apply_control(control_id, value)
 
-run_app(build_neuron_app(ComplexCellSession()))
+
+run_app(build_neuron_app(ComplexCellSession))

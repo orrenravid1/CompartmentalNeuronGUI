@@ -6,17 +6,20 @@ summary: Generated list of names exported by compneurovis.__init__.
 # Public API Index
 
 - `ActionSpec`
+- `AttributeRef`
 - `AppSpec`
 - `ControlSpec`
 - `Document`
 - `Field`
 - `Geometry`
 - `GridGeometry`
+- `HistoryCaptureMode`
 - `LayoutSpec`
 - `LinePlotViewSpec`
 - `MorphologyGeometry`
 - `MorphologyViewSpec`
 - `ReplaySession`
+- `SeriesSpec`
 - `StateBinding`
 - `SurfaceViewSpec`
 - `ViewSpec`

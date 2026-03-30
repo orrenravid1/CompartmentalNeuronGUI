@@ -1,3 +1,4 @@
+import io
 import os
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -6,14 +7,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
+import pytest
 
-from compneurovis import ActionSpec, AppSpec, ControlSpec, Document, Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_surface_app, grid_field
+from compneurovis import ActionSpec, AppSpec, ControlSpec, Document, Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
 from compneurovis.backends.neuron import NeuronSession
+from compneurovis.backends.neuron.document import NeuronDocumentBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
 from compneurovis.frontends.vispy.panels import LinePlotPanel, Viewport3DPanel
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer
-from compneurovis.session import FieldAppend
+from compneurovis.session import Error, FieldAppend, StatePatch, resolve_interaction_target_source
 
 
 def test_line_plot_panel_resolves_selected_entity_binding():
@@ -187,6 +190,158 @@ def test_run_app_skips_frontend_launch_in_spawned_child():
         frontend_module.QtWidgets.QApplication = original_qapplication
 
 
+def test_frontend_shows_modal_for_fatal_session_error():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    class FakeTransport:
+        def __init__(self):
+            self._dead = True
+            self.calls = 0
+
+        def poll_updates(self):
+            if self.calls == 0:
+                self.calls += 1
+                return [Error("Traceback (most recent call last):\nRuntimeError: boom")]
+            return []
+
+        def stop(self):
+            return None
+
+    window = VispyFrontendWindow(AppSpec(title="Error test"))
+    window.timer.stop()
+    window.transport = FakeTransport()
+
+    original_critical = frontend_module.QtWidgets.QMessageBox.critical
+    original_stderr = frontend_module.sys.stderr
+    frontend_module.QtWidgets.QMessageBox.critical = Mock()
+    frontend_module.sys.stderr = io.StringIO()
+    try:
+        window._poll_transport()
+
+        frontend_module.QtWidgets.QMessageBox.critical.assert_called_once()
+        args = frontend_module.QtWidgets.QMessageBox.critical.call_args[0]
+        assert args[1] == "Session error"
+        assert "RuntimeError: boom" in args[2]
+        assert "RuntimeError: boom" in frontend_module.sys.stderr.getvalue()
+        assert window.transport is None
+        assert not window.timer.isActive()
+    finally:
+        frontend_module.QtWidgets.QMessageBox.critical = original_critical
+        frontend_module.sys.stderr = original_stderr
+        window.close()
+        app.quit()
+
+
+def test_frontend_logs_nonfatal_session_error_to_stderr_without_modal():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    class FakeTransport:
+        def __init__(self):
+            self._dead = False
+            self.calls = 0
+
+        def poll_updates(self):
+            if self.calls == 0:
+                self.calls += 1
+                return [Error("Nonfatal session warning")]
+            return []
+
+        def stop(self):
+            return None
+
+    window = VispyFrontendWindow(AppSpec(title="Nonfatal error test"))
+    window.timer.stop()
+    window.transport = FakeTransport()
+
+    original_critical = frontend_module.QtWidgets.QMessageBox.critical
+    original_stderr = frontend_module.sys.stderr
+    frontend_module.QtWidgets.QMessageBox.critical = Mock()
+    frontend_module.sys.stderr = io.StringIO()
+    try:
+        window._poll_transport()
+
+        frontend_module.QtWidgets.QMessageBox.critical.assert_not_called()
+        assert "Nonfatal session warning" in frontend_module.sys.stderr.getvalue()
+        assert window.transport is not None
+        assert window.statusBar().currentMessage() == "Nonfatal session warning"
+    finally:
+        frontend_module.QtWidgets.QMessageBox.critical = original_critical
+        frontend_module.sys.stderr = original_stderr
+        window.close()
+        app.quit()
+
+
+def test_build_neuron_app_accepts_session_class():
+    class DummyNeuronSession(NeuronSession):
+        def build_sections(self):
+            return []
+
+        def initialize(self):
+            raise AssertionError("should not initialize during app construction")
+
+        def advance(self) -> None:
+            return None
+
+        def handle(self, command) -> None:
+            return None
+
+    app_spec = build_neuron_app(DummyNeuronSession, title="Dummy")
+
+    assert app_spec.session is DummyNeuronSession
+    assert app_spec.interaction_target is None
+    assert app_spec.title == "Dummy"
+
+
+def test_build_neuron_app_requires_lazy_session_source():
+    class DefaultInteractionSession(NeuronSession):
+        def __init__(self):
+            super().__init__(title="Default Interaction")
+
+        def build_sections(self):
+            return []
+
+        def initialize(self):
+            raise AssertionError("should not initialize during app construction")
+
+        def advance(self) -> None:
+            return None
+
+        def handle(self, command) -> None:
+            return None
+
+    with pytest.raises(TypeError, match="requires a Session subclass or top-level zero-argument factory"):
+        build_neuron_app(DefaultInteractionSession())
+
+
+def test_build_neuron_app_supports_explicit_interaction_target_factory():
+    class DefaultInteractionSession(NeuronSession):
+        def __init__(self):
+            super().__init__(title="Default Interaction")
+
+        def build_sections(self):
+            return []
+
+        def initialize(self):
+            raise AssertionError("should not initialize during app construction")
+
+        def advance(self) -> None:
+            return None
+
+        def handle(self, command) -> None:
+            return None
+
+    class DummyInteractionTarget:
+        def __init__(self):
+            self.marker = "frontend-target"
+
+    app_spec = build_neuron_app(DefaultInteractionSession, interaction_target=DummyInteractionTarget)
+
+    assert app_spec.interaction_target is DummyInteractionTarget
+    resolved = resolve_interaction_target_source(app_spec.interaction_target)
+    assert isinstance(resolved, DummyInteractionTarget)
+    assert resolved.marker == "frontend-target"
+
+
 def test_line_plot_panel_supports_multi_series_fields():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = LinePlotPanel()
@@ -219,6 +374,54 @@ def test_line_plot_panel_supports_multi_series_fields():
     assert np.allclose(ligand_y, np.array([1.0, 2.0, 3.0], dtype=np.float32))
     assert np.allclose(receptor_x, np.array([0.0, 1.0, 2.0], dtype=np.float32))
     assert np.allclose(receptor_y, np.array([10.0, 20.0, 30.0], dtype=np.float32))
+    app.quit()
+
+
+def test_frontend_applies_state_patch_and_refreshes_bound_plot():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    field = Field(
+        id="voltage",
+        values=np.array([[1.0, 2.0], [10.0, 20.0]], dtype=np.float32),
+        dims=("segment", "time"),
+        coords={
+            "segment": np.array(["seg-a", "seg-b"]),
+            "time": np.array([0.0, 1.0], dtype=np.float32),
+        },
+    )
+    view = LinePlotViewSpec(
+        id="trace",
+        field_id="voltage",
+        x_dim="time",
+        selectors={"segment": StateBinding("selected_trace_entity_ids")},
+        series_dim="segment",
+    )
+    document = Document(
+        fields={"voltage": field},
+        geometries={},
+        views={"trace": view},
+        layout=LayoutSpec(title="State patch test", line_plot_view_id="trace"),
+    )
+
+    class FakeTransport:
+        _dead = False
+
+        def poll_updates(self):
+            updates = [StatePatch({"selected_trace_entity_ids": ["seg-b"]})]
+            self.poll_updates = lambda: []
+            return updates
+
+        def stop(self):
+            return None
+
+    window = VispyFrontendWindow(AppSpec(document=document, title="State patch test"))
+    window.timer.stop()
+    window.transport = FakeTransport()
+
+    window._poll_transport()
+
+    assert window.state["selected_trace_entity_ids"] == ["seg-b"]
+    assert "seg-b" in window.line_plot._series_items
+    window.close()
     app.quit()
 
 
@@ -300,6 +503,36 @@ def test_line_plot_panel_clamps_rolling_window_to_available_history():
     app.quit()
 
 
+def test_line_plot_panel_resets_single_sample_rolling_window_without_negative_backfill():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    view = LinePlotViewSpec(
+        id="trace-plot",
+        field_id="trace",
+        x_dim="time",
+        rolling_window=30.0,
+    )
+    field_before = Field(
+        id="trace",
+        values=np.array([1.0, 2.0, 3.0], dtype=np.float32),
+        dims=("time",),
+        coords={"time": np.array([90.0, 100.0, 120.0], dtype=np.float32)},
+    )
+    field_after = Field(
+        id="trace",
+        values=np.array([1.0], dtype=np.float32),
+        dims=("time",),
+        coords={"time": np.array([0.0], dtype=np.float32)},
+    )
+
+    panel.refresh(view, field_before, {}, {})
+    panel.refresh(view, field_after, {}, {})
+    view_range = panel.plotItem.getViewBox().viewRange()
+
+    assert np.allclose(view_range[0], [0.0, 30.0])
+    app.quit()
+
+
 def test_line_plot_panel_can_trim_data_to_rolling_window():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = LinePlotPanel()
@@ -377,6 +610,26 @@ def test_line_plot_trim_keeps_last_sample_before_window_boundary():
     app.quit()
 
 
+def test_line_plot_trim_drops_nonfinite_history_samples():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    x = np.array([0.0, 1.0, 2.0, 3.0], dtype=np.float32)
+    y = np.array([np.nan, np.nan, 3.0, 4.0], dtype=np.float32)
+    view = LinePlotViewSpec(
+        id="trace-plot",
+        field_id="trace",
+        x_dim="time",
+        rolling_window=10.0,
+        trim_to_rolling_window=True,
+    )
+
+    trimmed_x, trimmed_y = panel._trim_line_data(view, x, y)
+
+    assert np.allclose(trimmed_x, np.array([2.0, 3.0], dtype=np.float32))
+    assert np.allclose(trimmed_y, np.array([3.0, 4.0], dtype=np.float32))
+    app.quit()
+
+
 def test_line_plot_panel_supports_multi_selected_morphology_traces():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = LinePlotPanel()
@@ -404,6 +657,63 @@ def test_line_plot_panel_supports_multi_selected_morphology_traces():
     seg_b_x, seg_b_y = panel._series_items["seg-b"].getData()
     assert np.allclose(seg_b_x, np.array([0.0, 1.0, 2.0], dtype=np.float32))
     assert np.allclose(seg_b_y, np.array([10.0, 20.0, 30.0], dtype=np.float32))
+    app.quit()
+
+
+def test_line_plot_panel_drops_nonfinite_prefix_for_sparse_selected_trace_history():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    field = Field(
+        id="voltage_trace",
+        values=np.array([[1.0, 2.0, 3.0, 4.0], [np.nan, np.nan, 30.0, 40.0]], dtype=np.float32),
+        dims=("segment", "time"),
+        coords={
+            "segment": np.array(["seg-a", "seg-b"]),
+            "time": np.array([0.0, 1.0, 2.0, 3.0], dtype=np.float32),
+        },
+    )
+    view = LinePlotViewSpec(
+        id="trace",
+        field_id=field.id,
+        x_dim="time",
+        series_dim="segment",
+        selectors={"segment": StateBinding("selected_trace_entity_ids")},
+        trim_to_rolling_window=True,
+        rolling_window=10.0,
+    )
+
+    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-a", "seg-b"]}, {})
+
+    seg_b_x, seg_b_y = panel._series_items["seg-b"].getData()
+    assert np.allclose(seg_b_x, np.array([2.0, 3.0], dtype=np.float32))
+    assert np.allclose(seg_b_y, np.array([30.0, 40.0], dtype=np.float32))
+    app.quit()
+
+
+def test_line_plot_panel_ignores_missing_selected_trace_labels_for_sparse_history():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    field = Field(
+        id="voltage_trace",
+        values=np.array([[1.0, 2.0, 3.0]], dtype=np.float32),
+        dims=("segment", "time"),
+        coords={
+            "segment": np.array(["seg-a"]),
+            "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
+        },
+    )
+    view = LinePlotViewSpec(
+        id="trace",
+        field_id=field.id,
+        x_dim="time",
+        series_dim="segment",
+        selectors={"segment": StateBinding("selected_trace_entity_ids")},
+        title="Selected voltages",
+    )
+
+    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-a", "seg-b"]}, {})
+
+    assert set(panel._series_items.keys()) == {"seg-a"}
     app.quit()
 
 
@@ -841,7 +1151,7 @@ def test_neuron_session_expands_history_budget_to_cover_trace_window():
         time_value=0.0,
     )
 
-    assert session._resolved_field_max_samples(document, field_id="voltage", append_dim="time") == 1201
+    assert session._resolved_field_max_samples(document, field_id=NeuronDocumentBuilder.TRACE_FIELD_ID, append_dim="time") == 1201
 
 
 def test_frontend_applies_field_append_updates_incrementally():

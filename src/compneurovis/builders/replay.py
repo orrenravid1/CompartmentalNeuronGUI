@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import partial
+
 from compneurovis.core import AppSpec, Document
 from compneurovis.session import BufferedSession, FieldReplace
 
@@ -31,4 +33,8 @@ class ReplaySession(BufferedSession):
 
 
 def build_replay_app(*, document: Document, field_id: str, frames) -> AppSpec:
-    return AppSpec(document=document, session=ReplaySession(document=document, field_id=field_id, frames=frames), title=document.layout.title)
+    return AppSpec(
+        document=document,
+        session=partial(ReplaySession, document=document, field_id=field_id, frames=frames),
+        title=document.layout.title,
+    )

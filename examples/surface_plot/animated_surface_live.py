@@ -94,4 +94,4 @@ class LiveAnimationSession(BufferedSession):
         return 1 / 30
 
 
-run_app(AppSpec(session=LiveAnimationSession(), title="animated sinc wave — live"))
+run_app(AppSpec(session=LiveAnimationSession, title="animated sinc wave — live"))

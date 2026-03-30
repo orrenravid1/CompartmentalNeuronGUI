@@ -281,9 +281,19 @@ class LinePlotPanel(pg.PlotWidget):
             if resolved is None:
                 self._plot_item.setData([], [])
                 return
-            resolved_selectors[dim] = resolved
+            filtered = self._filter_selector_for_field(field, dim, resolved)
+            if filtered is None:
+                self._clear_series()
+                self._plot_item.setData([], [])
+                return
+            resolved_selectors[dim] = filtered
 
-        sliced = field.select(resolved_selectors)
+        try:
+            sliced = field.select(resolved_selectors)
+        except KeyError:
+            self._clear_series()
+            self._plot_item.setData([], [])
+            return
         x_dim = view.x_dim or sliced.dims[-1]
         if view.series_dim is not None:
             self._plot_item.setData([], [])
@@ -310,6 +320,21 @@ class LinePlotPanel(pg.PlotWidget):
         self._plot_item.setPen(pg.mkPen(resolve_binding(view.pen, state), width=2))
         self._plot_item.setData(x, y)
         self._apply_view_ranges(view, x)
+
+    def _filter_selector_for_field(self, field: Field, dim: str, selector: Any) -> Any | None:
+        coord = field.coord(dim)
+        if isinstance(selector, str):
+            return selector if np.any(coord.astype(str) == selector) else None
+        if isinstance(selector, (list, tuple, np.ndarray)):
+            selector_array = np.asarray(selector)
+            if selector_array.ndim != 1 or selector_array.size == 0:
+                return None if selector_array.size == 0 else selector
+            if np.issubdtype(selector_array.dtype, np.integer) or np.issubdtype(selector_array.dtype, np.floating):
+                return selector
+            coord_labels = set(coord.astype(str).tolist())
+            filtered = [value for value in selector_array.astype(str).tolist() if value in coord_labels]
+            return filtered or None
+        return selector
 
     def _ensure_legend(self, enabled: bool) -> None:
         if enabled and self.plotItem.legend is None:
@@ -355,6 +380,7 @@ class LinePlotPanel(pg.PlotWidget):
             self.removeItem(self._series_items[label])
             del self._series_items[label]
 
+        range_x_segments: list[np.ndarray] = []
         for idx, label in enumerate(series_labels):
             if label in view.series_colors:
                 color = view.series_colors[label]
@@ -369,7 +395,10 @@ class LinePlotPanel(pg.PlotWidget):
                 self._series_items[label] = item
             else:
                 item.setPen(pen)
-            item.setData(x, values[idx])
+            series_x, series_y = self._finite_line_data(x, values[idx])
+            item.setData(series_x, series_y)
+            if len(series_x):
+                range_x_segments.append(series_x)
         if self.plotItem.legend is not None:
             legend_signature = tuple(series_labels)
             if legend_signature != self._legend_signature:
@@ -379,7 +408,8 @@ class LinePlotPanel(pg.PlotWidget):
                 self._legend_signature = legend_signature
         else:
             self._legend_signature = None
-        self._apply_view_ranges(view, x)
+        range_x = np.concatenate(range_x_segments) if range_x_segments else np.asarray([], dtype=np.float32)
+        self._apply_view_ranges(view, range_x)
 
     def _reset_view_ranges(self) -> None:
         vb = self.plotItem.getViewBox()
@@ -413,7 +443,10 @@ class LinePlotPanel(pg.PlotWidget):
             xmax = data_xmax
             xmin = max(data_xmin, xmax - float(view.rolling_window))
             vb.enableAutoRange(x=False)
-            vb.setXRange(xmin, xmax, padding=0)
+            if xmax <= xmin:
+                vb.setXRange(xmin, xmin + max(float(view.rolling_window), 1e-6), padding=0)
+            else:
+                vb.setXRange(xmin, xmax, padding=0)
         else:
             if len(x):
                 xmin = data_xmin
@@ -425,9 +458,9 @@ class LinePlotPanel(pg.PlotWidget):
 
     def _trim_line_data(self, view: LinePlotViewSpec, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         if not view.trim_to_rolling_window or view.rolling_window is None or len(x) == 0:
-            return x, y
+            return self._finite_line_data(x, y)
         mask = self._rolling_window_mask(x, float(view.rolling_window))
-        return x[mask], y[mask]
+        return self._finite_line_data(x[mask], y[mask])
 
     def _trim_series_data(
         self,
@@ -439,6 +472,10 @@ class LinePlotPanel(pg.PlotWidget):
             return x, values
         mask = self._rolling_window_mask(x, float(view.rolling_window))
         return x[mask], values[:, mask]
+
+    def _finite_line_data(self, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        mask = np.isfinite(x) & np.isfinite(y)
+        return x[mask], y[mask]
 
     def _rolling_window_mask(self, x: np.ndarray, window: float) -> np.ndarray:
         xmin = float(x[-1]) - window

@@ -112,7 +112,7 @@ def test_jaxley_programmatic_geometry_has_no_compartment_gaps():
 
         example_path = r"{example_path}"
         text = open(example_path, "r", encoding="utf-8").read()
-        text = text.rsplit("run_app(build_jaxley_app(MultiCellSession()))", 1)[0]
+        text = text.rsplit("run_app(build_jaxley_app(MultiCellSession))", 1)[0]
         ns = {{}}
         exec(compile(text, example_path, "exec"), ns)
         MultiCellSession = ns["MultiCellSession"]

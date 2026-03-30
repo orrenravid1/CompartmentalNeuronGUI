@@ -1,6 +1,7 @@
 from compneurovis.builders import ReplaySession, build_replay_app, build_surface_app, grid_field
 from compneurovis.core import (
     ActionSpec,
+    AttributeRef,
     AppSpec,
     ControlSpec,
     Document,
@@ -11,25 +12,30 @@ from compneurovis.core import (
     LinePlotViewSpec,
     MorphologyGeometry,
     MorphologyViewSpec,
+    SeriesSpec,
     StateBinding,
     SurfaceViewSpec,
     ViewSpec,
 )
 from compneurovis.frontends import VispyFrontendWindow, run_app
+from compneurovis.session import HistoryCaptureMode
 
 __all__ = [
     "ActionSpec",
+    "AttributeRef",
     "AppSpec",
     "ControlSpec",
     "Document",
     "Field",
     "Geometry",
     "GridGeometry",
+    "HistoryCaptureMode",
     "LayoutSpec",
     "LinePlotViewSpec",
     "MorphologyGeometry",
     "MorphologyViewSpec",
     "ReplaySession",
+    "SeriesSpec",
     "StateBinding",
     "SurfaceViewSpec",
     "ViewSpec",

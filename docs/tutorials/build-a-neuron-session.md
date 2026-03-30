@@ -7,6 +7,8 @@ summary: Step-by-step guide to building a live NEURON-backed visualization by su
 
 This tutorial shows the minimal pattern for a live simulation. See `examples/neuron/visualizer_example.py` for a full working example.
 
+This is a backend-specific tutorial, not the conceptual boundary of the library. A NEURON-backed app may expose morphology, traces, surfaces, controls, or any combination of those features. Using `build_neuron_app(...)` today means "use NEURON as the backend with current default wiring," not "build a morphology-first app."
+
 ## 1. Subclass NeuronSession
 
 ```python
@@ -66,30 +68,44 @@ def on_entity_clicked(self, entity_id, ctx):
     return True
 ```
 
+These hooks stay on the session class even for worker-backed apps. The library routes semantic commands such as clicks, keys, and actions to the worker session, so user code does not need to care about pipe/process boundaries.
+
 ## 3. Build and Run
 
 ```python
 from compneurovis import build_neuron_app, run_app
 
-session = MyCellSession()
-app = build_neuron_app(session)
+app = build_neuron_app(MyCellSession)
 run_app(app)
 ```
 
-On Windows, `run_app()` handles `spawn`-mode multiprocessing internally. You do not need `if __name__ == "__main__":` unless your script has top-level side effects you want to suppress in worker processes.
+Passing the session class keeps construction lazy inside the worker process. That avoids duplicate top-level session construction on Windows `spawn` while preserving the same simple user-facing launch pattern. For worker-backed apps, this is now the intended path; do not pass an already-created session instance.
+
+`build_neuron_app(...)` is a current convenience helper. The long-term public model should stay feature-composable: choose a backend, then add traces, morphology, surfaces, controls, and layout as needed.
 
 ## Custom Layout
 
-By default, `NeuronSession` shows a `MorphologyViewSpec` as the main 3-D view and a `LinePlotViewSpec` for the selected segment's voltage trace. To customize, override `build_document()` from `NeuronDocumentBuilder`:
+By default, `NeuronSession` shows a `MorphologyViewSpec` as the main 3-D view and a `LinePlotViewSpec` for the selected segment's voltage trace. The default live contract is split:
+
+- `voltage_display`: latest values for current morphology coloring
+- `voltage_trace`: retained trace history
+
+`history_capture_mode=HistoryCaptureMode.ON_DEMAND` is the default. It keeps current display values live while retaining trace history only for segments the user actually asks to inspect. Use `HistoryCaptureMode.FULL` when the app needs full all-entity history for retrospective selection or playback.
+
+To customize layout or views, override `build_document()` from `NeuronDocumentBuilder`:
 
 ```python
-from compneurovis import NeuronDocumentBuilder, MorphologyViewSpec, LinePlotViewSpec
 
 class MyCellSession(NeuronSession):
     ...
-    def build_document_override(self, geometry, voltage_field):
-        # Return a custom Document if you need non-default layout.
-        ...
+    def build_document(self, *, geometry, voltage_values, time_value):
+        document = super().build_document(
+            geometry=geometry,
+            voltage_values=voltage_values,
+            time_value=time_value,
+        )
+        document.replace_view("trace", {"rolling_window": 50.0})
+        return document
 ```
 
 See `src/compneurovis/backends/neuron/document.py` for the default document construction logic.

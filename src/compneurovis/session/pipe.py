@@ -9,12 +9,14 @@ from multiprocessing import Pipe, Process
 
 from PyQt6 import QtCore
 
-from compneurovis.session.base import Session
+from compneurovis.session.base import Session, SessionSource, resolve_session_source
 from compneurovis.session.protocol import DocumentReady, Error, SessionCommand, SessionUpdate, StopSession
 
 
-def _session_process(session: Session, update_pipe, command_pipe) -> None:
+def _session_process(session_source: SessionSource, update_pipe, command_pipe) -> None:
+    session: Session | None = None
     try:
+        session = resolve_session_source(session_source)
         document = session.initialize()
         if document is not None:
             update_pipe.send(DocumentReady(document))
@@ -38,14 +40,17 @@ def _session_process(session: Session, update_pipe, command_pipe) -> None:
         update_pipe.send(Error(detail))
     finally:
         try:
-            session.shutdown()
+            if session is not None:
+                session.shutdown()
         finally:
             update_pipe.close()
             command_pipe.close()
 
 
-def _session_process_queue(session: Session, update_queue, command_queue, stop_event=None) -> None:
+def _session_process_queue(session_source: SessionSource, update_queue, command_queue, stop_event=None) -> None:
+    session: Session | None = None
     try:
+        session = resolve_session_source(session_source)
         document = session.initialize()
         if document is not None:
             update_queue.put(DocumentReady(document))
@@ -73,12 +78,18 @@ def _session_process_queue(session: Session, update_queue, command_queue, stop_e
         detail = "".join(traceback.format_exception(exc))
         update_queue.put(Error(detail))
     finally:
-        session.shutdown()
+        if session is not None:
+            session.shutdown()
 
 
 class PipeTransport(QtCore.QObject):
-    def __init__(self, session: Session, parent=None) -> None:
+    def __init__(self, session: SessionSource, parent=None) -> None:
         super().__init__(parent)
+        if isinstance(session, Session):
+            raise TypeError(
+                "PipeTransport requires a Session subclass or top-level zero-argument factory. "
+                "Do not pass an already-created session instance."
+            )
         self.session = session
         self._mode = "pipe"
         self._dead = False

@@ -38,6 +38,8 @@ This means your backend only needs to implement `initialize()`, `advance()`, and
 | `Reset` | - | Space bar pressed |
 | `SetControl` | `control_id`, `value` | Control changed with `send_to_session=True` |
 | `InvokeAction` | `action_id`, `payload: dict` | Button clicked or shortcut triggered |
+| `KeyPressed` | `key` | Unhandled key pressed in the frontend |
+| `EntityClicked` | `entity_id` | Morphology entity clicked |
 | `StopSession` | - | Window closed |
 
 `handle(command)` receives these. Dispatch by type:
@@ -48,6 +50,10 @@ def handle(self, command):
         self.apply_control(command.control_id, command.value)
     elif isinstance(command, InvokeAction):
         self.apply_action(command.action_id, command.payload)
+    elif isinstance(command, EntityClicked):
+        self.on_entity_clicked(command.entity_id, ctx)
+    elif isinstance(command, KeyPressed):
+        self.on_key_press(command.key, ctx)
     elif isinstance(command, Reset):
         self.reset()
 ```
@@ -60,7 +66,8 @@ def handle(self, command):
 | `FieldReplace` | `field_id`, `values`, `coords?`, `attrs_update?` | Replace a field wholesale |
 | `FieldAppend` | `field_id`, `append_dim`, `values`, `coord_values`, `max_length?`, `attrs_update?` | Append new samples along one dimension |
 | `DocumentPatch` | `view_updates`, `control_updates`, `metadata_updates` | When view properties or control definitions change |
-| `Status` | `message: str` | Progress or info messages shown in the status bar |
+| `StatePatch` | `updates: dict[str, Any]` | Synchronize frontend state keys used by `StateBinding` |
+| `Status` | `message: str`, `timeout_ms?` | Progress or info messages shown in the status bar |
 | `Error` | `message: str` | Non-fatal errors shown in the status bar |
 
 ## Update Granularity Rule
@@ -76,6 +83,18 @@ This is not just an optimization. It is the intended cost model for high-through
 - backends should not assume the frontend wants full-state resends
 - frontends should not assume one update implies a whole-window redraw
 - transports should carry only the state the receiver needs to know
+
+For live simulations, there is an additional semantic split to preserve:
+
+- latest-state updates for what is being displayed right now
+- optional history-capture updates for retrospective trace inspection, playback, or replay
+
+These are related, but they are not the same requirement. A backend should be able to stream the current morphology or surface state without automatically committing to full trace-history capture for every entity.
+
+The current shared policy knob is `HistoryCaptureMode`:
+
+- `HistoryCaptureMode.ON_DEMAND`: keep latest display state live, retain trace history only for entities the app actively requests
+- `HistoryCaptureMode.FULL`: retain full all-entity history for retrospective trace selection or playback
 
 ### FieldReplace vs FieldAppend vs DocumentPatch
 
@@ -111,6 +130,13 @@ self.emit(
 
 This is the preferred path for live trace-style data because it avoids resending full history on every update.
 
+For heavy live backends, the recommended default is:
+
+- `FieldReplace` or equivalent latest-only updates for current display state
+- `FieldAppend` only for history that the app has explicitly chosen to retain
+
+This preserves performance while keeping retrospective history available as an opt-in feature rather than a default cost.
+
 Use `DocumentPatch` when structure or metadata changes, for example renaming a view title, updating a control range, or changing a display property without rebuilding the whole document:
 
 ```python
@@ -119,17 +145,48 @@ self.emit(DocumentPatch(view_updates={"main": {"title": "updated title"}}))
 
 Do not use `DocumentPatch` for value updates. Do not rebuild and re-emit `DocumentReady` just to change a view title.
 
+Use `StatePatch` when the session needs to synchronize semantic UI state such as selected traces or other state keys consumed by `StateBinding`:
+
+```python
+self.emit(StatePatch({"selected_trace_entity_ids": selected_ids}))
+```
+
+This is the normal path for session-driven interaction state. User code should not need to care whether the session is running in another process.
+
 If you find yourself repeatedly emitting large `FieldReplace`s for high-frequency changes, that is a signal to consider a narrower protocol shape rather than normal usage.
 
 ## PipeTransport
 
 `PipeTransport` runs the `Session` in a worker process (or thread on permission error) and bridges it to the Qt event loop via a 60 Hz timer.
 
+The transport accepts a lazy session source:
+
+- a `Session` subclass
+- a top-level zero-argument factory returning a `Session`
+
+For worker-backed apps, this is the required shape so session construction happens inside the worker.
+
 - Startup: spawns the worker, calls `session.initialize()`, emits `DocumentReady` if it returns a `Document`
 - Poll loop: calls `session.advance()`, drains `read_updates()`, forwards updates to the frontend
 - Commands: `transport.send_command(cmd)` queues a command for the worker
 
 On Windows, `configure_multiprocessing()` must be called before spawning to handle the `spawn` start method. `run_app()` does this automatically.
+
+## Interaction Model
+
+For worker-backed apps, custom interaction hooks belong on the session and are driven by semantic commands:
+
+- `InvokeAction`
+- `KeyPressed`
+- `EntityClicked`
+
+This keeps transport constraints out of user code. A session can respond with:
+
+- `StatePatch` for state-bound UI changes
+- `Status` for user feedback
+- normal field updates for data changes
+
+The frontend may still support explicit frontend-side interaction targets as an advanced escape hatch, but that is not the default authoring model.
 
 ## Live Update Cadence
 

@@ -6,6 +6,9 @@ from compneurovis.core import Document, Field, LayoutSpec, LinePlotViewSpec, Mor
 
 
 class JaxleyDocumentBuilder:
+    DISPLAY_FIELD_ID = "voltage_display"
+    TRACE_FIELD_ID = "voltage_trace"
+
     @staticmethod
     def _split_xyzr_into_equal_length_segments(xyzr: np.ndarray, ncomp: int) -> list[np.ndarray]:
         if len(xyzr) == 1:
@@ -154,21 +157,32 @@ class JaxleyDocumentBuilder:
     def build_document(
         *,
         geometry: MorphologyGeometry,
-        voltage_values: np.ndarray,
-        time_value: float,
+        display_values: np.ndarray,
+        trace_values: np.ndarray,
+        trace_segment_ids: np.ndarray,
+        trace_times: np.ndarray,
         controls=None,
         actions=None,
         title: str = "CompNeuroVis",
         control_ids: tuple[str, ...] | None = None,
         action_ids: tuple[str, ...] | None = None,
     ) -> Document:
-        voltage_field = Field(
-            id="voltage",
-            values=np.asarray(voltage_values, dtype=np.float32)[:, None],
-            dims=("segment", "time"),
+        display_field = Field(
+            id=JaxleyDocumentBuilder.DISPLAY_FIELD_ID,
+            values=np.asarray(display_values, dtype=np.float32),
+            dims=("segment",),
             coords={
                 "segment": np.asarray(geometry.entity_ids),
-                "time": np.asarray([time_value], dtype=np.float32),
+            },
+            unit="mV",
+        )
+        trace_field = Field(
+            id=JaxleyDocumentBuilder.TRACE_FIELD_ID,
+            values=np.asarray(trace_values, dtype=np.float32),
+            dims=("segment", "time"),
+            coords={
+                "segment": np.asarray(trace_segment_ids),
+                "time": np.asarray(trace_times, dtype=np.float32),
             },
             unit="mV",
         )
@@ -177,15 +191,15 @@ class JaxleyDocumentBuilder:
                 id="morphology",
                 title="Morphology",
                 geometry_id=geometry.id,
-                color_field_id=voltage_field.id,
+                color_field_id=display_field.id,
                 entity_dim="segment",
-                sample_dim="time",
+                sample_dim=None,
                 color_map="voltage",
             ),
             "trace": LinePlotViewSpec(
                 id="trace",
                 title="Voltage",
-                field_id=voltage_field.id,
+                field_id=trace_field.id,
                 x_dim="time",
                 selectors={"segment": StateBinding("selected_entity_id")},
                 x_label="Time",
@@ -196,7 +210,7 @@ class JaxleyDocumentBuilder:
             ),
         }
         return Document(
-            fields={voltage_field.id: voltage_field},
+            fields={display_field.id: display_field, trace_field.id: trace_field},
             geometries={geometry.id: geometry},
             views=views,
             controls={} if controls is None else dict(controls),

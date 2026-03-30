@@ -8,6 +8,14 @@ CompNeuroVis is a PyQt6/VisPy visualization toolkit for compartmental neuroscien
 - `PipeTransport`: local process transport for Python/VisPy workflows
 - `VispyFrontend`: the current frontend implementation
 
+Conceptually, the architecture is composed along three independent axes:
+
+- backend/runtime, such as NEURON, Jaxley, or replay
+- features, such as traces, morphology, surfaces, controls, and actions
+- layout, such as plot-only, mixed 3D + plot, and future workbench arrangements
+
+These axes are meant to stay orthogonal. A NEURON-backed app is not automatically a morphology app. For example, a signaling-cascade viewer can be a NEURON-backed live app with controls and traces but no morphology.
+
 ## Install
 
 ```bash
@@ -51,6 +59,8 @@ The main package exports the core types, builders, and frontend entrypoint:
 - `NeuronSession`
 - `build_neuron_app`, `build_surface_app`, `build_replay_app`
 - `run_app`
+
+`build_neuron_app(...)` is a current convenience helper for NEURON-backed workflows, not the intended long-term conceptual boundary of the library. The long-term direction is a feature-composable public API over the same shared core model.
 
 ## Repository Docs
 

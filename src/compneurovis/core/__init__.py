@@ -1,3 +1,4 @@
+from compneurovis.core.bindings import AttributeRef, SeriesSpec
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.document import AppSpec, Document, LayoutSpec
 from compneurovis.core.field import Field
@@ -7,6 +8,7 @@ from compneurovis.core.views import LinePlotViewSpec, MorphologyViewSpec, Surfac
 
 __all__ = [
     "ActionSpec",
+    "AttributeRef",
     "AppSpec",
     "ControlSpec",
     "Document",
@@ -17,8 +19,8 @@ __all__ = [
     "LinePlotViewSpec",
     "MorphologyGeometry",
     "MorphologyViewSpec",
+    "SeriesSpec",
     "StateBinding",
     "SurfaceViewSpec",
     "ViewSpec",
 ]
-

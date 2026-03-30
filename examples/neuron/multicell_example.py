@@ -175,4 +175,4 @@ class MultiCellSession(NeuronSession):
         return {"synapses": self.synapses, "netcons": self.netcons, "iclamps": self.iclamps}
 
 
-run_app(build_neuron_app(MultiCellSession()))
+run_app(build_neuron_app(MultiCellSession))

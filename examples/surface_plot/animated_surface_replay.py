@@ -102,4 +102,4 @@ class ReplayAnimationSession(BufferedSession):
         return 1 / 30
 
 
-run_app(AppSpec(session=ReplayAnimationSession(), title="animated sinc wave — replay"))
+run_app(AppSpec(session=ReplayAnimationSession, title="animated sinc wave — replay"))

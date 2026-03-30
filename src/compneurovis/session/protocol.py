@@ -31,6 +31,16 @@ class InvokeAction(SessionCommand):
 
 
 @dataclass(frozen=True, slots=True)
+class KeyPressed(SessionCommand):
+    key: str
+
+
+@dataclass(frozen=True, slots=True)
+class EntityClicked(SessionCommand):
+    entity_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class StopSession(SessionCommand):
     pass
 
@@ -71,8 +81,14 @@ class DocumentPatch(SessionUpdate):
 
 
 @dataclass(frozen=True, slots=True)
+class StatePatch(SessionUpdate):
+    updates: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class Status(SessionUpdate):
     message: str
+    timeout_ms: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

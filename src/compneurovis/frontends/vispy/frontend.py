@@ -13,7 +13,7 @@ use(app="pyqt6", gl="gl+")
 
 from compneurovis.core import AppSpec, Document, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec
 from compneurovis.frontends.vispy.panels import ControlsPanel, LinePlotPanel, Viewport3DPanel
-from compneurovis.session import DocumentPatch, DocumentReady, FieldAppend, FieldReplace, InvokeAction, PipeTransport, Reset, SetControl, configure_multiprocessing
+from compneurovis.session import DocumentPatch, DocumentReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
 
 
 class RefreshTarget(Enum):
@@ -171,7 +171,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.transport: PipeTransport | None = None
         self.refresh_planner: RefreshPlanner | None = None
         self._active_selection_action_id: str | None = None
-        self.interaction_target = app_spec.interaction_target if app_spec.interaction_target is not None else app_spec.session
+        if app_spec.interaction_target is not None:
+            self.interaction_target = resolve_interaction_target_source(app_spec.interaction_target)
+        else:
+            self.interaction_target = None
 
         self.viewport = Viewport3DPanel(on_entity_selected=self._on_entity_selected)
         self.line_plot = LinePlotPanel()
@@ -434,13 +437,31 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     self.document.replace_control(control_id, patch)
                     pending_targets.add(RefreshTarget.CONTROLS)
                 self.document.metadata.update(update.metadata_updates)
+            elif isinstance(update, StatePatch):
+                if self.refresh_planner is None:
+                    continue
+                for key, value in update.updates.items():
+                    self.state[key] = value
+                    pending_targets.update(self.refresh_planner.targets_for_state_change(key))
+            elif isinstance(update, Status):
+                if update.message:
+                    if update.timeout_ms is not None:
+                        self.statusBar().showMessage(update.message, update.timeout_ms)
+                    else:
+                        pending_status = update.message
+                else:
+                    self.statusBar().clearMessage()
             else:
                 msg = getattr(update, "message", str(update))
                 pending_status = msg
+                sys.stderr.write(f"{msg.rstrip()}\n")
+                sys.stderr.flush()
                 if getattr(self.transport, "_dead", False):
                     # Worker process died — stop polling and surface the error clearly.
                     self.timer.stop()
                     self.transport = None
+                    sys.stderr.write(f"{msg.rstrip()}\n")
+                    sys.stderr.flush()
                     QtWidgets.QMessageBox.critical(self, "Session error", msg)
                     return
         if pending_targets:
@@ -455,9 +476,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 if isinstance(geometry, MorphologyGeometry) and entity_id in geometry.entity_ids:
                     self.state["selected_entity_label"] = geometry.label_for(entity_id)
                     break
-            if self._invoke_interaction_entity_click(entity_id):
-                pass
-            elif self._active_selection_action_id is not None:
+            consumed = self._invoke_interaction_entity_click(entity_id)
+            if not consumed and self._active_selection_action_id is not None:
                 action = self.document.actions.get(self._active_selection_action_id)
                 if action is not None:
                     payload = {
@@ -466,6 +486,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     }
                     payload[action.selection_payload_key] = entity_id
                     self._send_action(action, payload)
+            elif not consumed and self.transport is not None:
+                self.transport.send_command(EntityClicked(entity_id))
         if self.refresh_planner is not None:
             self._apply_refresh_targets(self.refresh_planner.targets_for_state_change("selected_entity_id"))
 
@@ -505,6 +527,12 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 return
         if event.key() == Qt.Key.Key_Space and self.transport is not None:
             self.transport.send_command(Reset())
+            event.accept()
+            return
+        if key_text and self.transport is not None:
+            self.transport.send_command(KeyPressed(key_text))
+            event.accept()
+            return
         super().keyPressEvent(event)
 
     def _action_for_event(self, event: QtGui.QKeyEvent):
@@ -539,6 +567,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
     def _invoke_interaction_action(self, action_id: str, payload: dict[str, Any]) -> bool:
         target = self.interaction_target
+        if target is None:
+            return False
         handler = getattr(target, "on_action", None)
         if handler is None:
             return False
@@ -546,6 +576,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
     def _invoke_interaction_key_press(self, key: str) -> bool:
         target = self.interaction_target
+        if target is None:
+            return False
         handler = getattr(target, "on_key_press", None)
         if handler is None:
             return False
@@ -553,6 +585,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
     def _invoke_interaction_entity_click(self, entity_id: str) -> bool:
         target = self.interaction_target
+        if target is None:
+            return False
         handler = getattr(target, "on_entity_clicked", None)
         if handler is None:
             return False

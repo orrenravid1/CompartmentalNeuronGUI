@@ -20,6 +20,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/builders/replay.py`
 - `src/compneurovis/builders/surface.py`
 - `src/compneurovis/core/__init__.py`
+- `src/compneurovis/core/bindings.py`
 - `src/compneurovis/core/controls.py`
 - `src/compneurovis/core/document.py`
 - `src/compneurovis/core/field.py`
@@ -39,11 +40,13 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/neuronutils/swc_utils.py`
 - `src/compneurovis/session/__init__.py`
 - `src/compneurovis/session/base.py`
+- `src/compneurovis/session/history.py`
 - `src/compneurovis/session/pipe.py`
 - `src/compneurovis/session/protocol.py`
 - `src/compneurovis/vispyutils/cappedcylindercollection.py`
 
 ## Examples
+- `examples/debug/session_error_after_open.py`
 - `examples/jaxley/multicell_example.py`
 - `examples/neuron/c_elegans_visualizer.py`
 - `examples/neuron/multicell_example.py`

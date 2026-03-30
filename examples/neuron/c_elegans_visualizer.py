@@ -62,4 +62,4 @@ class CElegansSession(NeuronSession):
         return {"iclamps": self.iclamps}
 
 
-run_app(build_neuron_app(CElegansSession()))
+run_app(build_neuron_app(CElegansSession))

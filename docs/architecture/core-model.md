@@ -64,14 +64,58 @@ The VisPy/PyQt6 frontend consumes a `Document` and updates panels in response to
 
 See [VisPy Frontend](vispy-frontend.md) for panel structure and refresh planning.
 
+## Architectural Axes
+
+The public model needs to stay cleanly factored along three independent axes:
+
+- backend/runtime
+  - examples: NEURON, Jaxley, replay
+- features
+  - examples: controls, live traces, morphology, surfaces, actions
+- layout
+  - examples: default split view, plot-only arrangement, future workbench/docking arrangements
+
+These axes should not be conflated.
+
+A NEURON-backed app is not automatically a morphology app. A signaling cascade viewer can be a NEURON-backed live app with controls and traces but no morphology. Likewise, a morphology view is not conceptually tied to only one backend.
+
+Convenience builders may exist for current workflows, but they should be understood as helpers over the common model, not as separate conceptual app families.
+
 ## Key Invariants
 
 **Field is the data primitive.** Do not introduce `TimeSeries`, `SurfaceData`, or similar types. A `Field` plus a `ViewSpec` is always sufficient.
 
 **Geometry is structural, Field is dynamic.** Positions and connectivity go in `Geometry`. Measured values go in `Field`. Never put time-varying data in `Geometry`.
 
-**Frontends own UI state.** Selection, slice position, and control values live in the frontend's `state` dict. Backends receive `SetControl` / `InvokeAction` — not raw GUI events.
+**Frontends own UI state.** Selection, slice position, and control values live in the frontend's `state` dict. Backends receive `SetControl` / `InvokeAction` - not raw GUI events.
 
 **Prefer the narrowest correct update.** Use `FieldAppend` for incremental live history updates along one dimension. Use `DocumentPatch` for metadata, view property, or control changes that don't require rebuilding the full document. Use `FieldReplace` when replacing a field wholesale. Full replacements are valid, but they are the explicit broader-cost path, not the default.
 
-**`ViewSpec` expresses intent, renderers implement it.** Adding a new visualization means adding a `ViewSpec` subclass and a corresponding renderer/panel — not coupling domain logic into the renderer.
+**Live display state and captured history are different concerns.** A heavy live scene often wants:
+
+- a latest-state field for current morphology or surface coloring
+- an optional history field for retrospective trace inspection, playback, or replay
+
+These should not be forced into the same default storage/update path. History capture is a feature that should be enabled explicitly when needed.
+
+The current shared policy is `HistoryCaptureMode`:
+
+- `ON_DEMAND` by default
+- `FULL` when the app explicitly needs full all-entity history
+
+Display fields must remain generic. A morphology or surface view may need to visualize:
+
+- voltage
+- calcium or other concentrations
+- gating variables
+- categorical or annotation-driven colors
+- NeuroML-derived metadata
+- analysis outputs computed after the simulation
+
+So the architecture should treat "display" and "history" as field roles, not as voltage-specific concepts. Current ids such as `voltage_display` and `voltage_trace` are transitional defaults, not the long-term model.
+
+**`ViewSpec` expresses intent, renderers implement it.** Adding a new visualization means adding a `ViewSpec` subclass and a corresponding renderer/panel - not coupling domain logic into the renderer.
+
+**Higher-level authoring should compose by feature, not by app type.** Convenience builders may exist for common workflows, but they should assemble the same core model. A user should be able to add traces, morphology, surfaces, and controls to one app by combining declarations, not by switching to a different top-level app abstraction.
+
+**Backend choice is orthogonal to feature choice.** Helpers such as `build_neuron_app(...)` are current convenience APIs, not the intended long-term architectural boundary. “Uses NEURON” should not imply “shows morphology,” and “shows morphology” should not imply one backend-specific app type.
