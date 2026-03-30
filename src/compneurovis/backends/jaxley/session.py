@@ -61,7 +61,7 @@ class JaxleySession(BufferedSession, ABC):
         dt: float = 0.1,
         v_init: float = -70.0,
         max_samples: int = 1000,
-        display_dt: float | None = 0.5,
+        display_dt: float | None = 0.1,
         history_capture_mode: HistoryCaptureMode | str = HistoryCaptureMode.ON_DEMAND,
         title: str = "CompNeuroVis",
     ):

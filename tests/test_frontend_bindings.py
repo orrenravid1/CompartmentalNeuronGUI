@@ -1118,7 +1118,7 @@ def test_neuron_session_build_document_applies_orders_and_trace_updates():
 def test_neuron_session_defaults_to_batched_display_updates():
     session = DummyNeuronSession()
 
-    assert session.steps_per_update() == 5
+    assert session.steps_per_update() == 1
 
 
 class WindowBudgetNeuronSession(NeuronSession):

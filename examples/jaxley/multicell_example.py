@@ -85,7 +85,7 @@ def make_branching_cell(name: str):
 
 class MultiCellSession(JaxleySession):
     def __init__(self):
-        super().__init__(title="Multi-cell Jaxley viewer", dt=0.1, display_dt=0.5)
+        super().__init__(title="Multi-cell Jaxley viewer", dt=0.1)
 
     def build_cells(self):
         cells = [

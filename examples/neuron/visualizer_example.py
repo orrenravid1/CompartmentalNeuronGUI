@@ -21,7 +21,7 @@ from compneurovis.neuronutils.swc_utils import load_swc_neuron
 
 class ComplexCellSession(NeuronSession):
     def __init__(self):
-        super().__init__(title="Complex cell viewer", display_dt=0.5)
+        super().__init__(title="Complex cell viewer")
         self.stim_amp = 1.0
 
     def build_sections(self):
