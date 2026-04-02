@@ -16,6 +16,14 @@ CELEGANS_DIR = ROOT / "res" / "celegans_cells_swc"
 pytestmark = pytest.mark.jaxley
 
 
+def _load_example_text(example_path: Path) -> str:
+    text = example_path.read_text(encoding="utf-8")
+    return text.replace(
+        '\nif __name__ == "__main__":\n    run_app(build_jaxley_app(MultiCellSession))\n',
+        "\n",
+    )
+
+
 def _run_python(code: str) -> dict:
     completed = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(code)],
@@ -103,6 +111,7 @@ def test_jaxley_swc_cache_roundtrip_matches_raw_load(tmp_path: Path):
 
 def test_jaxley_programmatic_geometry_has_no_compartment_gaps():
     example_path = ROOT / "examples" / "jaxley" / "multicell_example.py"
+    example_text = _load_example_text(example_path)
     result = _run_python(
         f"""
         import json
@@ -111,8 +120,7 @@ def test_jaxley_programmatic_geometry_has_no_compartment_gaps():
         from compneurovis.backends.jaxley.document import JaxleyDocumentBuilder
 
         example_path = r"{example_path}"
-        text = open(example_path, "r", encoding="utf-8").read()
-        text = text.rsplit("run_app(build_jaxley_app(MultiCellSession))", 1)[0]
+        text = {example_text!r}
         ns = {{}}
         exec(compile(text, example_path, "exec"), ns)
         MultiCellSession = ns["MultiCellSession"]
@@ -149,6 +157,7 @@ def test_jaxley_programmatic_geometry_has_no_compartment_gaps():
 
 def test_jaxley_multicell_example_controls_reconfigure_runtime():
     example_path = ROOT / "examples" / "jaxley" / "multicell_example.py"
+    example_text = _load_example_text(example_path)
     result = _run_python(
         f"""
         import json
@@ -156,8 +165,7 @@ def test_jaxley_multicell_example_controls_reconfigure_runtime():
         import jax
 
         example_path = r"{example_path}"
-        text = open(example_path, "r", encoding="utf-8").read()
-        text = text.rsplit("run_app(build_jaxley_app(MultiCellSession))", 1)[0]
+        text = {example_text!r}
         ns = {{}}
         exec(compile(text, example_path, "exec"), ns)
         MultiCellSession = ns["MultiCellSession"]
@@ -167,6 +175,7 @@ def test_jaxley_multicell_example_controls_reconfigure_runtime():
 
         initial_gna = float(session.network.nodes["HH_gNa"].dropna().iloc[0])
         initial_syn = float(session.network.edges["IonotropicSynapse_gS"].dropna().iloc[0])
+        initial_syn_s = float(session.network.edges["IonotropicSynapse_s"].dropna().iloc[0])
         initial_i_max = float(np.max(np.asarray(session._externals["i"])))
 
         session.apply_control("hh_gna", 0.2)
@@ -184,6 +193,7 @@ def test_jaxley_multicell_example_controls_reconfigure_runtime():
             "initial_gna": initial_gna,
             "updated_gna": updated_gna,
             "initial_syn": initial_syn,
+            "initial_syn_s": initial_syn_s,
             "updated_syn": updated_syn,
             "updated_esyn": updated_esyn,
             "initial_i_max": initial_i_max,
@@ -196,6 +206,7 @@ def test_jaxley_multicell_example_controls_reconfigure_runtime():
     assert result["initial_gna"] == pytest.approx(0.12)
     assert result["updated_gna"] == pytest.approx(0.2)
     assert result["initial_syn"] == pytest.approx(5e-4)
+    assert result["initial_syn_s"] == pytest.approx(0.0)
     assert result["updated_syn"] == pytest.approx(1e-3)
     assert result["updated_esyn"] == pytest.approx(20.0)
     assert result["initial_i_max"] == pytest.approx(0.5)
@@ -213,3 +224,99 @@ def test_jaxley_multicell_example_controls_reconfigure_runtime():
         "syn_k_minus",
         "syn_v_th",
     ]
+
+
+def test_jaxley_multicell_reset_restores_closed_synapses():
+    example_path = ROOT / "examples" / "jaxley" / "multicell_example.py"
+    example_text = _load_example_text(example_path)
+    result = _run_python(
+        f"""
+        import json
+        import jax
+        from compneurovis.session import Reset
+
+        example_path = r"{example_path}"
+        text = {example_text!r}
+        ns = {{}}
+        exec(compile(text, example_path, "exec"), ns)
+        MultiCellSession = ns["MultiCellSession"]
+
+        session = MultiCellSession()
+        session.initialize()
+        for _ in range(50):
+            session.advance()
+        session.handle(Reset())
+
+        print(json.dumps({{
+            "edge_s_after_reset": float(session.network.edges["IonotropicSynapse_s"].dropna().iloc[0]),
+            "state_s_after_reset": float(session._state["IonotropicSynapse_s"][0]),
+        }}))
+        """
+    )
+
+    assert result["edge_s_after_reset"] == pytest.approx(0.0)
+    assert result["state_s_after_reset"] == pytest.approx(0.0)
+
+
+def test_jaxley_reset_rebuilds_from_updated_network_parameters():
+    example_path = ROOT / "examples" / "jaxley" / "multicell_example.py"
+    example_text = _load_example_text(example_path)
+    result = _run_python(
+        f"""
+        import json
+        import numpy as np
+        import jax
+        from compneurovis.session import Reset
+
+        example_path = r"{example_path}"
+        text = {example_text!r}
+        ns = {{}}
+        exec(compile(text, example_path, "exec"), ns)
+        Base = ns["MultiCellSession"]
+
+        class SweepSession(Base):
+            def _pulse_schedule(self):
+                return [(2.0, self.stim_dur, self.stim_amp)]
+
+        def soma_indices(session):
+            ids = []
+            for cell_name in ("cell1", "cell2", "cell3"):
+                matches = [
+                    eid for eid in session.geometry.entity_ids
+                    if session.geometry.entity_info(eid)["section_name"] == f"{{cell_name}}_branch_0"
+                ]
+                ids.append(min(matches, key=lambda eid: abs(session.geometry.entity_info(eid)["xloc"] - 0.5)))
+            return [session._entity_index_by_id[eid] for eid in ids]
+
+        def run_max(session, steps=300):
+            idx = soma_indices(session)
+            max_v = np.full(len(idx), -np.inf, dtype=np.float32)
+            for _ in range(steps):
+                session.advance()
+                max_v = np.maximum(max_v, session._last_voltage_values[idx])
+            return max_v
+
+        reused = SweepSession()
+        reused.initialize()
+        reused.apply_control("syn_gs", 0.01)
+        reused.apply_control("syn_v_th", -45.0)
+        reused.apply_control("syn_delta", 10.0)
+        reused.handle(Reset())
+        reused_max = run_max(reused)
+
+        fresh = SweepSession()
+        fresh.syn_gs = 0.01
+        fresh.syn_v_th = -45.0
+        fresh.syn_delta = 10.0
+        fresh.initialize()
+        fresh_max = run_max(fresh)
+
+        print(json.dumps({{
+            "reused_max": reused_max.tolist(),
+            "fresh_max": fresh_max.tolist(),
+            "diff": np.abs(reused_max - fresh_max).tolist(),
+        }}))
+        """
+    )
+
+    assert result["diff"] == pytest.approx([0.0, 0.0, 0.0], abs=1e-3)

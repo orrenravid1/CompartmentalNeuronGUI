@@ -352,9 +352,13 @@ class JaxleySession(BufferedSession, ABC):
                 externals[key] = values[..., step_index] if step_index < values.shape[-1] else np.zeros_like(values[..., 0])
         return externals
 
-    def refresh_runtime_parameters(self, *, preserve_state: bool = True) -> None:
+    def _reinitialize_runtime(self, *, preserve_state: bool) -> None:
         if self.network is None or self._init_fn is None:
             return
+        # Jaxley stores authoritative mutable parameters/states in DataFrames and copies
+        # them into jaxnodes/jaxedges via to_jax(). Reset and live parameter updates must
+        # resync from the DataFrame-backed model before rebuilding all_params/all_states.
+        self.network.to_jax()
         params = self.network.get_parameters()
         current_state = self._state if preserve_state else None
         self._state, self._all_params = self._init_fn(
@@ -362,6 +366,9 @@ class JaxleySession(BufferedSession, ABC):
             all_states=current_state,
             delta_t=self.dt,
         )
+
+    def refresh_runtime_parameters(self, *, preserve_state: bool = True) -> None:
+        self._reinitialize_runtime(preserve_state=preserve_state)
 
     def refresh_runtime_externals(self) -> None:
         if self.network is None:
@@ -429,8 +436,7 @@ class JaxleySession(BufferedSession, ABC):
 
     def handle(self, command) -> None:
         if isinstance(command, Reset):
-            params = self.network.get_parameters()
-            self._state, self._all_params = self._init_fn(params, delta_t=self.dt)
+            self._reinitialize_runtime(preserve_state=False)
             self._time = 0.0
             self._step_index = 0
             voltage_values = self._read_voltage()

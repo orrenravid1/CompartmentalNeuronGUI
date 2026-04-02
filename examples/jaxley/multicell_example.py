@@ -90,7 +90,7 @@ class MultiCellSession(JaxleySession):
         self.stim_dur = 5.0
         self.syn_gs = 5e-4
         self.syn_e_syn = 0.0
-        self.syn_k_minus = 0.025
+        self.syn_k_minus = 0.5
         self.syn_v_th = -35.0
         self.syn_delta = 10.0
         self.hh_gna = 0.12
@@ -246,6 +246,9 @@ class MultiCellSession(JaxleySession):
         edge_view.set("IonotropicSynapse_v_th", self.syn_v_th)
         edge_view.set("IonotropicSynapse_delta", self.syn_delta)
 
+    def _initialize_synapse_state(self, network):
+        network.select(edges="all").set("IonotropicSynapse_s", 0.0)
+
     def _rebuild_stimulus(self, network=None):
         target = network if network is not None else self.network
         if target is None:
@@ -288,6 +291,7 @@ class MultiCellSession(JaxleySession):
             IonotropicSynapse(),
         )
         self._apply_synapse_parameters(network)
+        self._initialize_synapse_state(network)
         self._rebuild_stimulus(network)
         return {"stimulus": network.externals.get("i")}
 
