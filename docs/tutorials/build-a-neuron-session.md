@@ -72,7 +72,7 @@ These hooks stay on the session class even for worker-backed apps. The library r
 
 ## 3. Build and Run
 
-```python skip
+```python notest
 from compneurovis import build_neuron_app, run_app
 
 app = build_neuron_app(MyCellSession)
@@ -82,6 +82,8 @@ run_app(app)
 Passing the session class keeps construction lazy inside the worker process. That avoids duplicate top-level session construction on Windows `spawn` while preserving the same simple user-facing launch pattern. For worker-backed apps, this is now the intended path; do not pass an already-created session instance.
 
 `build_neuron_app(...)` is a current convenience helper. The long-term public model should stay feature-composable: choose a backend, then add traces, morphology, surfaces, controls, and layout as needed.
+
+If your app knows its startup layout before the worker initializes, add an optional `@classmethod bootstrap_document(cls) -> Document | None`. The generic app path will use it automatically so the window opens directly into the intended view instead of showing the loading state first.
 
 ## Custom Layout
 
@@ -94,7 +96,7 @@ The current sampled quantity in `NeuronSession` is still voltage by default, but
 
 To customize layout or views, override `build_document()` from `NeuronDocumentBuilder`:
 
-```python skip
+```python notest
 class MyCellSession(NeuronSession):
     ...
     def build_document(self, *, geometry, display_values, time_value):
@@ -111,7 +113,7 @@ See `src/compneurovis/backends/neuron/document.py` for the default document cons
 
 ## Loading from SWC
 
-```python skip
+```python notest
 from compneurovis.neuronutils.swc_utils import load_swc_neuron
 
 class MyCellSession(NeuronSession):

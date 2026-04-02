@@ -14,6 +14,7 @@ use(app="pyqt6", gl="gl+")
 from compneurovis.core import AppSpec, Document, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec, View3DHostSpec
 from compneurovis.frontends.vispy.panels import ControlsPanel, IndependentCanvas3DHostPanel, LinePlotPanel, Viewport3DPanel
 from compneurovis.session import DocumentPatch, DocumentReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
+from compneurovis.session.base import resolve_bootstrap_document_source
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,6 +201,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def __init__(self, app_spec: AppSpec):
         super().__init__()
         self.app_spec = app_spec
+        initial_document = app_spec.document
+        if initial_document is None and app_spec.session is not None:
+            initial_document = resolve_bootstrap_document_source(app_spec.session)
         self.document: Document | None = None
         self.state: dict[str, Any] = {}
         self.transport: PipeTransport | None = None
@@ -248,8 +252,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage("Starting CompNeuroVis")
         self._show_loading_state()
 
-        if app_spec.document is not None:
-            self._set_document(app_spec.document)
+        if initial_document is not None:
+            self._set_document(initial_document)
 
         if app_spec.session is not None:
             configure_multiprocessing()

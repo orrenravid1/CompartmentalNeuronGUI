@@ -16,7 +16,7 @@ from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
 from compneurovis.frontends.vispy.panels import LinePlotPanel, Viewport3DPanel
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer
-from compneurovis.session import Error, FieldAppend, StatePatch, resolve_interaction_target_source
+from compneurovis.session import BufferedSession, Error, FieldAppend, StatePatch, resolve_interaction_target_source
 
 
 def test_line_plot_panel_resolves_selected_entity_binding():
@@ -251,6 +251,76 @@ def test_frontend_shows_loading_state_before_first_document():
 
     assert window._stack.currentWidget() is window._loading_label
     assert window._loading_label.text() == "Loading visualization..."
+
+    window.close()
+    app.quit()
+
+
+def test_frontend_uses_session_bootstrap_document_before_worker_ready(monkeypatch):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    class BootstrapSession(BufferedSession):
+        @classmethod
+        def bootstrap_document(cls):
+            field = Field(
+                id="bootstrap",
+                values=np.array([[0.0]], dtype=np.float32),
+                dims=("series", "time"),
+                coords={
+                    "series": np.array(["demo"]),
+                    "time": np.array([0.0], dtype=np.float32),
+                },
+            )
+            view = LinePlotViewSpec(
+                id="bootstrap-view",
+                field_id="bootstrap",
+                x_dim="time",
+                series_dim="series",
+                title="Bootstrap",
+                x_label="Time",
+                y_label="Value",
+            )
+            return Document(
+                fields={"bootstrap": field},
+                geometries={},
+                views={"bootstrap-view": view},
+                layout=LayoutSpec(title="Bootstrap", line_plot_view_id="bootstrap-view"),
+            )
+
+        def initialize(self):
+            raise AssertionError("worker initialization should not be used to build the bootstrap document")
+
+        def advance(self) -> None:
+            return None
+
+        def handle(self, command) -> None:
+            return None
+
+    class FakeTransport:
+        def __init__(self, session, parent=None):
+            self.session = session
+            self.parent = parent
+            self._dead = False
+
+        def start(self):
+            return None
+
+        def stop(self):
+            return None
+
+        def poll_updates(self):
+            return []
+
+    monkeypatch.setattr(frontend_module, "PipeTransport", FakeTransport)
+
+    window = VispyFrontendWindow(AppSpec(session=BootstrapSession, title="Bootstrap test"))
+    window.timer.stop()
+
+    assert isinstance(window.transport, FakeTransport)
+    assert window.transport.session is BootstrapSession
+    assert window.document is not None
+    assert window.document.layout.line_plot_view_id == "bootstrap-view"
+    assert window._stack.currentWidget() is window._horizontal_splitter
 
     window.close()
     app.quit()

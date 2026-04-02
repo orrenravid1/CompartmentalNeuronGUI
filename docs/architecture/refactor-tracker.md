@@ -389,11 +389,12 @@ These are the benchmark apps to use when validating architectural changes. If a 
 
 ### Session bootstrap API
 
-- The signaling cascade retrofit showed a need for a formal session-level bootstrap document hook.
-- Current workaround: construct a document before `run_app(...)` when possible.
-- Desired future design:
-  - a small formal API for "static document known before worker start"
-  - no ad hoc per-session bootstrap pattern
+- Implemented: sessions can now provide `@classmethod bootstrap_document(cls) -> Document | None`.
+- `run_app(...)` uses that hook automatically when `AppSpec.document` is absent.
+- Intended use:
+  - startup layout, controls, and placeholder fields known before worker start
+  - open directly into the intended view without a loading-only phase
+- This keeps the bootstrap path generic and avoids hand-building `AppSpec(document=...)` in each app script.
 
 ### Plot configuration model
 

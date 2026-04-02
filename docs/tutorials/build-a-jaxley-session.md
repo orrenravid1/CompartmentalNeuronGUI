@@ -79,7 +79,7 @@ Keep the controls semantic. The frontend will route `SetControl` and `InvokeActi
 
 ## 5. Build and Run
 
-```python skip
+```python notest
 from compneurovis import build_jaxley_app, run_app
 
 app = build_jaxley_app(MyJaxleySession, title="My Jaxley app")
@@ -87,6 +87,8 @@ run_app(app)
 ```
 
 Pass the session class, not an already-created session instance. That keeps construction lazy and consistent with worker-backed transport behavior.
+
+If the app can describe its startup layout before the worker initializes, add `@classmethod bootstrap_document(cls) -> Document | None` on the session. The generic app path will use it automatically at launch.
 
 ## 6. Customize the Default Document (optional)
 

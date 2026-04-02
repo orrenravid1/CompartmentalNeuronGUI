@@ -24,6 +24,20 @@ Every session fits the same shape:
 
 For most backends, subclass `BufferedSession`. It gives you `emit(update)` and handles the update queue.
 
+## Optional Bootstrap Document
+
+Some apps know their initial layout, controls, and placeholder field structure before the worker starts. In that case, the session class can provide:
+
+```python
+@classmethod
+def bootstrap_document(cls) -> Document | None:
+    return ...
+```
+
+When present, `run_app(...)` uses that document immediately so the frontend opens straight into the intended view instead of waiting on the first worker-side `DocumentReady`.
+
+This hook is for static startup structure only. Live data still comes from `initialize()`, `advance()`, and normal typed updates.
+
 ## Live vs Replay
 
 There are two common session modes.

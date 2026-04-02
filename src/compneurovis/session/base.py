@@ -9,6 +9,10 @@ from compneurovis.session.protocol import SessionCommand, SessionUpdate
 
 
 class Session(ABC):
+    @classmethod
+    def bootstrap_document(cls) -> Document | None:
+        return None
+
     @abstractmethod
     def initialize(self) -> Document | None:
         pass
@@ -52,6 +56,28 @@ SessionFactory: TypeAlias = Callable[[], Session]
 SessionSource: TypeAlias = type[Session] | SessionFactory
 
 
+def resolve_bootstrap_document_source(source: SessionSource | None) -> Document | None:
+    if source is None:
+        return None
+    if isinstance(source, type):
+        if not issubclass(source, Session):
+            raise TypeError(f"Expected Session subclass, got {source!r}")
+        document = source.bootstrap_document()
+    else:
+        if isinstance(source, Session):
+            raise TypeError(
+                "Eager session instances are not supported for worker-backed apps. "
+                "Pass a Session subclass or a top-level zero-argument factory instead."
+            )
+        bootstrap = getattr(source, "bootstrap_document", None)
+        if not callable(bootstrap):
+            return None
+        document = bootstrap()
+    if document is not None and not isinstance(document, Document):
+        raise TypeError(f"Bootstrap document source returned {type(document)!r}, expected Document | None")
+    return document
+
+
 def resolve_session_source(source: SessionSource) -> Session:
     if isinstance(source, type):
         if not issubclass(source, Session):
@@ -68,6 +94,8 @@ def resolve_session_source(source: SessionSource) -> Session:
             raise TypeError(f"Session factory returned {type(session)!r}, expected Session")
         return session
     raise TypeError(f"Unsupported session source: {source!r}")
+
+
 def resolve_interaction_target_source(source: Any | None) -> Any | None:
     if source is None:
         return None

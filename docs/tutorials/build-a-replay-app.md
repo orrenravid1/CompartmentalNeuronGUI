@@ -66,7 +66,7 @@ for phase in np.linspace(0.0, 2.0 * np.pi, 30, dtype=np.float32):
 
 ## 3. Build and Run the Replay App
 
-```python skip
+```python notest
 from compneurovis import build_replay_app, run_app
 
 app = build_replay_app(
