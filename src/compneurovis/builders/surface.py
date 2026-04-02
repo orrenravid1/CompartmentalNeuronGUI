@@ -53,7 +53,7 @@ def build_surface_app(
             geometry_id=geometry.id if geometry is not None else None,
         )
     views = {surface_view.id: surface_view}
-    layout = LayoutSpec(title=title, main_3d_view_id=surface_view.id)
+    layout = LayoutSpec(title=title, view_3d_ids=(surface_view.id,))
     if line_view is not None:
         views[line_view.id] = line_view
         layout.line_plot_view_id = line_view.id
@@ -67,4 +67,3 @@ def build_surface_app(
         layout=layout,
     )
     return AppSpec(document=document, title=title)
-

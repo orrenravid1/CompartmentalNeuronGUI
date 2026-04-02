@@ -46,7 +46,9 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/vispyutils/cappedcylindercollection.py`
 
 ## Examples
+- `examples/debug/multi_3d_views.py`
 - `examples/debug/session_error_after_open.py`
+- `examples/debug/two_morphology_views.py`
 - `examples/jaxley/multicell_example.py`
 - `examples/neuron/c_elegans_visualizer.py`
 - `examples/neuron/multicell_example.py`
@@ -64,7 +66,10 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `audit-skill-coverage`: `skills/audit-skill-coverage/SKILL.md`
 - `breaking-rename-sweep`: `skills/breaking-rename-sweep/SKILL.md`
 - `check-change-impact`: `skills/check-change-impact/SKILL.md`
+- `check-concept-coverage`: `skills/check-concept-coverage/SKILL.md`
+- `check-docs-coverage`: `skills/check-docs-coverage/SKILL.md`
 - `check-test-coverage-drift`: `skills/check-test-coverage-drift/SKILL.md`
+- `check-tutorial-coverage`: `skills/check-tutorial-coverage/SKILL.md`
 - `debug-protocol-dataflow`: `skills/debug-protocol-dataflow/SKILL.md`
 - `debug-rendering`: `skills/debug-rendering/SKILL.md`
 - `pr-readiness`: `skills/pr-readiness/SKILL.md`

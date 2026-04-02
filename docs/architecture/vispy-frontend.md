@@ -5,34 +5,73 @@ summary: Panel structure, refresh planning, state binding, interaction hooks, an
 
 # VisPy Frontend
 
-The frontend is `VispyFrontendWindow` (a `QMainWindow`) with three panels:
+See [View and Layout Model](../concepts/view-layout-model.md) for the higher-level mental model. This document focuses on the concrete VisPy implementation of that model.
+
+The frontend is `VispyFrontendWindow` (a `QMainWindow`) with three panel regions:
 
 | Panel | Class | Responsibility |
 |---|---|---|
-| 3D viewport | `Viewport3DPanel` | Renders morphology (capped cylinders) or surface mesh; handles entity picking |
+| 3D host(s) | `IndependentCanvas3DHostPanel` -> `Viewport3DPanel` | A host mounts one or more 3D views using a concrete hosting strategy; the current built-in host uses one canvas per view |
 | Line plot | `LinePlotPanel` | Renders 1-D slices or multi-series traces via pyqtgraph |
 | Controls | `ControlsPanel` | Renders sliders, spinboxes, dropdowns; emits `SetControl` on change |
 
-Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, so the main panes are draggable/resizable. If `main_3d_view_id` is `None`, the viewport is hidden and the right panel fills the window.
+Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, so the main panes are draggable/resizable. `LayoutSpec.view_3d_hosts` is the primary 3D layout seam. Each `View3DHostSpec` declares:
+
+- which 3D views it owns
+- which host kind should mount them
+- optional host-level titling
+
+If `view_3d_hosts` is omitted, the layout derives one independent host per `view_3d_id`. If the resolved 3D host list is empty, the 3D splitter is hidden and the right panel fills the window.
+
+Before the first `Document` arrives, the frontend stays in an explicit loading state rather than briefly showing an empty fallback plot layout. That avoids a visible startup jump for worker-backed live apps.
 
 ## Refresh Planning
 
 The frontend never redraws everything on every update. `RefreshPlanner` maps incoming changes to a minimal set of `RefreshTarget`s:
 
 ```
-CONTROLS        — ControlsPanel
-MORPHOLOGY      — Viewport3DPanel (morphology path)
-SURFACE_VISUAL  — Viewport3DPanel (surface mesh + colormap)
-SURFACE_AXES    — Viewport3DPanel (axes overlay)
-SURFACE_SLICE   — Viewport3DPanel (slice plane overlay)
-LINE_PLOT       — LinePlotPanel
+CONTROLS                     -> ControlsPanel
+MORPHOLOGY(view_id)          -> one Viewport3DPanel (morphology path)
+SURFACE_VISUAL(view_id)      -> one Viewport3DPanel (surface mesh + colormap)
+SURFACE_AXES(view_id)        -> one Viewport3DPanel (axes overlay)
+SURFACE_SLICE(view_id)       -> one Viewport3DPanel (slice plane overlay)
+LINE_PLOT                    -> LinePlotPanel
 ```
+
+3D refresh targets are explicitly bound to a `view_id`, so the frontend can refresh multiple morphology and surface panels independently in the same window even when the hosting layer changes.
+
+## 3D Hosting Layer
+
+The frontend now separates:
+
+- view semantics
+  - `MorphologyViewSpec`, `SurfaceViewSpec`
+- host semantics
+  - `View3DHostSpec`
+- concrete VisPy widget implementation
+  - currently `IndependentCanvas3DHostPanel`
+
+That means the current behavior:
+
+- one 3D view
+- one `SceneCanvas`
+- one `ViewBox`
+
+is no longer the only architectural shape. It is the current host implementation.
+
+This is the intended extension point for future alternatives such as:
+
+- multiple 3D views inside one shared canvas
+- multiple camera views over a shared scene host
+- other host-level composition patterns
+
+without changing `ViewSpec`, backend sessions, or the typed refresh model.
 
 Three trigger sources:
 
-- **`FieldReplace` / `FieldAppend`** → `targets_for_field_replace(field_id)`: marks whichever panels reference that field
-- **State change** (control moved, entity clicked) → `targets_for_state_change(state_key)`: marks panels with a `StateBinding` on that key
-- **`DocumentPatch`** → `targets_for_view_patch(view_id, changed_props)`: marks panels based on which props changed
+- **`FieldReplace` / `FieldAppend`** -> `targets_for_field_replace(field_id)`: marks whichever panels reference that field
+- **State change** (control moved, entity clicked) -> `targets_for_state_change(state_key)`: marks panels with a `StateBinding` on that key
+- **`DocumentPatch`** -> `targets_for_view_patch(view_id, changed_props)`: marks panels based on which props changed
 
 The full refresh on `DocumentReady` marks every target that the current document's layout requires.
 
@@ -44,8 +83,8 @@ The frontend holds a `state: dict[str, Any]` that maps string keys to values. Co
 
 ```python
 SurfaceViewSpec(
-    ...
-    background_color=StateBinding("background_color"),  # resolved at refresh
+    ...,
+    background_color=StateBinding("background_color"),
     tick_count=StateBinding("tick_count"),
 )
 ```
@@ -70,14 +109,15 @@ def on_key_press(self, key: str, ctx: FrontendInteractionContext) -> bool: ...
 def on_action(self, action_id: str, payload: dict, ctx: FrontendInteractionContext) -> bool: ...
 ```
 
-Return `True` to consume the event (prevents default handling). `FrontendInteractionContext` provides:
-- `ctx.document` — current Document
-- `ctx.selected_entity_id` — currently selected entity
-- `ctx.entity_info(entity_id)` — section name, xloc, label
-- `ctx.set_state(key, value)` — set frontend state and trigger refresh
-- `ctx.show_status(message)` — status bar message
-- `ctx.invoke_action(action_id, payload)` — programmatically fire an action
-- `ctx.set_control(control_id, value)` — programmatically change a control
+Return `True` to consume the event. `FrontendInteractionContext` provides:
+
+- `ctx.document` - current `Document`
+- `ctx.selected_entity_id` - currently selected entity
+- `ctx.entity_info(entity_id)` - section name, xloc, label
+- `ctx.set_state(key, value)` - set frontend state and trigger refresh
+- `ctx.show_status(message)` - status bar message
+- `ctx.invoke_action(action_id, payload)` - programmatically fire an action
+- `ctx.set_control(control_id, value)` - programmatically change a control
 
 Worker-backed apps should use lazy session sources and session-side interaction hooks by default. User code should not need to split itself across frontend and backend classes just to make pipes work.
 
@@ -86,7 +126,7 @@ Worker-backed apps should use lazy session sources and session-side interaction 
 See the `add-view-panel` skill for the full workflow. The key steps:
 
 1. Add a `ViewSpec` subclass in `src/compneurovis/core/views.py`
-2. Add `RefreshTarget` entries in `frontend.py` and extend `RefreshPlanner` property sets
+2. Extend `RefreshPlanner` so it can target the new panel per bound `view_id` when needed
 3. Implement the panel in `src/compneurovis/frontends/vispy/panels.py`
 4. Add a `_refresh_<panel>()` method in `VispyFrontendWindow` and call it from `_apply_refresh_targets()`
 5. Wire visibility into `_update_panel_visibility()` and `LayoutSpec` as needed

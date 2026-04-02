@@ -101,7 +101,7 @@ The current shared policy knob is `HistoryCaptureMode`:
 Use `FieldReplace` when the entire field should be replaced:
 
 ```python
-self.emit(FieldReplace(field_id="voltage", values=new_voltages))
+self.emit(FieldReplace(field_id="segment_display", values=new_display_values))
 ```
 
 Pass `coords=None` (the default) when grid coordinates are unchanged — the frontend will skip re-uploading x/y vertex data to the GPU and skip rebuilding axes. Pass explicit `coords` only when the coordinate arrays themselves change:
@@ -119,7 +119,7 @@ Use `FieldAppend` when live data should extend an existing field along one axis:
 ```python
 self.emit(
     FieldAppend(
-        field_id="voltage",
+        field_id="segment_history",
         append_dim="time",
         values=new_segment_samples,
         coord_values=new_times,

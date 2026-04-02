@@ -22,6 +22,7 @@ summary: Generated list of names exported by compneurovis.__init__.
 - `SeriesSpec`
 - `StateBinding`
 - `SurfaceViewSpec`
+- `View3DHostSpec`
 - `ViewSpec`
 - `VispyFrontendWindow`
 - `build_replay_app`

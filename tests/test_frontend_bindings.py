@@ -9,7 +9,7 @@ import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 import pytest
 
-from compneurovis import ActionSpec, AppSpec, ControlSpec, Document, Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
+from compneurovis import ActionSpec, AppSpec, ControlSpec, Document, Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec, View3DHostSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
 from compneurovis.backends.neuron import NeuronSession
 from compneurovis.backends.neuron.document import NeuronDocumentBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
@@ -97,11 +97,11 @@ def test_refresh_planner_targets_slice_state_to_overlay_and_line_plot():
     planner = RefreshPlanner(app_spec.document)
 
     assert planner.targets_for_state_change("slice_position") == {
-        RefreshTarget.SURFACE_SLICE,
+        RefreshTarget.surface_slice("surface-view"),
         RefreshTarget.LINE_PLOT,
     }
     assert planner.targets_for_state_change("slice_axis") == {
-        RefreshTarget.SURFACE_SLICE,
+        RefreshTarget.surface_slice("surface-view"),
         RefreshTarget.LINE_PLOT,
     }
 
@@ -155,8 +155,8 @@ def test_surface_visual_reuses_same_surface_object_for_same_shape_updates():
     field, geometry = grid_field(field_id="surface", values=values, x_coords=x, y_coords=y)
     view = SurfaceViewSpec(id="surface-view", field_id=field.id, geometry_id=geometry.id)
     state = {
-        "surface-view:cmap": "bwr",
-        "surface-view:clim": None,
+        "surface-view:color_map": "bwr",
+        "surface-view:color_limits": None,
         "surface-view:color_by": "height",
         "surface-view:surface_alpha": 1.0,
         "surface-view:background_color": "white",
@@ -175,6 +175,18 @@ def test_surface_visual_reuses_same_surface_object_for_same_shape_updates():
 
     assert first_surface is second_surface
     app.quit()
+
+
+def test_morphology_renderer_uses_fixed_clim_without_dynamic_recaling():
+    renderer = MorphologyRenderer.__new__(MorphologyRenderer)
+    renderer.collection = Mock()
+    renderer._color_buf = np.zeros((2, 4), dtype=np.float32)
+
+    renderer.update_colors(np.array([5.0, 6.0], dtype=np.float32), "scalar", color_limits=(0.0, 10.0))
+
+    colors = renderer.collection.set_colors.call_args.args[0]
+    assert np.allclose(colors[:, 0], np.array([0.5, 0.6], dtype=np.float32))
+    assert np.allclose(colors[:, 2], np.array([0.5, 0.4], dtype=np.float32))
 
 
 def test_run_app_skips_frontend_launch_in_spawned_child():
@@ -230,6 +242,18 @@ def test_frontend_shows_modal_for_fatal_session_error():
         frontend_module.sys.stderr = original_stderr
         window.close()
         app.quit()
+
+
+def test_frontend_shows_loading_state_before_first_document():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    window = VispyFrontendWindow(AppSpec(title="Loading test"))
+    window.timer.stop()
+
+    assert window._stack.currentWidget() is window._loading_label
+    assert window._loading_label.text() == "Loading visualization..."
+
+    window.close()
+    app.quit()
 
 
 def test_frontend_logs_nonfatal_session_error_to_stderr_without_modal():
@@ -664,7 +688,7 @@ def test_line_plot_panel_drops_nonfinite_prefix_for_sparse_selected_trace_histor
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = LinePlotPanel()
     field = Field(
-        id="voltage_trace",
+        id="segment_history",
         values=np.array([[1.0, 2.0, 3.0, 4.0], [np.nan, np.nan, 30.0, 40.0]], dtype=np.float32),
         dims=("segment", "time"),
         coords={
@@ -694,7 +718,7 @@ def test_line_plot_panel_ignores_missing_selected_trace_labels_for_sparse_histor
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = LinePlotPanel()
     field = Field(
-        id="voltage_trace",
+        id="segment_history",
         values=np.array([[1.0, 2.0, 3.0]], dtype=np.float32),
         dims=("segment", "time"),
         coords={
@@ -773,8 +797,10 @@ def test_frontend_hides_viewport_when_document_has_no_3d_view():
     window = VispyFrontendWindow(AppSpec(document=document, title="Cascade"))
     window.timer.stop()
 
-    assert window.viewport.isHidden()
-    assert isinstance(window.centralWidget(), QtWidgets.QSplitter)
+    assert window.viewport is None
+    assert window._viewport_splitter.isHidden()
+    assert isinstance(window.centralWidget(), QtWidgets.QStackedWidget)
+    assert window._stack.currentWidget() is window._horizontal_splitter
     assert window._horizontal_splitter.orientation() == QtCore.Qt.Orientation.Horizontal
     assert window._right_splitter.orientation() == QtCore.Qt.Orientation.Vertical
 
@@ -787,13 +813,110 @@ def test_frontend_uses_splitters_for_draggable_panel_resize():
     window = VispyFrontendWindow(build_surface_cross_section_app())
     window.timer.stop()
 
-    assert isinstance(window.centralWidget(), QtWidgets.QSplitter)
-    assert window._horizontal_splitter.widget(0) is window.viewport
+    assert isinstance(window.centralWidget(), QtWidgets.QStackedWidget)
+    assert window._stack.currentWidget() is window._horizontal_splitter
+    assert window._horizontal_splitter.widget(0) is window._viewport_splitter
     assert window._horizontal_splitter.widget(1) is window._right_splitter
     assert window._right_splitter.widget(0) is window.line_plot
     assert window._right_splitter.widget(1) is window.controls
     assert not window._horizontal_splitter.opaqueResize()
     assert not window._right_splitter.opaqueResize()
+
+    window.close()
+    app.quit()
+
+
+def test_frontend_supports_multiple_3d_viewports():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    morph_geometry = MorphologyGeometry(
+        id="morphology-geometry",
+        positions=np.zeros((1, 3), dtype=np.float32),
+        orientations=np.eye(3, dtype=np.float32)[None, :, :],
+        radii=np.ones(1, dtype=np.float32),
+        lengths=np.ones(1, dtype=np.float32),
+        entity_ids=("seg-a",),
+        section_names=("sec-a",),
+        xlocs=np.array([0.5], dtype=np.float32),
+        labels=("sec-a@0.5",),
+    )
+    morph_field = Field(
+        id="voltage",
+        values=np.array([1.0], dtype=np.float32),
+        dims=("segment",),
+        coords={"segment": np.array(["seg-a"])},
+    )
+    surface_field, surface_geometry = grid_field(
+        field_id="surface",
+        values=np.ones((4, 4), dtype=np.float32),
+        x_coords=np.linspace(-1.0, 1.0, 4, dtype=np.float32),
+        y_coords=np.linspace(-1.0, 1.0, 4, dtype=np.float32),
+    )
+    document = Document(
+        fields={morph_field.id: morph_field, surface_field.id: surface_field},
+        geometries={morph_geometry.id: morph_geometry, surface_geometry.id: surface_geometry},
+        views={
+            "morphology": MorphologyViewSpec(id="morphology", geometry_id=morph_geometry.id, color_field_id=morph_field.id),
+            "surface-view": SurfaceViewSpec(id="surface-view", field_id=surface_field.id, geometry_id=surface_geometry.id),
+        },
+        layout=LayoutSpec(title="Multi 3D", view_3d_ids=("morphology", "surface-view")),
+    )
+    window = VispyFrontendWindow(AppSpec(document=document, title="Multi 3D"))
+    window.timer.stop()
+
+    assert set(window.viewports.keys()) == {"morphology", "surface-view"}
+    assert window._viewport_splitter.count() == 2
+    assert window.viewport_for("morphology") is not None
+    assert window.viewport_for("surface-view") is not None
+
+    window.close()
+    app.quit()
+
+
+def test_layout_spec_derives_default_3d_hosts_from_view_ids():
+    layout = LayoutSpec(title="Derived hosts", view_3d_ids=("morphology", "surface"))
+    document = Document(fields={}, geometries={}, views={}, layout=layout)
+
+    assert document.layout.view_3d_ids == ("morphology", "surface")
+    assert tuple(host.id for host in document.layout.view_3d_hosts) == ("morphology", "surface")
+    assert tuple(host.view_ids for host in document.layout.view_3d_hosts) == (("morphology",), ("surface",))
+
+
+def test_frontend_builds_explicit_independent_3d_hosts():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    geometry = MorphologyGeometry(
+        id="morphology-geometry",
+        positions=np.zeros((1, 3), dtype=np.float32),
+        orientations=np.eye(3, dtype=np.float32)[None, :, :],
+        radii=np.ones(1, dtype=np.float32),
+        lengths=np.ones(1, dtype=np.float32),
+        entity_ids=("seg-a",),
+        section_names=("sec-a",),
+        xlocs=np.array([0.5], dtype=np.float32),
+        labels=("sec-a@0.5",),
+    )
+    field = Field(
+        id="display",
+        values=np.array([1.0], dtype=np.float32),
+        dims=("segment",),
+        coords={"segment": np.array(["seg-a"])},
+    )
+    document = Document(
+        fields={field.id: field},
+        geometries={geometry.id: geometry},
+        views={"morphology": MorphologyViewSpec(id="morphology", geometry_id=geometry.id, color_field_id=field.id)},
+        layout=LayoutSpec(
+            title="Hosted",
+            view_3d_hosts=(View3DHostSpec(id="main-host", view_ids=("morphology",), title="Primary 3D"),),
+        ),
+    )
+
+    window = VispyFrontendWindow(AppSpec(document=document, title="Hosted"))
+    window.timer.stop()
+
+    assert set(window.view_hosts.keys()) == {"main-host"}
+    assert window._view_to_host_id["morphology"] == "main-host"
+    assert window.view_hosts["main-host"].title() == "Primary 3D"
+    assert window.viewport_for("morphology") is window.view_hosts["main-host"].viewport
 
     window.close()
     app.quit()
@@ -1104,7 +1227,7 @@ def test_neuron_session_build_document_applies_orders_and_trace_updates():
 
     document = session.build_document(
         geometry=geometry,
-        voltage_values=np.array([1.0], dtype=np.float32),
+        display_values=np.array([1.0], dtype=np.float32),
         time_value=0.0,
     )
 
@@ -1147,11 +1270,11 @@ def test_neuron_session_expands_history_budget_to_cover_trace_window():
     )
     document = session.build_document(
         geometry=geometry,
-        voltage_values=np.array([1.0], dtype=np.float32),
+        display_values=np.array([1.0], dtype=np.float32),
         time_value=0.0,
     )
 
-    assert session._resolved_field_max_samples(document, field_id=NeuronDocumentBuilder.TRACE_FIELD_ID, append_dim="time") == 1201
+    assert session._resolved_field_max_samples(document, field_id=NeuronDocumentBuilder.HISTORY_FIELD_ID, append_dim="time") == 1201
 
 
 def test_frontend_applies_field_append_updates_incrementally():

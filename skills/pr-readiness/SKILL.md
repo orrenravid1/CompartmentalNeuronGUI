@@ -10,12 +10,15 @@ Use this as an orchestration skill near the end of a change. It does not replace
 Run this sequence:
 
 1. Use `check-change-impact` to determine which docs, tests, examples, exports, and skills are affected.
-2. Use `check-test-coverage-drift` to confirm the current tests still defend the changed behavior.
-3. Use `audit-skill-coverage` to determine whether the change introduces a new reusable workflow that warrants a new skill.
-4. If the change is a deliberate terminology or taxonomy rename, use `breaking-rename-sweep`.
-5. If a skill was created or renamed, use `register-skill`.
-6. Use `update-docs-and-indexes` when code paths, package boundaries, public API, or workflow docs changed.
-7. Run the verification set that matches the impact:
+2. Use `check-docs-coverage` to verify every name in `__all__` appears in at least one authored doc. Uncovered names are required work before the change is doc-complete.
+3. If the change added a builder, session type, view spec, or geometry type, use `check-tutorial-coverage` to verify each has a tutorial or non-debug example.
+4. If the change introduced a new major primitive or interaction model, use `check-concept-coverage` to verify a concept doc exists for it.
+5. Use `check-test-coverage-drift` to confirm the current tests still defend the changed behavior.
+6. Use `audit-skill-coverage` to determine whether the change introduces a new reusable workflow that warrants a new skill.
+7. If the change is a deliberate terminology or taxonomy rename, use `breaking-rename-sweep`.
+8. If a skill was created or renamed, use `register-skill`.
+9. Use `update-docs-and-indexes` when code paths, package boundaries, public API, or workflow docs changed.
+10. Run the verification set that matches the impact:
    - targeted `pytest` modules first
    - `python scripts/check_architecture_invariants.py`
    - `pytest`

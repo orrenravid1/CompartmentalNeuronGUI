@@ -79,6 +79,7 @@ class NeuronSession(BufferedSession, ABC):
         self._ui_state: dict[str, Any] = {}
         self._entity_index_by_id: dict[str, int] = {}
         self._last_time_value: float | None = None
+        self._last_display_values: np.ndarray | None = None
         self._last_voltage_values: np.ndarray | None = None
         self._trace_segment_ids: list[str] = []
         self._trace_history_times: list[float] = []
@@ -105,6 +106,36 @@ class NeuronSession(BufferedSession, ABC):
 
     def trace_view_updates(self) -> dict[str, Any]:
         return {}
+
+    def display_field_id(self) -> str:
+        return NeuronDocumentBuilder.DISPLAY_FIELD_ID
+
+    def history_field_id(self) -> str:
+        return NeuronDocumentBuilder.HISTORY_FIELD_ID
+
+    def display_unit(self) -> str | None:
+        return "mV"
+
+    def history_unit(self) -> str | None:
+        return self.display_unit()
+
+    def morphology_color_map(self) -> str:
+        return "scalar"
+
+    def morphology_color_limits(self) -> tuple[float, float] | None:
+        return (-80.0, 50.0)
+
+    def morphology_color_norm(self) -> str:
+        return "auto"
+
+    def trace_title(self) -> str:
+        return "Trace"
+
+    def trace_y_label(self) -> str:
+        return "Value"
+
+    def trace_y_unit(self) -> str:
+        return self.history_unit() or ""
 
     def apply_control(self, control_id: str, value) -> bool:
         try:
@@ -133,16 +164,26 @@ class NeuronSession(BufferedSession, ABC):
         del entity_id, context
         return True
 
-    def build_document(self, *, geometry, voltage_values: np.ndarray, time_value: float) -> Document:
+    def build_document(self, *, geometry, display_values: np.ndarray, time_value: float) -> Document:
         controls = self.control_specs()
         actions = self.action_specs()
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
         document = NeuronDocumentBuilder.build_document(
             geometry=geometry,
-            display_values=voltage_values,
+            display_values=display_values,
             trace_values=trace_values,
             trace_segment_ids=trace_segment_ids,
             trace_times=trace_times,
+            display_field_id=self.display_field_id(),
+            history_field_id=self.history_field_id(),
+            display_unit=self.display_unit(),
+            history_unit=self.history_unit(),
+            morphology_color_map=self.morphology_color_map(),
+            morphology_color_limits=self.morphology_color_limits(),
+            morphology_color_norm=self.morphology_color_norm(),
+            trace_title=self.trace_title(),
+            trace_y_label=self.trace_y_label(),
+            trace_y_unit=self.trace_y_unit(),
             controls=controls,
             actions=actions,
             title=self.title,
@@ -162,16 +203,16 @@ class NeuronSession(BufferedSession, ABC):
         self._prepare_recorders()
         h.dt = self.dt
         h.finitialize(self.v_init)
-        time_value, voltage_values = self._sample()
-        self._initialize_trace_history(time_value, voltage_values)
+        time_value, display_values = self._sample()
+        self._initialize_trace_history(time_value, display_values)
         document = self.build_document(
             geometry=self.geometry,
-            voltage_values=voltage_values,
+            display_values=display_values,
             time_value=time_value,
         )
-        self._field_max_samples[NeuronDocumentBuilder.TRACE_FIELD_ID] = self._resolved_field_max_samples(
+        self._field_max_samples[self.history_field_id()] = self._resolved_field_max_samples(
             document,
-            field_id=NeuronDocumentBuilder.TRACE_FIELD_ID,
+            field_id=self.history_field_id(),
             append_dim="time",
         )
         self._ui_state = {}
@@ -195,23 +236,27 @@ class NeuronSession(BufferedSession, ABC):
         for i, (section, xloc) in enumerate(zip(entity_sections, entity_xlocs)):
             self._segment_refs.pset(i, section(xloc)._ref_v)
 
-    def _read_voltage(self) -> np.ndarray:
+    def _read_display_values(self) -> np.ndarray:
         self._segment_refs.gather(self._segment_vector)
         return np.asarray(self._segment_vector.as_numpy(), dtype=np.float32).copy()
 
-    def _sample(self) -> tuple[float, np.ndarray]:
-        return float(h.t), self._read_voltage()
+    def _read_voltage(self) -> np.ndarray:
+        return self._read_display_values()
 
-    def _initialize_trace_history(self, time_value: float, voltage_values: np.ndarray) -> None:
+    def _sample(self) -> tuple[float, np.ndarray]:
+        return float(h.t), self._read_display_values()
+
+    def _initialize_trace_history(self, time_value: float, display_values: np.ndarray) -> None:
         self._last_time_value = float(time_value)
-        self._last_voltage_values = np.asarray(voltage_values, dtype=np.float32)
+        self._last_display_values = np.asarray(display_values, dtype=np.float32)
+        self._last_voltage_values = self._last_display_values
         self._trace_history_times = [float(time_value)]
         self._trace_history_values_by_id = {}
         if self.history_capture_mode == HistoryCaptureMode.FULL:
             self._trace_segment_ids = list(self.geometry.entity_ids)
             for entity_id in self._trace_segment_ids:
                 index = self._entity_index_by_id[entity_id]
-                self._trace_history_values_by_id[entity_id] = [float(self._last_voltage_values[index])]
+                self._trace_history_values_by_id[entity_id] = [float(self._last_display_values[index])]
         else:
             self._trace_segment_ids = []
             for entity_id in self._preferred_trace_entity_ids():
@@ -243,8 +288,8 @@ class NeuronSession(BufferedSession, ABC):
         if index is None:
             return False
         history = [math.nan] * len(self._trace_history_times)
-        if include_current_sample and history and self._last_voltage_values is not None:
-            history[-1] = float(self._last_voltage_values[index])
+        if include_current_sample and history and self._last_display_values is not None:
+            history[-1] = float(self._last_display_values[index])
         self._trace_segment_ids.append(entity_id)
         self._trace_history_values_by_id[entity_id] = history
         return True
@@ -264,7 +309,7 @@ class NeuronSession(BufferedSession, ABC):
     def _trace_field_replace(self) -> FieldReplace:
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
         return FieldReplace(
-            field_id=NeuronDocumentBuilder.TRACE_FIELD_ID,
+            field_id=self.history_field_id(),
             values=trace_values,
             coords={
                 "segment": trace_segment_ids,
@@ -272,10 +317,10 @@ class NeuronSession(BufferedSession, ABC):
             },
         )
 
-    def _display_field_replace(self, voltage_values: np.ndarray) -> FieldReplace:
+    def _display_field_replace(self, display_values: np.ndarray) -> FieldReplace:
         return FieldReplace(
-            field_id=NeuronDocumentBuilder.DISPLAY_FIELD_ID,
-            values=np.asarray(voltage_values, dtype=np.float32),
+            field_id=self.display_field_id(),
+            values=np.asarray(display_values, dtype=np.float32),
         )
 
     def _trim_selected_trace_history(self, max_length: int) -> None:
@@ -292,7 +337,7 @@ class NeuronSession(BufferedSession, ABC):
         for entity_id in self._trace_segment_ids:
             index = self._entity_index_by_id[entity_id]
             self._trace_history_values_by_id[entity_id].extend(float(value) for value in batch_values[index])
-        max_length = self._field_max_samples.get(NeuronDocumentBuilder.TRACE_FIELD_ID)
+        max_length = self._field_max_samples.get(self.history_field_id())
         if max_length is not None:
             self._trim_selected_trace_history(int(max_length))
 
@@ -324,27 +369,28 @@ class NeuronSession(BufferedSession, ABC):
         times: list[float] = []
         for _ in range(self.steps_per_update()):
             h.fadvance()
-            time_value, voltage_values = self._sample()
+            time_value, display_values = self._sample()
             times.append(time_value)
-            samples.append(voltage_values)
+            samples.append(display_values)
 
         if not samples:
             return
 
         batch_values = np.stack(samples, axis=1)
         self._last_time_value = float(times[-1])
-        self._last_voltage_values = np.asarray(samples[-1], dtype=np.float32)
+        self._last_display_values = np.asarray(samples[-1], dtype=np.float32)
+        self._last_voltage_values = self._last_display_values
 
-        self.emit(self._display_field_replace(self._last_voltage_values))
+        self.emit(self._display_field_replace(self._last_display_values))
 
         if self.history_capture_mode == HistoryCaptureMode.FULL:
             self.emit(
                 FieldAppend(
-                    field_id=NeuronDocumentBuilder.TRACE_FIELD_ID,
+                    field_id=self.history_field_id(),
                     append_dim="time",
                     values=batch_values,
                     coord_values=np.asarray(times, dtype=np.float32),
-                    max_length=self._field_max_samples.get(NeuronDocumentBuilder.TRACE_FIELD_ID, self.max_samples),
+                    max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
                 )
             )
             return
@@ -354,11 +400,11 @@ class NeuronSession(BufferedSession, ABC):
             indices = [self._entity_index_by_id[entity_id] for entity_id in self._trace_segment_ids]
             self.emit(
                 FieldAppend(
-                    field_id=NeuronDocumentBuilder.TRACE_FIELD_ID,
+                    field_id=self.history_field_id(),
                     append_dim="time",
                     values=batch_values[indices, :],
                     coord_values=np.asarray(times, dtype=np.float32),
-                    max_length=self._field_max_samples.get(NeuronDocumentBuilder.TRACE_FIELD_ID, self.max_samples),
+                    max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
                 )
             )
 
@@ -373,10 +419,10 @@ class NeuronSession(BufferedSession, ABC):
     def handle(self, command) -> None:
         if isinstance(command, Reset):
             h.finitialize(self.v_init)
-            time_value, voltage_values = self._sample()
-            self._initialize_trace_history(time_value, voltage_values)
+            time_value, display_values = self._sample()
+            self._initialize_trace_history(time_value, display_values)
             self.emit(
-                self._display_field_replace(voltage_values)
+                self._display_field_replace(display_values)
             )
             self.emit(self._trace_field_replace())
         elif isinstance(command, SetControl):

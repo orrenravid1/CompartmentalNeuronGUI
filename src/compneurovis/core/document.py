@@ -10,12 +10,80 @@ from compneurovis.core.views import ViewSpec
 
 
 @dataclass(slots=True)
+class View3DHostSpec:
+    id: str
+    view_ids: tuple[str, ...]
+    kind: str = "independent_canvas"
+    title: str | None = None
+
+    def normalized(self) -> "View3DHostSpec | None":
+        view_ids = tuple(dict.fromkeys(view_id for view_id in self.view_ids if view_id))
+        if not view_ids:
+            return None
+        host_id = self.id or view_ids[0]
+        return View3DHostSpec(
+            id=host_id,
+            view_ids=view_ids,
+            kind=self.kind,
+            title=self.title,
+        )
+
+
+@dataclass(slots=True)
 class LayoutSpec:
     title: str = "CompNeuroVis"
     main_3d_view_id: str | None = None
+    view_3d_ids: tuple[str, ...] = ()
+    view_3d_hosts: tuple[View3DHostSpec, ...] = ()
     line_plot_view_id: str | None = None
     control_ids: tuple[str, ...] = ()
     action_ids: tuple[str, ...] = ()
+
+    def resolved_3d_view_ids(self) -> tuple[str, ...]:
+        if self.view_3d_ids:
+            return tuple(dict.fromkeys(view_id for view_id in self.view_3d_ids if view_id))
+        if self.main_3d_view_id is None:
+            return ()
+        return (self.main_3d_view_id,)
+
+    def resolved_3d_hosts(self) -> tuple[View3DHostSpec, ...]:
+        if self.view_3d_hosts:
+            resolved_hosts: list[View3DHostSpec] = []
+            seen_view_ids: set[str] = set()
+            for host in self.view_3d_hosts:
+                normalized = host.normalized()
+                if normalized is None:
+                    continue
+                filtered_view_ids = tuple(view_id for view_id in normalized.view_ids if view_id not in seen_view_ids)
+                if not filtered_view_ids:
+                    continue
+                seen_view_ids.update(filtered_view_ids)
+                resolved_hosts.append(
+                    View3DHostSpec(
+                        id=normalized.id,
+                        view_ids=filtered_view_ids,
+                        kind=normalized.kind,
+                        title=normalized.title,
+                    )
+                )
+            return tuple(resolved_hosts)
+        return tuple(
+            View3DHostSpec(id=view_id, view_ids=(view_id,), kind="independent_canvas")
+            for view_id in self.resolved_3d_view_ids()
+        )
+
+    def normalize_3d_views(self) -> None:
+        resolved_hosts = self.resolved_3d_hosts()
+        resolved_view_ids = tuple(
+            dict.fromkeys(
+                view_id
+                for host in resolved_hosts
+                for view_id in host.view_ids
+            )
+        )
+        self.view_3d_hosts = resolved_hosts
+        self.view_3d_ids = resolved_view_ids
+        self.main_3d_view_id = resolved_view_ids[0] if resolved_view_ids else None
 
 
 @dataclass(slots=True)
@@ -35,6 +103,7 @@ class Document:
         self.controls = dict(self.controls)
         self.actions = dict(self.actions)
         self.metadata = dict(self.metadata)
+        self.layout.normalize_3d_views()
         if not self.layout.control_ids:
             self.layout.control_ids = tuple(self.controls.keys())
         if not self.layout.action_ids:

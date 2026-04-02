@@ -113,7 +113,12 @@ class Viewport3DPanel(QtWidgets.QWidget):
         if self.renderer_morph.geometry is not morphology_geometry:
             self.renderer_morph.set_geometry(morphology_geometry)
         if morphology_colors is not None:
-            self.renderer_morph.update_colors(morphology_colors, morphology_view.color_map)
+            self.renderer_morph.update_colors(
+                morphology_colors,
+                morphology_view.color_map,
+                color_limits=resolved_state.get(f"{morphology_view.id}:color_limits", morphology_view.color_limits),
+                color_norm=resolved_state.get(f"{morphology_view.id}:color_norm", morphology_view.color_norm),
+            )
 
     def refresh_surface_visual(
         self,
@@ -161,8 +166,8 @@ class Viewport3DPanel(QtWidgets.QWidget):
             self._surface_scene.x_grid,
             self._surface_scene.y_grid,
             self._surface_scene.z,
-            cmap=resolved_state[f"{surface_view.id}:cmap"],
-            clim=resolved_state[f"{surface_view.id}:clim"],
+            color_map=resolved_state[f"{surface_view.id}:color_map"],
+            color_limits=resolved_state[f"{surface_view.id}:color_limits"],
             colors=None,
             color_by=resolved_state[f"{surface_view.id}:color_by"],
             surface_alpha=resolved_state[f"{surface_view.id}:surface_alpha"],
@@ -236,6 +241,87 @@ class Viewport3DPanel(QtWidgets.QWidget):
 
     def commit(self) -> None:
         self.canvas.update()
+
+
+class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
+    def __init__(self, *, host_id: str, view_id: str, title: str | None = None, on_entity_selected=None, parent=None):
+        super().__init__(title or view_id, parent)
+        self.host_id = host_id
+        self.view_ids = (view_id,)
+        self.viewport = Viewport3DPanel(on_entity_selected=on_entity_selected)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(4, 8, 4, 4)
+        layout.addWidget(self.viewport)
+
+    def clear(self) -> None:
+        self.viewport.clear()
+
+    def refresh_morphology(
+        self,
+        *,
+        view_id: str,
+        morphology_geometry: MorphologyGeometry | None,
+        morphology_view: MorphologyViewSpec | None,
+        morphology_colors: np.ndarray | None,
+        resolved_state: dict[str, Any],
+    ) -> None:
+        if view_id != self.view_ids[0]:
+            return
+        self.viewport.refresh_morphology(
+            morphology_geometry=morphology_geometry,
+            morphology_view=morphology_view,
+            morphology_colors=morphology_colors,
+            resolved_state=resolved_state,
+        )
+
+    def refresh_surface_visual(
+        self,
+        *,
+        view_id: str,
+        surface_view: SurfaceViewSpec | None,
+        surface_field: Field | None,
+        grid_geometry: GridGeometry | None,
+        resolved_state: dict[str, Any],
+    ) -> None:
+        if view_id != self.view_ids[0]:
+            return
+        self.viewport.refresh_surface_visual(
+            surface_view=surface_view,
+            surface_field=surface_field,
+            grid_geometry=grid_geometry,
+            resolved_state=resolved_state,
+        )
+
+    def refresh_surface_axes(
+        self,
+        *,
+        view_id: str,
+        surface_view: SurfaceViewSpec | None,
+        resolved_state: dict[str, Any],
+    ) -> None:
+        if view_id != self.view_ids[0]:
+            return
+        self.viewport.refresh_surface_axes(
+            surface_view=surface_view,
+            resolved_state=resolved_state,
+        )
+
+    def refresh_surface_slice(
+        self,
+        *,
+        view_id: str,
+        surface_view: SurfaceViewSpec | None,
+        resolved_state: dict[str, Any],
+    ) -> None:
+        if view_id != self.view_ids[0]:
+            return
+        self.viewport.refresh_surface_slice(
+            surface_view=surface_view,
+            resolved_state=resolved_state,
+        )
+
+    def commit(self) -> None:
+        self.viewport.commit()
 
 
 class LinePlotPanel(pg.PlotWidget):

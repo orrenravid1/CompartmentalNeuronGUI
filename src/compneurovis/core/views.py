@@ -21,7 +21,9 @@ class MorphologyViewSpec(ViewSpec):
     color_field_id: str | None = None
     entity_dim: str = "segment"
     sample_dim: str | None = "time"
-    color_map: str = "voltage"
+    color_map: str = "scalar"
+    color_limits: ValueOrBinding = None
+    color_norm: str = "auto"
     background_color: ValueOrBinding = "white"
 
 
@@ -29,8 +31,8 @@ class MorphologyViewSpec(ViewSpec):
 class SurfaceViewSpec(ViewSpec):
     field_id: str = ""
     geometry_id: str | None = None
-    cmap: str = "bwr"
-    clim: tuple[float, float] | None = None
+    color_map: str = "bwr"
+    color_limits: tuple[float, float] | None = None
     color_by: str = "height"
     surface_alpha: ValueOrBinding = 1.0
     background_color: ValueOrBinding = "white"

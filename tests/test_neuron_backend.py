@@ -32,11 +32,11 @@ def test_neuron_document_builder_splits_display_and_trace_fields():
 
     assert set(document.fields.keys()) == {
         NeuronDocumentBuilder.DISPLAY_FIELD_ID,
-        NeuronDocumentBuilder.TRACE_FIELD_ID,
+        NeuronDocumentBuilder.HISTORY_FIELD_ID,
     }
 
     display_field = document.fields[NeuronDocumentBuilder.DISPLAY_FIELD_ID]
-    trace_field = document.fields[NeuronDocumentBuilder.TRACE_FIELD_ID]
+    trace_field = document.fields[NeuronDocumentBuilder.HISTORY_FIELD_ID]
     morphology_view = document.views["morphology"]
     trace_view = document.views["trace"]
 
@@ -46,7 +46,9 @@ def test_neuron_document_builder_splits_display_and_trace_fields():
     assert trace_field.coords["segment"].tolist() == ["seg-a"]
     assert morphology_view.color_field_id == NeuronDocumentBuilder.DISPLAY_FIELD_ID
     assert morphology_view.sample_dim is None
-    assert trace_view.field_id == NeuronDocumentBuilder.TRACE_FIELD_ID
+    assert morphology_view.color_map == "scalar"
+    assert morphology_view.color_norm == "auto"
+    assert trace_view.field_id == NeuronDocumentBuilder.HISTORY_FIELD_ID
 
 
 class DummyNeuronSession(NeuronSession):
@@ -57,18 +59,18 @@ class DummyNeuronSession(NeuronSession):
 def test_neuron_session_captures_new_trace_history_on_click():
     session = DummyNeuronSession()
     geometry = _geometry()
-    voltage_values = np.array([1.0, 2.0], dtype=np.float32)
+    display_values = np.array([1.0, 2.0], dtype=np.float32)
 
     session.geometry = geometry
     session._entity_index_by_id = {"seg-a": 0, "seg-b": 1}
-    session._initialize_trace_history(0.0, voltage_values)
+    session._initialize_trace_history(0.0, display_values)
 
     session.handle(EntityClicked("seg-b"))
     updates = session.read_updates()
 
     assert len(updates) == 1
     assert isinstance(updates[0], FieldReplace)
-    assert updates[0].field_id == NeuronDocumentBuilder.TRACE_FIELD_ID
+    assert updates[0].field_id == NeuronDocumentBuilder.HISTORY_FIELD_ID
     assert updates[0].coords["segment"].tolist() == ["seg-a", "seg-b"]
     assert updates[0].coords["time"].tolist() == [0.0]
 
@@ -76,12 +78,12 @@ def test_neuron_session_captures_new_trace_history_on_click():
 def test_neuron_session_prefers_current_selected_entity_when_reinitializing_trace_history():
     session = DummyNeuronSession()
     geometry = _geometry()
-    voltage_values = np.array([1.0, 2.0], dtype=np.float32)
+    display_values = np.array([1.0, 2.0], dtype=np.float32)
 
     session.geometry = geometry
     session._entity_index_by_id = {"seg-a": 0, "seg-b": 1}
     session._ui_state["selected_entity_id"] = "seg-b"
-    session._initialize_trace_history(0.0, voltage_values)
+    session._initialize_trace_history(0.0, display_values)
 
     segment_ids, times, values = session._trace_field_snapshot()
 
@@ -93,15 +95,30 @@ def test_neuron_session_prefers_current_selected_entity_when_reinitializing_trac
 def test_neuron_session_prefers_selected_trace_entity_ids_when_reinitializing_trace_history():
     session = DummyNeuronSession()
     geometry = _geometry()
-    voltage_values = np.array([1.0, 2.0], dtype=np.float32)
+    display_values = np.array([1.0, 2.0], dtype=np.float32)
 
     session.geometry = geometry
     session._entity_index_by_id = {"seg-a": 0, "seg-b": 1}
     session._ui_state["selected_trace_entity_ids"] = ["seg-b", "seg-a"]
-    session._initialize_trace_history(0.0, voltage_values)
+    session._initialize_trace_history(0.0, display_values)
 
     segment_ids, times, values = session._trace_field_snapshot()
 
     assert segment_ids.tolist() == ["seg-b", "seg-a"]
     assert times.tolist() == [0.0]
     assert np.allclose(values, np.array([[2.0], [1.0]], dtype=np.float32))
+
+
+def test_neuron_session_default_document_uses_fixed_morphology_color_limits():
+    session = DummyNeuronSession()
+    geometry = _geometry()
+
+    document = session.build_document(
+        geometry=geometry,
+        display_values=np.array([1.0, 2.0], dtype=np.float32),
+        time_value=0.0,
+    )
+
+    assert document.views["morphology"].color_map == "scalar"
+    assert document.views["morphology"].color_limits == (-80.0, 50.0)
+    assert document.views["morphology"].color_norm == "auto"

@@ -6,8 +6,9 @@ from compneurovis.core import Document, Field, LayoutSpec, LinePlotViewSpec, Mor
 
 
 class JaxleyDocumentBuilder:
-    DISPLAY_FIELD_ID = "voltage_display"
-    TRACE_FIELD_ID = "voltage_trace"
+    DISPLAY_FIELD_ID = "segment_display"
+    HISTORY_FIELD_ID = "segment_history"
+    TRACE_FIELD_ID = HISTORY_FIELD_ID
 
     @staticmethod
     def _split_xyzr_into_equal_length_segments(xyzr: np.ndarray, ncomp: int) -> list[np.ndarray]:
@@ -161,30 +162,44 @@ class JaxleyDocumentBuilder:
         trace_values: np.ndarray,
         trace_segment_ids: np.ndarray,
         trace_times: np.ndarray,
+        display_field_id: str | None = None,
+        history_field_id: str | None = None,
+        display_unit: str | None = None,
+        history_unit: str | None = None,
+        morphology_color_map: str = "scalar",
+        morphology_color_limits: tuple[float, float] | None = None,
+        morphology_color_norm: str = "auto",
+        trace_title: str = "Trace",
+        trace_y_label: str = "Value",
+        trace_y_unit: str | None = None,
         controls=None,
         actions=None,
         title: str = "CompNeuroVis",
         control_ids: tuple[str, ...] | None = None,
         action_ids: tuple[str, ...] | None = None,
     ) -> Document:
+        display_field_id = display_field_id or JaxleyDocumentBuilder.DISPLAY_FIELD_ID
+        history_field_id = history_field_id or JaxleyDocumentBuilder.HISTORY_FIELD_ID
+        history_unit = display_unit if history_unit is None else history_unit
+        trace_y_unit = (history_unit or "") if trace_y_unit is None else trace_y_unit
         display_field = Field(
-            id=JaxleyDocumentBuilder.DISPLAY_FIELD_ID,
+            id=display_field_id,
             values=np.asarray(display_values, dtype=np.float32),
             dims=("segment",),
             coords={
                 "segment": np.asarray(geometry.entity_ids),
             },
-            unit="mV",
+            unit=display_unit,
         )
         trace_field = Field(
-            id=JaxleyDocumentBuilder.TRACE_FIELD_ID,
+            id=history_field_id,
             values=np.asarray(trace_values, dtype=np.float32),
             dims=("segment", "time"),
             coords={
                 "segment": np.asarray(trace_segment_ids),
                 "time": np.asarray(trace_times, dtype=np.float32),
             },
-            unit="mV",
+            unit=history_unit,
         )
         views = {
             "morphology": MorphologyViewSpec(
@@ -194,18 +209,20 @@ class JaxleyDocumentBuilder:
                 color_field_id=display_field.id,
                 entity_dim="segment",
                 sample_dim=None,
-                color_map="voltage",
+                color_map=morphology_color_map,
+                color_limits=morphology_color_limits,
+                color_norm=morphology_color_norm,
             ),
             "trace": LinePlotViewSpec(
                 id="trace",
-                title="Voltage",
+                title=trace_title,
                 field_id=trace_field.id,
                 x_dim="time",
                 selectors={"segment": StateBinding("selected_entity_id")},
                 x_label="Time",
-                y_label="Voltage",
+                y_label=trace_y_label,
                 x_unit="ms",
-                y_unit="mV",
+                y_unit=trace_y_unit,
                 pen="#1f3c88",
             ),
         }
@@ -217,7 +234,7 @@ class JaxleyDocumentBuilder:
             actions={} if actions is None else dict(actions),
             layout=LayoutSpec(
                 title=title,
-                main_3d_view_id="morphology",
+                view_3d_ids=("morphology",),
                 line_plot_view_id="trace",
                 control_ids=tuple(controls.keys()) if controls and control_ids is None else (() if control_ids is None else control_ids),
                 action_ids=tuple(actions.keys()) if actions and action_ids is None else (() if action_ids is None else action_ids),

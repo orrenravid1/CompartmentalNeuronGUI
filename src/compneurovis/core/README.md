@@ -11,6 +11,8 @@ summary: Field, geometry, view, control, and document primitives.
 - `MorphologyGeometry`
 - `GridGeometry`
 - `Document`
+- `LayoutSpec`
+- `View3DHostSpec`
 - `ViewSpec`
 - `ControlSpec`
-
+- declarative binding helpers such as `AttributeRef` and `SeriesSpec`

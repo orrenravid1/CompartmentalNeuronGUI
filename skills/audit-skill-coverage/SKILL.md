@@ -21,6 +21,11 @@ Run this after `check-change-impact` has identified what the change introduced.
    - It is a one-off with no plausible future reuse
    - The steps are already fully described in a canonical doc that is easy to find
 
+   **Keep skills narrow — do not bundle separate concerns:**
+   - If two workflows have different triggers, different remedies, or serve different audiences, they belong in separate skills even if they feel related.
+   - The temptation to bundle (e.g. "tutorial coverage and concept coverage are both learnability") is a false economy — it produces skills that are harder to trigger precisely and harder for an agent to execute correctly.
+   - Prefer one focused skill per concern. A longer pipeline of narrow skills is better than a short pipeline of bundled ones.
+
 4. For each workflow that warrants a skill: either create the skill now (then use `register-skill`) or record it explicitly in the readiness report as a known gap.
 5. Report the outcome — for each new workflow, state whether a skill was created, already existed, or was intentionally deferred and why.
 

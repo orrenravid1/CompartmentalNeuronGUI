@@ -10,7 +10,15 @@ summary: How to create, read, and update Field objects — the primary data prim
 ## Anatomy of a Field
 
 ```python
-Field(
+import numpy as np
+from compneurovis import Field
+
+segment_ids = np.array(["soma"] + [f"dend{i}" for i in range(99)])
+t_ms = np.linspace(0.0, 500.0, 500, dtype=float)
+new_array = np.ones((100, 500), dtype=np.float32)
+new_coords = {"segment": segment_ids, "time": t_ms}
+
+field = Field(
     id="voltage",
     values=np.zeros((100, 500)),   # shape must match dims order
     dims=("segment", "time"),
@@ -31,7 +39,7 @@ Fields are **frozen** (`frozen=True`). To change values, use `with_values()`.
 
 ## Updating a Field
 
-```python
+```python continuation
 updated = field.with_values(new_array)                  # replace values only
 updated = field.with_values(new_array, coords=new_coords)  # replace values + coords
 ```
@@ -42,7 +50,7 @@ updated = field.with_values(new_array, coords=new_coords)  # replace values + co
 
 `field.select(selectors)` returns a new `Field` with one or more dims reduced.
 
-```python
+```python continuation
 # integer index — removes the dim
 field.select({"time": -1})
 

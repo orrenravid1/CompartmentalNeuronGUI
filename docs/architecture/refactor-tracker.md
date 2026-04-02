@@ -30,31 +30,25 @@ Do not use this document as a file-by-file changelog.
 
 These are the main architectural mismatches still present in code. If work resumes after a pause, start here rather than scanning the whole tracker for clues.
 
-1. Generalize display/history field roles
-   Current issue:
-   default backend document builders still use voltage-specific field ids, labels, and color assumptions.
-   Needed direction:
-   morphology and surface views should bind to arbitrary display fields, with voltage treated as one preset rather than the architecture itself.
-
-2. Build a genuinely feature-composable public authoring layer
+1. Build a genuinely feature-composable public authoring layer
    Current issue:
    real apps such as signaling-cascade and pharynx still expose too much `Document`/session plumbing for the intended scientific user.
    Needed direction:
    users should declare features, controls, tracked series, and small hooks without needing to think about transport or low-level document assembly.
 
-3. Separate simulation cadence from presentation cadence
+2. Separate simulation cadence from presentation cadence
    Current issue:
    batching is currently doing double duty as both throughput control and perceived smoothness control.
    Needed direction:
    keep backend stepping, latest-state delivery, history capture, and playback/presentation smoothing as separable concerns.
 
-4. Replace the transitional layout shell with a generic workbench model
+3. Replace the transitional layout shell with a generic workbench model
    Current issue:
    splitters and fixed panel slots are useful, but still encode a temporary layout model.
    Needed direction:
    one default layout plus generic panel composition, with future saved layouts and richer panel arrangements.
 
-5. Formalize replay/history semantics across backends
+4. Formalize replay/history semantics across backends
    Current issue:
    live history capture and replay/recorded history now share the same conceptual space, but the model is only partially explicit.
    Needed direction:
@@ -135,15 +129,7 @@ Target outcomes:
 
 These are the recommended next implementation steps in order. If only one thing is tackled next, start with step 1.
 
-1. Remove voltage-specific assumptions from default morphology-display and trace-history builders
-   Scope:
-   generalize backend document builders so default display/history roles are field-generic rather than voltage-named.
-   Concrete implications:
-   NEURON and Jaxley default builders should not encode voltage as the architectural field identity, title, or only display concept.
-   Why first:
-   this is already a known architectural mismatch and it blocks NeuroML-style and non-voltage display use cases cleanly.
-
-2. Add a feature-based high-level authoring layer for common scientific workflows
+1. Add a feature-based high-level authoring layer for common scientific workflows
    Scope:
    let users declare controls, tracked series, morphology, surfaces, actions, and layout features without manual document plumbing.
    Concrete implications:
@@ -151,13 +137,21 @@ These are the recommended next implementation steps in order. If only one thing 
    Why second:
    the architecture is now strong enough that the main remaining pain is authoring complexity.
 
-3. Split simulation batching from presentation smoothing
+2. Split simulation batching from presentation smoothing
    Scope:
    separate backend stepping cadence, latest-state delivery cadence, history capture cadence, and optional playback smoothing.
    Concrete implications:
    heavy models should be able to stay efficient without forcing visibly jerky temporal playback.
    Why third:
    this is important, but it sits more cleanly on top of the generic display/history split than before it.
+
+3. Expand display-role customization beyond the default sampled quantity
+   Scope:
+   make it straightforward for sessions and builders to choose other displayed quantities and color presets without redoing the backend/document contract.
+   Concrete implications:
+   morphology coloring should be able to bind to calcium, gating variables, NeuroML metadata, or analysis outputs through the same role-based display/history model.
+   Why third:
+   the field-role split is in place now, so the next step is making alternate displayed quantities first-class in authoring APIs.
 
 ## Phase 2 Entry Definition Of Done
 
@@ -202,6 +196,10 @@ Phase 2 has meaningfully started only when all of the following are true:
   - no assumption that a 3D viewport is always primary
 - The current 2D-only collapse behavior is a temporary step, not the target design.
 - Multi-series line plots are a first-class need within that generic layout system, not an edge case.
+- 3-D hosting should be a swappable layout concern:
+  - `ViewSpec` should describe what to render
+  - a separate host layer should describe whether views use independent canvases, shared canvases, or future shared-scene hosts
+  - the current one-view-one-canvas behavior is a host implementation, not the permanent architectural assumption
 
 ### Startup layout behavior
 
@@ -221,7 +219,8 @@ Phase 2 has meaningfully started only when all of the following are true:
   - `ON_DEMAND` for the default split between latest display state and requested trace history
   - `FULL` for all-entity history capture used by retrospective trace selection or playback
 - Display roles must be field-generic rather than voltage-specific.
-- Near-term priority: remove hard-coded voltage-oriented field ids and default assumptions from backend document builders where they imply the architecture itself is voltage-only.
+- Default backend document builders now use role-based display/history field ids instead of voltage-specific ids.
+- Remaining near-term priority: make alternate displayed quantities and color presets easier to author without rebuilding the backend/document contract.
 - The intended model is:
   - arbitrary display fields for current morphology/surface coloring
   - arbitrary history fields for retained traces or replay
@@ -441,7 +440,7 @@ These are the benchmark apps to use when validating architectural changes. If a 
 
 ### Transitional APIs And Assumptions To Retire
 
-- Voltage-specific default field ids such as `voltage_display` / `voltage_trace` as architectural concepts
+- Voltage-specific default field ids as architectural concepts
 - Voltage-specific default builder assumptions where they imply morphology coloring is inherently voltage-driven
 - Backend-labeled builder mental models where the backend name implies the app shape
 - Any user-facing workflow that requires understanding transport boundaries to place code correctly

@@ -48,6 +48,13 @@ Key names:
 - Run a live example: `python examples/neuron/visualizer_example.py`
 - Run a static example: `python examples/static_surface_visualizer.py`
 
+## PR Requirements
+
+- Every public export in `src/compneurovis/__init__.py` must appear in at least one authored doc under `docs/`.
+- Generated reference files in `docs/reference/` do not count as authored coverage.
+- Required concept docs under `docs/concepts/` are a hard gate, not optional cleanup.
+- Do not mark a change PR-ready while docs coverage or concept coverage is knowingly incomplete.
+
 ## Skill Catalog
 
 ## Skill Usage
@@ -64,7 +71,10 @@ Key names:
 - `skills/audit-skill-coverage/SKILL.md`
 - `skills/breaking-rename-sweep/SKILL.md`
 - `skills/check-change-impact/SKILL.md`
+- `skills/check-concept-coverage/SKILL.md`
+- `skills/check-docs-coverage/SKILL.md`
 - `skills/check-test-coverage-drift/SKILL.md`
+- `skills/check-tutorial-coverage/SKILL.md`
 - `skills/debug-protocol-dataflow/SKILL.md`
 - `skills/debug-rendering/SKILL.md`
 - `skills/pr-readiness/SKILL.md`
@@ -80,9 +90,15 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 - Session protocol: `docs/architecture/session-protocol.md`
 - Architecture invariants: `docs/architecture/invariants.json`
 - VisPy frontend: `docs/architecture/vispy-frontend.md`
+- Session/update concept: `docs/concepts/session-update-model.md`
 - Field semantics: `docs/concepts/field-model.md`
+- Geometry types concept: `docs/concepts/geometry-types.md`
+- Controls/actions/state concept: `docs/concepts/controls-actions-state.md`
+- View/layout concept: `docs/concepts/view-layout-model.md`
 - Static surface tutorial: `docs/tutorials/build-a-static-surface.md`
 - NEURON session tutorial: `docs/tutorials/build-a-neuron-session.md`
+- Jaxley session tutorial: `docs/tutorials/build-a-jaxley-session.md`
+- Replay tutorial: `docs/tutorials/build-a-replay-app.md`
 - Generated repo map: `docs/reference/repo-map.md`
 - Generated API index: `docs/reference/api-index.md`
 - Generated example index: `docs/reference/example-index.md`
@@ -95,3 +111,4 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 - `DocumentPatch` is intended for metadata/view/control changes, not arbitrary structural rewrites.
 - Architectural vocabulary changes should be encoded in `docs/architecture/invariants.json` and enforced with `python scripts/check_architecture_invariants.py`.
 - Keep docs and skills concise and cross-reference canonical docs instead of duplicating large explanations.
+- Authored docs coverage is a correctness requirement for this repo, not just polish. Fresh contributors and fresh agents must be able to recover the intended model from repo state.

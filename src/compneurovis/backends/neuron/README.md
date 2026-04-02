@@ -12,7 +12,7 @@ This package contains:
 
 By default, the NEURON backend splits latest live display state from retained trace history:
 
-- `voltage_display` for current morphology coloring
-- `voltage_trace` for trace history
+- `segment_display` for current morphology coloring
+- `segment_history` for trace history
 
-Use `HistoryCaptureMode.FULL` when the app needs full all-entity history for retrospective trace selection or playback.
+The current sampled quantity is voltage by default, but those field ids are role-based rather than voltage-specific. Use `HistoryCaptureMode.FULL` when the app needs full all-entity history for retrospective trace selection or playback.

@@ -89,6 +89,7 @@ class JaxleySession(BufferedSession, ABC):
         self._step_index = 0
         self._ui_state: dict[str, Any] = {}
         self._entity_index_by_id: dict[str, int] = {}
+        self._last_display_values: np.ndarray | None = None
         self._last_voltage_values: np.ndarray | None = None
         self._trace_segment_ids: list[str] = []
         self._trace_history_times: list[float] = []
@@ -126,6 +127,36 @@ class JaxleySession(BufferedSession, ABC):
     def trace_view_updates(self) -> dict[str, Any]:
         return {}
 
+    def display_field_id(self) -> str:
+        return JaxleyDocumentBuilder.DISPLAY_FIELD_ID
+
+    def history_field_id(self) -> str:
+        return JaxleyDocumentBuilder.HISTORY_FIELD_ID
+
+    def display_unit(self) -> str | None:
+        return "mV"
+
+    def history_unit(self) -> str | None:
+        return self.display_unit()
+
+    def morphology_color_map(self) -> str:
+        return "scalar"
+
+    def morphology_color_limits(self) -> tuple[float, float] | None:
+        return None
+
+    def morphology_color_norm(self) -> str:
+        return "auto"
+
+    def trace_title(self) -> str:
+        return "Trace"
+
+    def trace_y_label(self) -> str:
+        return "Value"
+
+    def trace_y_unit(self) -> str:
+        return self.history_unit() or ""
+
     def apply_control(self, control_id: str, value) -> bool:
         try:
             setattr(self, control_id, value)
@@ -153,16 +184,26 @@ class JaxleySession(BufferedSession, ABC):
         del entity_id, context
         return True
 
-    def build_document(self, *, geometry, voltage_values: np.ndarray, time_value: float) -> Document:
+    def build_document(self, *, geometry, display_values: np.ndarray, time_value: float) -> Document:
         controls = self.control_specs()
         actions = self.action_specs()
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
         document = JaxleyDocumentBuilder.build_document(
             geometry=geometry,
-            display_values=voltage_values,
+            display_values=display_values,
             trace_values=trace_values,
             trace_segment_ids=trace_segment_ids,
             trace_times=trace_times,
+            display_field_id=self.display_field_id(),
+            history_field_id=self.history_field_id(),
+            display_unit=self.display_unit(),
+            history_unit=self.history_unit(),
+            morphology_color_map=self.morphology_color_map(),
+            morphology_color_limits=self.morphology_color_limits(),
+            morphology_color_norm=self.morphology_color_norm(),
+            trace_title=self.trace_title(),
+            trace_y_label=self.trace_y_label(),
+            trace_y_unit=self.trace_y_unit(),
             controls=controls,
             actions=actions,
             title=self.title,
@@ -200,23 +241,23 @@ class JaxleySession(BufferedSession, ABC):
             xyzr=self.network.xyzr,
             cell_names=self.cell_names(self.cells),
         )
-        voltage_values = self._read_voltage()
+        display_values = self._read_display_values()
         self._entity_index_by_id = {entity_id: index for index, entity_id in enumerate(self.geometry.entity_ids)}
-        self._initialize_trace_history(self._time, voltage_values)
+        self._initialize_trace_history(self._time, display_values)
         document = self.build_document(
             geometry=self.geometry,
-            voltage_values=voltage_values,
+            display_values=display_values,
             time_value=self._time,
         )
-        self._field_max_samples[JaxleyDocumentBuilder.TRACE_FIELD_ID] = self._resolved_field_max_samples(
+        self._field_max_samples[self.history_field_id()] = self._resolved_field_max_samples(
             document,
-            field_id=JaxleyDocumentBuilder.TRACE_FIELD_ID,
+            field_id=self.history_field_id(),
             append_dim="time",
         )
         self._ui_state = {}
         return document
 
-    def _read_voltage(self) -> np.ndarray:
+    def _read_display_values(self) -> np.ndarray:
         if self._rec_indices is None:
             raise RuntimeError("JaxleySession recordings are not initialized")
         values = [
@@ -225,15 +266,19 @@ class JaxleySession(BufferedSession, ABC):
         ]
         return np.asarray(values, dtype=np.float32)
 
-    def _initialize_trace_history(self, time_value: float, voltage_values: np.ndarray) -> None:
-        self._last_voltage_values = np.asarray(voltage_values, dtype=np.float32)
+    def _read_voltage(self) -> np.ndarray:
+        return self._read_display_values()
+
+    def _initialize_trace_history(self, time_value: float, display_values: np.ndarray) -> None:
+        self._last_display_values = np.asarray(display_values, dtype=np.float32)
+        self._last_voltage_values = self._last_display_values
         self._trace_history_times = [float(time_value)]
         self._trace_history_values_by_id = {}
         if self.history_capture_mode == HistoryCaptureMode.FULL:
             self._trace_segment_ids = list(self.geometry.entity_ids)
             for entity_id in self._trace_segment_ids:
                 index = self._entity_index_by_id[entity_id]
-                self._trace_history_values_by_id[entity_id] = [float(self._last_voltage_values[index])]
+                self._trace_history_values_by_id[entity_id] = [float(self._last_display_values[index])]
         else:
             self._trace_segment_ids = []
             for entity_id in self._preferred_trace_entity_ids():
@@ -265,8 +310,8 @@ class JaxleySession(BufferedSession, ABC):
         if index is None:
             return False
         history = [math.nan] * len(self._trace_history_times)
-        if include_current_sample and history and self._last_voltage_values is not None:
-            history[-1] = float(self._last_voltage_values[index])
+        if include_current_sample and history and self._last_display_values is not None:
+            history[-1] = float(self._last_display_values[index])
         self._trace_segment_ids.append(entity_id)
         self._trace_history_values_by_id[entity_id] = history
         return True
@@ -286,7 +331,7 @@ class JaxleySession(BufferedSession, ABC):
     def _trace_field_replace(self) -> FieldReplace:
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
         return FieldReplace(
-            field_id=JaxleyDocumentBuilder.TRACE_FIELD_ID,
+            field_id=self.history_field_id(),
             values=trace_values,
             coords={
                 "segment": trace_segment_ids,
@@ -294,10 +339,10 @@ class JaxleySession(BufferedSession, ABC):
             },
         )
 
-    def _display_field_replace(self, voltage_values: np.ndarray) -> FieldReplace:
+    def _display_field_replace(self, display_values: np.ndarray) -> FieldReplace:
         return FieldReplace(
-            field_id=JaxleyDocumentBuilder.DISPLAY_FIELD_ID,
-            values=np.asarray(voltage_values, dtype=np.float32),
+            field_id=self.display_field_id(),
+            values=np.asarray(display_values, dtype=np.float32),
         )
 
     def _trim_selected_trace_history(self, max_length: int) -> None:
@@ -314,7 +359,7 @@ class JaxleySession(BufferedSession, ABC):
         for entity_id in self._trace_segment_ids:
             index = self._entity_index_by_id[entity_id]
             self._trace_history_values_by_id[entity_id].extend(float(value) for value in batch_values[index])
-        max_length = self._field_max_samples.get(JaxleyDocumentBuilder.TRACE_FIELD_ID)
+        max_length = self._field_max_samples.get(self.history_field_id())
         if max_length is not None:
             self._trim_selected_trace_history(int(max_length))
 
@@ -391,24 +436,25 @@ class JaxleySession(BufferedSession, ABC):
             self._step_index += 1
             self._time += float(self.dt)
             times.append(self._time)
-            samples.append(self._read_voltage())
+            samples.append(self._read_display_values())
 
         if not samples:
             return
 
         batch_values = np.stack(samples, axis=1)
-        self._last_voltage_values = np.asarray(samples[-1], dtype=np.float32)
+        self._last_display_values = np.asarray(samples[-1], dtype=np.float32)
+        self._last_voltage_values = self._last_display_values
 
-        self.emit(self._display_field_replace(self._last_voltage_values))
+        self.emit(self._display_field_replace(self._last_display_values))
 
         if self.history_capture_mode == HistoryCaptureMode.FULL:
             self.emit(
                 FieldAppend(
-                    field_id=JaxleyDocumentBuilder.TRACE_FIELD_ID,
+                    field_id=self.history_field_id(),
                     append_dim="time",
                     values=batch_values,
                     coord_values=np.asarray(times, dtype=np.float32),
-                    max_length=self._field_max_samples.get(JaxleyDocumentBuilder.TRACE_FIELD_ID, self.max_samples),
+                    max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
                 )
             )
             return
@@ -418,11 +464,11 @@ class JaxleySession(BufferedSession, ABC):
             indices = [self._entity_index_by_id[entity_id] for entity_id in self._trace_segment_ids]
             self.emit(
                 FieldAppend(
-                    field_id=JaxleyDocumentBuilder.TRACE_FIELD_ID,
+                    field_id=self.history_field_id(),
                     append_dim="time",
                     values=batch_values[indices, :],
                     coord_values=np.asarray(times, dtype=np.float32),
-                    max_length=self._field_max_samples.get(JaxleyDocumentBuilder.TRACE_FIELD_ID, self.max_samples),
+                    max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
                 )
             )
 
@@ -439,9 +485,9 @@ class JaxleySession(BufferedSession, ABC):
             self._reinitialize_runtime(preserve_state=False)
             self._time = 0.0
             self._step_index = 0
-            voltage_values = self._read_voltage()
-            self._initialize_trace_history(self._time, voltage_values)
-            self.emit(self._display_field_replace(voltage_values))
+            display_values = self._read_display_values()
+            self._initialize_trace_history(self._time, display_values)
+            self.emit(self._display_field_replace(display_values))
             self.emit(self._trace_field_replace())
         elif isinstance(command, SetControl):
             self.apply_control(command.control_id, command.value)

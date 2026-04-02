@@ -15,6 +15,7 @@ from compneurovis.core import (
     SeriesSpec,
     StateBinding,
     SurfaceViewSpec,
+    View3DHostSpec,
     ViewSpec,
 )
 from compneurovis.frontends import VispyFrontendWindow, run_app
@@ -38,6 +39,7 @@ __all__ = [
     "SeriesSpec",
     "StateBinding",
     "SurfaceViewSpec",
+    "View3DHostSpec",
     "ViewSpec",
     "VispyFrontendWindow",
     "build_replay_app",

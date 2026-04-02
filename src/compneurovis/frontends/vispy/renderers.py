@@ -295,12 +295,22 @@ class MorphologyRenderer:
         cid = int(pix[0]) | (int(pix[1]) << 8) | (int(pix[2]) << 16)
         return cid - 1 if cid > 0 else None
 
-    def update_colors(self, data: np.ndarray, color_map: str) -> None:
+    def update_colors(self, data: np.ndarray, color_map: str, *, color_limits=None, color_norm: str = "auto") -> None:
         if self.collection is None:
             return
         values = np.asarray(data, dtype=np.float32)
-        if color_map == "voltage":
-            norm = np.clip((values + 80.0) / 130.0, 0.0, 1.0)
+        if color_limits is not None:
+            vmin, vmax = float(color_limits[0]), float(color_limits[1])
+            if abs(vmax - vmin) < 1e-12:
+                norm = np.zeros_like(values, dtype=np.float32)
+            else:
+                norm = np.clip((values - vmin) / (vmax - vmin), 0.0, 1.0)
+        elif color_norm == "symmetric":
+            vmax = float(np.max(np.abs(values)))
+            if vmax < 1e-12:
+                norm = np.full_like(values, 0.5, dtype=np.float32)
+            else:
+                norm = np.clip((values + vmax) / (2.0 * vmax), 0.0, 1.0)
         else:
             vmin = float(np.min(values))
             vmax = float(np.max(values))
@@ -356,26 +366,26 @@ class SurfaceRenderer:
         alpha = np.ones((n, 1), dtype=np.float32)
         return np.concatenate([rgb, alpha], axis=1)
 
-    def _map_height_to_colors(self, z: np.ndarray, cmap: str, clim) -> np.ndarray:
-        if clim is None:
+    def _map_height_to_colors(self, z: np.ndarray, color_map: str, color_limits) -> np.ndarray:
+        if color_limits is None:
             zmin = float(np.min(z))
             zmax = float(np.max(z))
         else:
-            zmin, zmax = float(clim[0]), float(clim[1])
+            zmin, zmax = float(color_limits[0]), float(color_limits[1])
         if abs(zmax - zmin) < 1e-12:
             norm = np.zeros_like(z, dtype=np.float32)
         else:
             norm = np.clip((z - zmin) / (zmax - zmin), 0.0, 1.0).astype(np.float32)
-        lut = self._colormap_samples(cmap)
+        lut = self._colormap_samples(color_map)
         idx = np.clip((norm * (len(lut) - 1)).astype(np.int32), 0, len(lut) - 1)
         return lut[idx]
 
-    def update_surface(self, x, y, z, *, cmap, clim, colors, color_by, surface_alpha, coords_changed=True):
+    def update_surface(self, x, y, z, *, color_map, color_limits, colors, color_by, surface_alpha, coords_changed=True):
         x = np.asarray(x, dtype=np.float32)
         y = np.asarray(y, dtype=np.float32)
         z = np.asarray(z, dtype=np.float32)
         if colors is None and color_by == "height":
-            colors = self._map_height_to_colors(z, cmap, clim)
+            colors = self._map_height_to_colors(z, color_map, color_limits)
         if colors is not None:
             colors = np.asarray(colors, dtype=np.float32).copy()
             if colors.shape[-1] == 4:

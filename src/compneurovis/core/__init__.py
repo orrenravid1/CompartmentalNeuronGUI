@@ -1,6 +1,6 @@
 from compneurovis.core.bindings import AttributeRef, SeriesSpec
 from compneurovis.core.controls import ActionSpec, ControlSpec
-from compneurovis.core.document import AppSpec, Document, LayoutSpec
+from compneurovis.core.document import AppSpec, Document, LayoutSpec, View3DHostSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry, GridGeometry, MorphologyGeometry
 from compneurovis.core.state import StateBinding
@@ -22,5 +22,6 @@ __all__ = [
     "SeriesSpec",
     "StateBinding",
     "SurfaceViewSpec",
+    "View3DHostSpec",
     "ViewSpec",
 ]

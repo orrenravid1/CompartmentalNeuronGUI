@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import multiprocessing as mp
 import sys
-from enum import Enum, auto
 from typing import Any
 
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -11,22 +11,47 @@ from vispy import app as vispy_app, use
 
 use(app="pyqt6", gl="gl+")
 
-from compneurovis.core import AppSpec, Document, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec
-from compneurovis.frontends.vispy.panels import ControlsPanel, LinePlotPanel, Viewport3DPanel
+from compneurovis.core import AppSpec, Document, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec, View3DHostSpec
+from compneurovis.frontends.vispy.panels import ControlsPanel, IndependentCanvas3DHostPanel, LinePlotPanel, Viewport3DPanel
 from compneurovis.session import DocumentPatch, DocumentReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
 
 
-class RefreshTarget(Enum):
-    CONTROLS = auto()
-    MORPHOLOGY = auto()
-    SURFACE_VISUAL = auto()
-    SURFACE_AXES = auto()
-    SURFACE_SLICE = auto()
-    LINE_PLOT = auto()
+@dataclass(frozen=True, slots=True)
+class RefreshTarget:
+    kind: str
+    view_id: str | None = None
+
+    @classmethod
+    def controls(cls) -> "RefreshTarget":
+        return cls("controls")
+
+    @classmethod
+    def line_plot(cls) -> "RefreshTarget":
+        return cls("line_plot")
+
+    @classmethod
+    def morphology(cls, view_id: str) -> "RefreshTarget":
+        return cls("morphology", view_id)
+
+    @classmethod
+    def surface_visual(cls, view_id: str) -> "RefreshTarget":
+        return cls("surface_visual", view_id)
+
+    @classmethod
+    def surface_axes(cls, view_id: str) -> "RefreshTarget":
+        return cls("surface_axes", view_id)
+
+    @classmethod
+    def surface_slice(cls, view_id: str) -> "RefreshTarget":
+        return cls("surface_slice", view_id)
+
+
+RefreshTarget.CONTROLS = RefreshTarget.controls()
+RefreshTarget.LINE_PLOT = RefreshTarget.line_plot()
 
 
 class RefreshPlanner:
-    SURFACE_VISUAL_PROPS = frozenset({"field_id", "geometry_id", "cmap", "clim", "color_by", "surface_alpha", "background_color"})
+    SURFACE_VISUAL_PROPS = frozenset({"field_id", "geometry_id", "color_map", "color_limits", "color_by", "surface_alpha", "background_color"})
     SURFACE_AXES_PROPS = frozenset(
         {
             "field_id",
@@ -64,18 +89,25 @@ class RefreshPlanner:
     def __init__(self, document: Document):
         self.document = document
 
-    def _main_view(self):
-        if self.document.layout.main_3d_view_id is None:
-            return None
-        return self.document.views.get(self.document.layout.main_3d_view_id)
+    def _view_3d_ids(self) -> tuple[str, ...]:
+        return self.document.layout.resolved_3d_view_ids()
 
-    def morphology_view(self):
-        view = self._main_view()
-        return view if isinstance(view, MorphologyViewSpec) else None
+    def _view_3d(self, view_id: str):
+        return self.document.views.get(view_id)
 
-    def surface_view(self):
-        view = self._main_view()
-        return view if isinstance(view, SurfaceViewSpec) else None
+    def morphology_views(self) -> dict[str, MorphologyViewSpec]:
+        return {
+            view_id: view
+            for view_id in self._view_3d_ids()
+            if isinstance((view := self._view_3d(view_id)), MorphologyViewSpec)
+        }
+
+    def surface_views(self) -> dict[str, SurfaceViewSpec]:
+        return {
+            view_id: view
+            for view_id in self._view_3d_ids()
+            if isinstance((view := self._view_3d(view_id)), SurfaceViewSpec)
+        }
 
     def line_view(self):
         if self.document.layout.line_plot_view_id is None:
@@ -84,10 +116,16 @@ class RefreshPlanner:
 
     def full_refresh_targets(self) -> set[RefreshTarget]:
         targets = {RefreshTarget.CONTROLS}
-        if self.morphology_view() is not None:
-            targets.add(RefreshTarget.MORPHOLOGY)
-        if self.surface_view() is not None:
-            targets.update({RefreshTarget.SURFACE_VISUAL, RefreshTarget.SURFACE_AXES, RefreshTarget.SURFACE_SLICE})
+        for view_id in self.morphology_views():
+            targets.add(RefreshTarget.morphology(view_id))
+        for view_id in self.surface_views():
+            targets.update(
+                {
+                    RefreshTarget.surface_visual(view_id),
+                    RefreshTarget.surface_axes(view_id),
+                    RefreshTarget.surface_slice(view_id),
+                }
+            )
         if self.line_view() is not None:
             targets.add(RefreshTarget.LINE_PLOT)
         return targets
@@ -95,24 +133,21 @@ class RefreshPlanner:
     def targets_for_state_change(self, state_key: str) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
 
-        morph_view = self.morphology_view()
-        if morph_view is not None and binding_key(morph_view.background_color) == state_key:
-            targets.add(RefreshTarget.MORPHOLOGY)
+        for view_id, morph_view in self.morphology_views().items():
+            if binding_key(morph_view.background_color) == state_key or binding_key(morph_view.color_limits) == state_key:
+                targets.add(RefreshTarget.morphology(view_id))
 
-        surface_view = self.surface_view()
-        if surface_view is not None:
+        for view_id, surface_view in self.surface_views().items():
             if any(binding_key(getattr(surface_view, prop)) == state_key for prop in self.SURFACE_VISUAL_PROPS if hasattr(surface_view, prop)):
-                targets.add(RefreshTarget.SURFACE_VISUAL)
+                targets.add(RefreshTarget.surface_visual(view_id))
             if any(binding_key(getattr(surface_view, prop)) == state_key for prop in self.SURFACE_AXES_PROPS if hasattr(surface_view, prop)):
-                targets.add(RefreshTarget.SURFACE_AXES)
+                targets.add(RefreshTarget.surface_axes(view_id))
             if any(binding_key(getattr(surface_view, prop)) == state_key for prop in self.SURFACE_SLICE_PROPS if hasattr(surface_view, prop)):
-                targets.add(RefreshTarget.SURFACE_SLICE)
+                targets.add(RefreshTarget.surface_slice(view_id))
             if state_key in {surface_view.slice_axis_state_key, surface_view.slice_position_state_key}:
-                targets.add(RefreshTarget.SURFACE_SLICE)
+                targets.add(RefreshTarget.surface_slice(view_id))
 
         line_view = self.line_view()
-        if isinstance(line_view, MorphologyViewSpec):
-            return targets
         if line_view is not None:
             if state_key in {line_view.orthogonal_slice_state_key, line_view.orthogonal_position_state_key}:
                 targets.add(RefreshTarget.LINE_PLOT)
@@ -125,19 +160,18 @@ class RefreshPlanner:
 
     def targets_for_field_replace(self, field_id: str, coords_changed: bool = True) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
-        morph_view = self.morphology_view()
-        if morph_view is not None and morph_view.color_field_id == field_id:
-            targets.add(RefreshTarget.MORPHOLOGY)
 
-        surface_view = self.surface_view()
-        if surface_view is not None and surface_view.field_id == field_id:
-            targets.add(RefreshTarget.SURFACE_VISUAL)
-            if coords_changed or surface_view.clim is None:
-                # Axes z-ticks depend on z range — safe to skip when coords are unchanged and
-                # clim is fixed (z-range for display is constant). ~48 VisPy objects rebuilt otherwise.
-                targets.add(RefreshTarget.SURFACE_AXES)
-            if coords_changed or surface_view.clim is None:
-                targets.add(RefreshTarget.SURFACE_SLICE)
+        for view_id, morph_view in self.morphology_views().items():
+            if morph_view.color_field_id == field_id:
+                targets.add(RefreshTarget.morphology(view_id))
+
+        for view_id, surface_view in self.surface_views().items():
+            if surface_view.field_id != field_id:
+                continue
+            targets.add(RefreshTarget.surface_visual(view_id))
+            if coords_changed or surface_view.color_limits is None:
+                targets.add(RefreshTarget.surface_axes(view_id))
+                targets.add(RefreshTarget.surface_slice(view_id))
 
         line_view = self.line_view()
         if line_view is not None and getattr(line_view, "field_id", None) == field_id:
@@ -147,15 +181,15 @@ class RefreshPlanner:
     def targets_for_view_patch(self, view_id: str, changed_props: set[str]) -> set[RefreshTarget]:
         view = self.document.views.get(view_id)
         if isinstance(view, MorphologyViewSpec):
-            return {RefreshTarget.MORPHOLOGY}
+            return {RefreshTarget.morphology(view_id)}
         if isinstance(view, SurfaceViewSpec):
             targets: set[RefreshTarget] = set()
             if changed_props & self.SURFACE_VISUAL_PROPS:
-                targets.add(RefreshTarget.SURFACE_VISUAL)
+                targets.add(RefreshTarget.surface_visual(view_id))
             if changed_props & self.SURFACE_AXES_PROPS:
-                targets.add(RefreshTarget.SURFACE_AXES)
+                targets.add(RefreshTarget.surface_axes(view_id))
             if changed_props & self.SURFACE_SLICE_PROPS:
-                targets.add(RefreshTarget.SURFACE_SLICE)
+                targets.add(RefreshTarget.surface_slice(view_id))
             return targets
         if view is not None and changed_props & self.LINE_PLOT_PROPS:
             return {RefreshTarget.LINE_PLOT}
@@ -176,9 +210,15 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         else:
             self.interaction_target = None
 
-        self.viewport = Viewport3DPanel(on_entity_selected=self._on_entity_selected)
+        self.viewports: dict[str, Viewport3DPanel] = {}
+        self.view_hosts: dict[str, IndependentCanvas3DHostPanel] = {}
+        self._view_to_host_id: dict[str, str] = {}
         self.line_plot = LinePlotPanel()
         self.controls = ControlsPanel(self._on_control_changed, self._on_action_invoked)
+
+        self._viewport_splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
+        self._viewport_splitter.setChildrenCollapsible(False)
+        self._viewport_splitter.setOpaqueResize(False)
 
         self._right_splitter = QtWidgets.QSplitter(Qt.Orientation.Vertical)
         self._right_splitter.setChildrenCollapsible(False)
@@ -191,15 +231,22 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._horizontal_splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
         self._horizontal_splitter.setChildrenCollapsible(False)
         self._horizontal_splitter.setOpaqueResize(False)
-        self._horizontal_splitter.addWidget(self.viewport)
+        self._horizontal_splitter.addWidget(self._viewport_splitter)
         self._horizontal_splitter.addWidget(self._right_splitter)
         self._horizontal_splitter.setStretchFactor(0, 2)
         self._horizontal_splitter.setStretchFactor(1, 1)
 
-        self.setCentralWidget(self._horizontal_splitter)
+        self._loading_label = QtWidgets.QLabel("Loading visualization...")
+        self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._stack = QtWidgets.QStackedWidget(self)
+        self._stack.addWidget(self._loading_label)
+        self._stack.addWidget(self._horizontal_splitter)
+
+        self.setCentralWidget(self._stack)
         self.resize(1280, 720)
         self.statusBar().showMessage("Starting CompNeuroVis")
-        self._apply_default_splitter_sizes(has_3d=True)
+        self._show_loading_state()
 
         if app_spec.document is not None:
             self._set_document(app_spec.document)
@@ -213,6 +260,20 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.timer.timeout.connect(self._poll_transport)
         self.timer.start(1000 // 60)
 
+    @property
+    def viewport(self) -> Viewport3DPanel | None:
+        return next(iter(self.viewports.values()), None)
+
+    def viewport_for(self, view_id: str) -> Viewport3DPanel | None:
+        return self.viewports.get(view_id)
+
+    def _show_loading_state(self, message: str = "Loading visualization...") -> None:
+        self._loading_label.setText(message)
+        self._stack.setCurrentWidget(self._loading_label)
+
+    def _show_content_state(self) -> None:
+        self._stack.setCurrentWidget(self._horizontal_splitter)
+
     def _set_document(self, document: Document) -> None:
         self.document = document
         self.refresh_planner = RefreshPlanner(document)
@@ -221,27 +282,78 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         for control in document.controls.values():
             self.state.setdefault(control.resolved_state_key(), control.default)
 
-        morphology_view = self._morphology_view()
+        self._rebuild_view_hosts()
+
+        morphology_view = self._first_morphology_view()
         if morphology_view is not None:
             geometry = document.geometries[morphology_view.geometry_id]
             if isinstance(geometry, MorphologyGeometry) and geometry.entity_ids:
                 self.state.setdefault("selected_entity_id", geometry.entity_ids[0])
                 self.state.setdefault("selected_entity_label", geometry.label_for(geometry.entity_ids[0]))
 
-        self.viewport.clear()
         self._update_panel_visibility()
         self._apply_refresh_targets(self.refresh_planner.full_refresh_targets())
+        self._show_content_state()
 
-    def _morphology_view(self):
-        if self.document is None or self.document.layout.main_3d_view_id is None:
+    def _view_3d_ids(self) -> tuple[str, ...]:
+        if self.document is None:
+            return ()
+        return self.document.layout.resolved_3d_view_ids()
+
+    def _create_view_host(self, host: View3DHostSpec):
+        if host.kind != "independent_canvas":
+            raise ValueError(f"Unsupported 3D host kind '{host.kind}'")
+        if len(host.view_ids) != 1:
+            raise ValueError(
+                f"3D host '{host.id}' with kind='independent_canvas' must contain exactly one view id"
+            )
+        view_id = host.view_ids[0]
+        view = self.document.views.get(view_id) if self.document is not None else None
+        title = host.title or getattr(view, "title", None) or view_id
+        return IndependentCanvas3DHostPanel(
+            host_id=host.id,
+            view_id=view_id,
+            title=title,
+            on_entity_selected=self._on_entity_selected,
+        )
+
+    def _rebuild_view_hosts(self) -> None:
+        while self._viewport_splitter.count():
+            widget = self._viewport_splitter.widget(0)
+            widget.setParent(None)
+            widget.deleteLater()
+        self.viewports.clear()
+        self.view_hosts.clear()
+        self._view_to_host_id.clear()
+        if self.document is None:
+            return
+        for host in self.document.layout.view_3d_hosts:
+            panel = self._create_view_host(host)
+            self._viewport_splitter.addWidget(panel)
+            self.view_hosts[host.id] = panel
+            for view_id in host.view_ids:
+                self.viewports[view_id] = panel.viewport
+                self._view_to_host_id[view_id] = host.id
+
+    def _first_morphology_view(self):
+        if self.document is None:
             return None
-        view = self.document.views.get(self.document.layout.main_3d_view_id)
+        for view_id in self._view_3d_ids():
+            view = self.document.views.get(view_id)
+            if isinstance(view, MorphologyViewSpec):
+                return view
+        return None
+
+    def _morphology_view(self, view_id: str):
+        if self.document is None:
+            return None
+        view = self.document.views.get(view_id)
         return view if isinstance(view, MorphologyViewSpec) else None
 
-    def _surface_view(self):
-        if self.document is None or self.document.layout.main_3d_view_id is None:
+    def _surface_view(self, view_id: str):
+        if self.document is None:
             return None
-        view = self.document.views.get(self.document.layout.main_3d_view_id)
+        view = self.document.views.get(view_id)
         return view if isinstance(view, SurfaceViewSpec) else None
 
     def _line_view(self):
@@ -249,9 +361,15 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             return None
         return self.document.views.get(self.document.layout.line_plot_view_id)
 
+    def _view_host(self, view_id: str):
+        host_id = self._view_to_host_id.get(view_id)
+        if host_id is None:
+            return None
+        return self.view_hosts.get(host_id)
+
     def _update_panel_visibility(self) -> None:
-        has_3d = self.document is not None and self.document.layout.main_3d_view_id is not None
-        self.viewport.setVisible(has_3d)
+        has_3d = bool(self.view_hosts)
+        self._viewport_splitter.setVisible(has_3d)
         self._apply_default_splitter_sizes(has_3d=has_3d)
 
     def _apply_default_splitter_sizes(self, *, has_3d: bool) -> None:
@@ -260,6 +378,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._right_splitter.setSizes([max(1, int(height * 0.6)), max(1, int(height * 0.4))])
         if has_3d:
             self._horizontal_splitter.setSizes([max(1, int(width * 0.67)), max(1, int(width * 0.33))])
+            if self._viewport_splitter.count():
+                self._viewport_splitter.setSizes([max(1, int(width * 0.67 / self._viewport_splitter.count()))] * self._viewport_splitter.count())
         else:
             self._horizontal_splitter.setSizes([0, width])
 
@@ -273,12 +393,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _resolved_morphology_state(self, view: MorphologyViewSpec) -> dict[str, Any]:
         return {
             f"{view.id}:background_color": resolve_value(view.background_color, self.state),
+            f"{view.id}:color_limits": resolve_value(view.color_limits, self.state),
+            f"{view.id}:color_norm": view.color_norm,
         }
 
     def _resolved_surface_state(self, view: SurfaceViewSpec) -> dict[str, Any]:
         resolved = {
-            f"{view.id}:cmap": view.cmap,
-            f"{view.id}:clim": view.clim,
+            f"{view.id}:color_map": view.color_map,
+            f"{view.id}:color_limits": view.color_limits,
             f"{view.id}:color_by": view.color_by,
             f"{view.id}:surface_alpha": resolve_value(view.surface_alpha, self.state),
             f"{view.id}:background_color": resolve_value(view.background_color, self.state),
@@ -301,10 +423,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             resolved[view.slice_position_state_key] = self.state.get(view.slice_position_state_key)
         return resolved
 
-    def _refresh_morphology(self) -> None:
+    def _refresh_morphology(self, view_id: str) -> None:
         if self.document is None:
             return
-        morph_view = self._morphology_view()
+        host = self._view_host(view_id)
+        if host is None:
+            return
+        morph_view = self._morphology_view(view_id)
         morphology_geometry = None
         morphology_colors = None
         if morph_view is not None:
@@ -318,40 +443,53 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                         morphology_colors = latest.values
                     else:
                         morphology_colors = field.values
-        self.viewport.refresh_morphology(
+        host.refresh_morphology(
+            view_id=view_id,
             morphology_geometry=morphology_geometry,
             morphology_view=morph_view,
             morphology_colors=morphology_colors,
             resolved_state=self._resolved_morphology_state(morph_view) if morph_view is not None else {},
         )
 
-    def _refresh_surface_visual(self) -> None:
+    def _refresh_surface_visual(self, view_id: str) -> None:
         if self.document is None:
             return
-        surface_view = self._surface_view()
+        host = self._view_host(view_id)
+        if host is None:
+            return
+        surface_view = self._surface_view(view_id)
         surface_field = None
         grid_geometry = None
         if surface_view is not None:
             surface_field = self.document.fields[surface_view.field_id]
             if surface_view.geometry_id is not None:
                 grid_geometry = self.document.geometries.get(surface_view.geometry_id)
-        self.viewport.refresh_surface_visual(
+        host.refresh_surface_visual(
+            view_id=view_id,
             surface_view=surface_view,
             surface_field=surface_field,
             grid_geometry=grid_geometry,
             resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
         )
 
-    def _refresh_surface_axes(self) -> None:
-        surface_view = self._surface_view()
-        self.viewport.refresh_surface_axes(
+    def _refresh_surface_axes(self, view_id: str) -> None:
+        host = self._view_host(view_id)
+        if host is None:
+            return
+        surface_view = self._surface_view(view_id)
+        host.refresh_surface_axes(
+            view_id=view_id,
             surface_view=surface_view,
             resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
         )
 
-    def _refresh_surface_slice(self) -> None:
-        surface_view = self._surface_view()
-        self.viewport.refresh_surface_slice(
+    def _refresh_surface_slice(self, view_id: str) -> None:
+        host = self._view_host(view_id)
+        if host is None:
+            return
+        surface_view = self._surface_view(view_id)
+        host.refresh_surface_slice(
+            view_id=view_id,
             surface_view=surface_view,
             resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
         )
@@ -375,24 +513,39 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if RefreshTarget.CONTROLS in targets:
             self._refresh_controls()
 
-        viewport_dirty = False
-        if RefreshTarget.MORPHOLOGY in targets:
-            self._refresh_morphology()
-            viewport_dirty = True
-        if RefreshTarget.SURFACE_VISUAL in targets:
-            self._refresh_surface_visual()
-            viewport_dirty = True
-        if RefreshTarget.SURFACE_AXES in targets:
-            self._refresh_surface_axes()
-            viewport_dirty = True
-        if RefreshTarget.SURFACE_SLICE in targets:
-            self._refresh_surface_slice()
-            viewport_dirty = True
-        if viewport_dirty:
-            self.viewport.commit()
-
+        dirty_viewports: set[str] = set()
         if RefreshTarget.LINE_PLOT in targets:
             self._refresh_line_plot()
+        ordered_targets = sorted(
+            (target for target in targets if target.kind not in {"controls", "line_plot"}),
+            key=lambda target: (
+                {
+                    "morphology": 0,
+                    "surface_visual": 1,
+                    "surface_axes": 2,
+                    "surface_slice": 3,
+                }.get(target.kind, 99),
+                target.view_id or "",
+            ),
+        )
+        for target in ordered_targets:
+            if target.kind == "morphology" and target.view_id is not None:
+                self._refresh_morphology(target.view_id)
+                dirty_viewports.add(target.view_id)
+            elif target.kind == "surface_visual" and target.view_id is not None:
+                self._refresh_surface_visual(target.view_id)
+                dirty_viewports.add(target.view_id)
+            elif target.kind == "surface_axes" and target.view_id is not None:
+                self._refresh_surface_axes(target.view_id)
+                dirty_viewports.add(target.view_id)
+            elif target.kind == "surface_slice" and target.view_id is not None:
+                self._refresh_surface_slice(target.view_id)
+                dirty_viewports.add(target.view_id)
+        dirty_hosts = {self._view_to_host_id[view_id] for view_id in dirty_viewports if view_id in self._view_to_host_id}
+        for host_id in dirty_hosts:
+            host = self.view_hosts.get(host_id)
+            if host is not None:
+                host.commit()
 
     def _poll_transport(self) -> None:
         if self.transport is None:

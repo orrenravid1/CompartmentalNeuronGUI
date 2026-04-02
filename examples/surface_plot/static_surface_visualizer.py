@@ -48,13 +48,13 @@ controls = {
 }
 
 # StateBinding("key") defers value resolution to the frontend state dict at render time.
-# Literal values (e.g. cmap="fire") are fixed; StateBinding values update live when controls change.
+# Literal values (e.g. color_map="fire") are fixed; StateBinding values update live when controls change.
 surface_view = SurfaceViewSpec(
     id="surface",
     title="interactive sinc surface",
     field_id=field.id,
     geometry_id=geometry.id,
-    cmap="fire",
+    color_map="fire",
     render_axes=True,
     axes_in_middle=True,
     tick_count=StateBinding("tick_count"),

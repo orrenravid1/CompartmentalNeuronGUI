@@ -37,7 +37,7 @@ class MyCellSession(NeuronSession):
 - building the `MorphologyGeometry` from your sections' 3-D coordinates
 - constructing the `Document` and emitting `DocumentReady`
 - stepping the simulation with `h.fadvance()` inside each `advance()` call
-- emitting incremental voltage history with `FieldAppend` rather than resending full trace history every frame
+- emitting incremental display/history updates with `FieldAppend` rather than resending full trace history every frame
 - batching multiple internal simulation steps per frontend update via `display_dt`
 
 You do not need to manage the NEURON run loop, pt3d parsing, or document construction yourself.
@@ -72,7 +72,7 @@ These hooks stay on the session class even for worker-backed apps. The library r
 
 ## 3. Build and Run
 
-```python
+```python skip
 from compneurovis import build_neuron_app, run_app
 
 app = build_neuron_app(MyCellSession)
@@ -85,23 +85,22 @@ Passing the session class keeps construction lazy inside the worker process. Tha
 
 ## Custom Layout
 
-By default, `NeuronSession` shows a `MorphologyViewSpec` as the main 3-D view and a `LinePlotViewSpec` for the selected segment's voltage trace. The default live contract is split:
+By default, `NeuronSession` shows a `MorphologyViewSpec` as the main 3-D view and a `LinePlotViewSpec` for the selected segment's trace. The default live contract is split:
 
-- `voltage_display`: latest values for current morphology coloring
-- `voltage_trace`: retained trace history
+- `segment_display`: latest values for current morphology coloring
+- `segment_history`: retained trace history
 
-`history_capture_mode=HistoryCaptureMode.ON_DEMAND` is the default. It keeps current display values live while retaining trace history only for segments the user actually asks to inspect. Use `HistoryCaptureMode.FULL` when the app needs full all-entity history for retrospective selection or playback.
+The current sampled quantity in `NeuronSession` is still voltage by default, but the field roles are no longer voltage-named. `history_capture_mode=HistoryCaptureMode.ON_DEMAND` is the default. It keeps current display values live while retaining trace history only for segments the user actually asks to inspect. Use `HistoryCaptureMode.FULL` when the app needs full all-entity history for retrospective selection or playback.
 
 To customize layout or views, override `build_document()` from `NeuronDocumentBuilder`:
 
-```python
-
+```python skip
 class MyCellSession(NeuronSession):
     ...
-    def build_document(self, *, geometry, voltage_values, time_value):
+    def build_document(self, *, geometry, display_values, time_value):
         document = super().build_document(
             geometry=geometry,
-            voltage_values=voltage_values,
+            display_values=display_values,
             time_value=time_value,
         )
         document.replace_view("trace", {"rolling_window": 50.0})
@@ -112,7 +111,7 @@ See `src/compneurovis/backends/neuron/document.py` for the default document cons
 
 ## Loading from SWC
 
-```python
+```python skip
 from compneurovis.neuronutils.swc_utils import load_swc_neuron
 
 class MyCellSession(NeuronSession):

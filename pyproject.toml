@@ -40,9 +40,12 @@ optional = false
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0"
+pytest-markdown-docs = ">=0.9"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+addopts = "--markdown-docs"
+testpaths = ["tests", "docs/concepts", "docs/tutorials"]
 markers = [
   "jaxley: optional Jaxley backend tests and slower subprocess validation",
 ]
