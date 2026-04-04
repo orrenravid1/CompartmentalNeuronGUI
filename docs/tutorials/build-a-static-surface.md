@@ -36,7 +36,7 @@ Omit `geometry` from the next steps if your view doesn't need explicit grid coor
 
 Controls appear in the right panel and can drive `ViewSpec` properties via `StateBinding`:
 
-```python continuation
+```python
 from compneurovis import ControlSpec
 
 controls = {
@@ -52,7 +52,7 @@ Control kinds: `"float"`, `"int"`, `"enum"`.
 
 `SurfaceViewSpec` references the field and geometry by id and accepts static values or `StateBinding` placeholders:
 
-```python continuation
+```python
 from compneurovis import SurfaceViewSpec, StateBinding
 
 surface_view = SurfaceViewSpec(
@@ -73,7 +73,7 @@ Any `ViewSpec` property that accepts a `StateBinding` will resolve to the curren
 
 ## 4. Assemble and Run
 
-```python notest
+```python
 from compneurovis import build_surface_app, run_app
 
 app = build_surface_app(
@@ -93,7 +93,7 @@ run_app(app)
 
 To add a cross-section plot driven by a slider, add `slice_position_state_key` to the `SurfaceViewSpec` and a `LinePlotViewSpec` that references the same field:
 
-```python notest
+```python
 from compneurovis import LinePlotViewSpec
 
 controls["slice_pos"] = ControlSpec("slice_pos", "float", "Slice Y", 0.0, min=-3.0, max=3.0, steps=120)

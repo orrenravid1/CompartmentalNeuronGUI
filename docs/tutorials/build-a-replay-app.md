@@ -55,7 +55,7 @@ document = Document(
 
 Each frame becomes a `FieldReplace` on the target field.
 
-```python continuation
+```python
 times = np.linspace(0.0, 1.0, 100, dtype=np.float32)
 frames = []
 for phase in np.linspace(0.0, 2.0 * np.pi, 30, dtype=np.float32):
@@ -66,7 +66,7 @@ for phase in np.linspace(0.0, 2.0 * np.pi, 30, dtype=np.float32):
 
 ## 3. Build and Run the Replay App
 
-```python notest
+```python
 from compneurovis import build_replay_app, run_app
 
 app = build_replay_app(
