@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name        = "compneurovis"
-version     = "0.1.0"
+version     = "0.2.0"
 description = "A VisPy/PyQt6 GUI for compartmental neuron visualization"
 authors     = ["Orren Ravid"]
 readme      = "README.md"
@@ -26,23 +26,21 @@ vispy         = "0.15.2"
 neuron        = { version = "^8.2", optional = true }
 jaxley        = { version = "^0.1", optional = true }
 arbor         = { version = "^0.9", optional = true }
-pymoose         = { version = "^4.1", optional = true }
+pymoose       = { version = "^4.1", optional = true }
+
+# optional contributor/docs/test toolchain
+pytest        = { version = "^7.0", optional = true }
+mkdocs        = { version = "^1.6.1", optional = true }
+mkdocs-material = { version = "^9.7.6", optional = true }
+mkdocstrings  = { version = "^1.0.3", extras = ["python"], optional = true }
 
 [tool.poetry.extras]
 neuron  = ["neuron"]
 jaxley  = ["jaxley"]
 arbor   = ["arbor"]
 moose   = ["pymoose"]
-all     = ["neuron", "jaxley", "arbor", "pymoose"]
-
-[tool.poetry.group.dev]
-optional = false
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.0"
-mkdocs = "^1.6.1"
-mkdocs-material = "^9.7.6"
-mkdocstrings = { version = "^1.0.3", extras = ["python"] }
+contrib = ["pytest", "mkdocs", "mkdocs-material", "mkdocstrings"]
+all     = ["neuron", "jaxley", "arbor", "pymoose", "pytest", "mkdocs", "mkdocs-material", "mkdocstrings"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

@@ -12,6 +12,10 @@ ROOT_MARKDOWN_FILES = (
     ROOT / "README.md",
     ROOT / "AGENTS.md",
 )
+CONTRIB_INSTALL_DOCS = (
+    ROOT / "README.md",
+    ROOT / "docs" / "getting-started.md",
+)
 FORBIDDEN_BARE_MKDOCS_COMMAND_PATTERNS = (
     re.compile(r"(?<!python -m )mkdocs serve\b"),
     re.compile(r"(?<!python -m )mkdocs build --strict\b"),
@@ -175,3 +179,20 @@ def test_docs_use_python_module_invocation_for_mkdocs_commands():
                     f"{path.relative_to(ROOT).as_posix()}:{line}: use 'python -m {match.group(0)}'"
                 )
     assert not violations, "bare mkdocs commands found:\n" + "\n".join(violations)
+
+
+def test_contributor_docs_use_named_contrib_extra():
+    required_command = 'pip install -e ".[contrib]"'
+    legacy_fragment = 'pip install -e . pytest mkdocs mkdocs-material "mkdocstrings[python]"'
+
+    missing: list[str] = []
+    legacy_hits: list[str] = []
+    for path in CONTRIB_INSTALL_DOCS:
+        text = path.read_text(encoding="utf-8")
+        if required_command not in text:
+            missing.append(path.relative_to(ROOT).as_posix())
+        if legacy_fragment in text:
+            legacy_hits.append(path.relative_to(ROOT).as_posix())
+
+    assert not missing, "docs missing contributor extra install command:\n" + "\n".join(missing)
+    assert not legacy_hits, "docs still use legacy raw contributor dependency command:\n" + "\n".join(legacy_hits)

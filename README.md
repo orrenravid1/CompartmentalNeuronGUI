@@ -29,17 +29,23 @@ pip install -e .
 If you plan to contribute, build the docs site locally, or run the PR-readiness checks, also install the docs/test toolchain:
 
 ```bash
-pip install -e . pytest mkdocs mkdocs-material "mkdocstrings[python]"
+pip install -e ".[contrib]"
 ```
 
 Optional simulator backends:
 
 ```bash
-pip install -e .[neuron]
+pip install -e ".[neuron]"
 ```
 
 ```bash
-pip install -e .[jaxley]
+pip install -e ".[jaxley]"
+```
+
+If you want contributor tooling plus a backend in one environment, combine extras:
+
+```bash
+pip install -e ".[contrib,jaxley]"
 ```
 
 ## Start Here
@@ -68,7 +74,7 @@ Static field with a moveable slice plane and matching line plot.
 python examples/neuron/visualizer_example.py
 ```
 
-Single-cell live session loaded from an SWC morphology. Requires `pip install -e .[neuron]`.
+Single-cell live session loaded from an SWC morphology. Requires `pip install -e ".[neuron]"`.
 
 - Live Jaxley multicell example:
 
@@ -76,7 +82,7 @@ Single-cell live session loaded from an SWC morphology. Requires `pip install -e
 python examples/jaxley/multicell_example.py
 ```
 
-Three procedurally built cells with synaptic connectivity. Requires `pip install -e .[jaxley]`.
+Three procedurally built cells with synaptic connectivity. Requires `pip install -e ".[jaxley]"`.
 
 - Replay a precomputed animation:
 
@@ -154,11 +160,13 @@ python scripts/generate_indexes.py
 
 Human contributors can use the same PR-readiness checks without an agent:
 
-1. Install contributor dependencies with `pip install -e . pytest mkdocs mkdocs-material "mkdocstrings[python]"`.
+1. Install contributor dependencies with `pip install -e ".[contrib]"`.
 2. Run `python scripts/pr_readiness.py check` while iterating locally. This runs the repo quality gate, including packaging metadata validation, `pytest`, compile checks, architecture invariants, and generated index validation.
 3. Commit your implementation changes normally.
-4. As the last commit before you push or open the PR, run `python scripts/pr_readiness.py seal --commit`.
+4. As the last commit before you push to `main` or open a PR, run `python scripts/pr_readiness.py seal --commit`.
 
 `seal --commit` does not replace your normal code or docs commits. It reruns the readiness checks, writes a commit-keyed receipt under `.compneurovis/pr-readiness/`, and adds one final attestation commit automatically.
 
 If you change code, docs, tests, examples, or skills after sealing, run `python scripts/pr_readiness.py seal --commit` again from the new final implementation commit.
+
+GitHub Actions verifies the sealed tip on pull request heads and on pushes to `main`.

@@ -18,17 +18,23 @@ pip install -e .
 If you want local docs authoring or PR-readiness checks:
 
 ```bash
-pip install -e . pytest mkdocs mkdocs-material "mkdocstrings[python]"
+pip install -e ".[contrib]"
 ```
 
 Optional simulator backends:
 
 ```bash
-pip install -e .[neuron]
+pip install -e ".[neuron]"
 ```
 
 ```bash
-pip install -e .[jaxley]
+pip install -e ".[jaxley]"
+```
+
+If you want contributor tooling plus a simulator backend in one environment:
+
+```bash
+pip install -e ".[contrib,jaxley]"
 ```
 
 The current frontend is a local PyQt6/VisPy desktop app, so examples should be run in a normal GUI session.
@@ -66,7 +72,7 @@ python examples/neuron/visualizer_example.py
 Requires:
 
 ```bash
-pip install -e .[neuron]
+pip install -e ".[neuron]"
 ```
 
 Use this if you want a live SWC-backed morphology view with traces.
@@ -82,7 +88,7 @@ python examples/jaxley/multicell_example.py
 Requires:
 
 ```bash
-pip install -e .[jaxley]
+pip install -e ".[jaxley]"
 ```
 
 Use this if you want a live procedurally built multicell simulation with synaptic connectivity.

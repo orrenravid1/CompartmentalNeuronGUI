@@ -32,7 +32,7 @@ def test_packaging_metadata_rejects_unknown_extra_targets(tmp_path: Path):
         pyproject="""
 [tool.poetry]
 name = "demo"
-version = "0.1.0"
+version = "0.2.0"
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -67,7 +67,7 @@ def test_packaging_metadata_rejects_missing_locked_group_dependency(tmp_path: Pa
         pyproject="""
 [tool.poetry]
 name = "demo"
-version = "0.1.0"
+version = "0.2.0"
 
 [tool.poetry.dependencies]
 python = "^3.11"

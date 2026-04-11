@@ -9,6 +9,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "scripts" / "pr_readiness.py"
+WORKFLOW_PATH = ROOT / ".github" / "workflows" / "pr-readiness.yml"
 SPEC = importlib.util.spec_from_file_location("pr_readiness_script", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 pr_readiness = importlib.util.module_from_spec(SPEC)
@@ -119,3 +120,14 @@ def test_seal_with_commit_creates_valid_final_commit(tmp_path: Path):
     assert verified["candidate_commit"] == payload["candidate_commit"]
     assert pr_readiness.commit_subject(repo) == payload["expected_final_commit"]["subject"]
     assert pr_readiness.working_tree_is_clean(repo)
+
+
+def test_pr_readiness_workflow_verifies_pr_heads_and_main_pushes():
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "pull_request:" in workflow
+    assert "push:" in workflow
+    assert "branches:" in workflow
+    assert "- main" in workflow
+    assert "ref: ${{ github.event.pull_request.head.sha }}" in workflow
+    assert "python scripts/pr_readiness.py verify --rerun-commands" in workflow

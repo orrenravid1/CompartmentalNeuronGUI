@@ -39,6 +39,9 @@ Key names:
 ## Build, Test, and Run
 
 - Install: `pip install -e .`
+- Install contributor toolchain: `pip install -e ".[contrib]"`
+- Install NEURON backend: `pip install -e ".[neuron]"`
+- Install Jaxley backend: `pip install -e ".[jaxley]"`
 - Compile check: `python -m compileall src examples`
 - Run fast tests: `pytest`
 - Run Jaxley backend tests: `pytest --run-jaxley tests/test_jaxley_backend.py`
@@ -70,6 +73,7 @@ Key names:
 - A PR-ready branch must end with a standalone attestation commit produced by `python scripts/pr_readiness.py seal`.
 - That final commit must add exactly one attestation under `.compneurovis/pr-readiness/` and must target `HEAD^` via the required subject and `PR-Readiness-*` trailers.
 - If any code, docs, examples, or skill content changes after sealing, regenerate the attestation and create a new final seal commit.
+- The same sealed-tip verification workflow runs on pull request heads and on pushes to `main`.
 
 ## Skill Catalog
 
