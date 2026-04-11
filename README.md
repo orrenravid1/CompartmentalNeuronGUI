@@ -42,10 +42,12 @@ pip install -e ".[neuron]"
 pip install -e ".[jaxley]"
 ```
 
-If you want contributor tooling plus a backend in one environment, combine extras:
+Extras can be combined freely. To install multiple backends, or a backend with contributor tooling:
 
 ```bash
+pip install -e ".[neuron,jaxley]"
 pip install -e ".[contrib,jaxley]"
+pip install -e ".[all]"
 ```
 
 ## Start Here
