@@ -60,8 +60,8 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 
 ## Skills
 - `add-example`: `skills/add-example/SKILL.md`
+- `add-field-visualization`: `skills/add-field-visualization/SKILL.md`
 - `add-simulator-backend`: `skills/add-simulator-backend/SKILL.md`
-- `add-static-field-visualization`: `skills/add-static-field-visualization/SKILL.md`
 - `add-view-panel`: `skills/add-view-panel/SKILL.md`
 - `audit-skill-coverage`: `skills/audit-skill-coverage/SKILL.md`
 - `breaking-rename-sweep`: `skills/breaking-rename-sweep/SKILL.md`

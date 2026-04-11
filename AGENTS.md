@@ -83,7 +83,7 @@ Key names:
 - `skills/add-example/SKILL.md`
 - `skills/scratch-exploration/SKILL.md`
 - `skills/add-simulator-backend/SKILL.md`
-- `skills/add-static-field-visualization/SKILL.md`
+- `skills/add-field-visualization/SKILL.md`
 - `skills/add-view-panel/SKILL.md`
 - `skills/audit-skill-coverage/SKILL.md`
 - `skills/breaking-rename-sweep/SKILL.md`
