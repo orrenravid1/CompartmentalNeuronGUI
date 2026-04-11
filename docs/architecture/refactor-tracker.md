@@ -90,7 +90,7 @@ Scope:
 - replace the transitional fixed layout with a genuinely generic workbench/layout model
 - move closer to Blender/Unity/Unreal-style panel composition
 - reduce framework exposure in the public authoring API
-- formalize bootstrap-document behavior
+- formalize startup-scene behavior
 - continue improving live plotting and interaction ergonomics without one-off app logic
 
 Target outcomes:
@@ -204,7 +204,7 @@ Phase 2 has meaningfully started only when all of the following are true:
 ### Startup layout behavior
 
 - A live app should not visibly start in a fallback layout and then jump to the intended layout if the initial structure is already knowable.
-- If layout and views are known before the session starts, provide a bootstrap `Scene` up front.
+- If layout and views are known before the session starts, provide a startup `Scene` up front.
 
 ### Protocol granularity
 
@@ -387,14 +387,14 @@ These are the benchmark apps to use when validating architectural changes. If a 
 - Controls that only drive visual properties via `StateBinding` should not need to involve the session at all. The builder should distinguish those from controls that require `send_to_session=True`.
 - Current workaround: subclass `BufferedSession` directly, as in `examples/surface_plot/animated_surface_live.py` and `examples/surface_plot/animated_surface_replay.py`.
 
-### Session bootstrap API
+### Session Startup Scene API
 
 - Implemented: sessions can now provide `@classmethod startup_scene(cls) -> Scene | None`.
 - `run_app(...)` uses that hook automatically when `AppSpec.scene` is absent.
 - Intended use:
   - startup layout, controls, and placeholder fields known before worker start
   - open directly into the intended view without a loading-only phase
-- This keeps the bootstrap path generic and avoids hand-building `AppSpec(scene=...)` in each app script.
+- This keeps the startup path generic and avoids hand-building `AppSpec(scene=...)` in each app script.
 
 ### Plot configuration model
 
@@ -455,7 +455,7 @@ These are the benchmark apps to use when validating architectural changes. If a 
 
 ## Open Questions
 
-- Should bootstrap documents become part of the `Session` interface or live in builders?
+- Should startup scenes become part of the `Session` interface or live in builders?
 - Should plot configuration remain on `LinePlotViewSpec`, or do we need a higher-level plot panel model once multiple plot panels land?
 - How much renderer invalidation should be explicit vs inferred from dependencies?
 

@@ -288,7 +288,7 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
             )
 
         def initialize(self):
-            raise AssertionError("worker initialization should not be used to build the bootstrap document")
+            raise AssertionError("worker initialization should not be used to build the startup scene")
 
         def advance(self) -> None:
             return None

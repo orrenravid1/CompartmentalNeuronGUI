@@ -69,10 +69,10 @@ def resolve_startup_scene_source(source: SessionSource | None) -> Scene | None:
                 "Eager session instances are not supported for worker-backed apps. "
                 "Pass a Session subclass or a top-level zero-argument factory instead."
             )
-        bootstrap = getattr(source, "startup_scene", None)
-        if not callable(bootstrap):
+        startup_fn = getattr(source, "startup_scene", None)
+        if not callable(startup_fn):
             return None
-        scene = bootstrap()
+        scene = startup_fn()
     if scene is not None and not isinstance(scene, Scene):
         raise TypeError(f"Startup scene source returned {type(scene)!r}, expected Scene | None")
     return scene
