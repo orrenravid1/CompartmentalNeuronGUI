@@ -75,12 +75,12 @@ The same rule applies to surfaces:
 
 ## Builders Convert Native Structures Into Geometry
 
-Backends often start from simulator-native structures. Document builders convert those into CompNeuroVis geometry.
+Backends often start from simulator-native structures. Scene builders convert those into CompNeuroVis geometry.
 
 Examples:
 
-- `NeuronDocumentBuilder` turns NEURON section geometry into `MorphologyGeometry`
-- `JaxleyDocumentBuilder` turns Jaxley network compartment geometry into `MorphologyGeometry`
+- `NeuronSceneBuilder` turns NEURON section geometry into `MorphologyGeometry`
+- `JaxleySceneBuilder` turns Jaxley network compartment geometry into `MorphologyGeometry`
 
 That conversion step is important because it gives the frontend one stable geometry model even when the simulator internals differ.
 

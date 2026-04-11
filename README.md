@@ -3,7 +3,7 @@
 CompNeuroVis is a PyQt6/VisPy visualization toolkit for compartmental neuroscience workflows. The current architecture is centered on:
 
 - `Field`: dense labeled data with named axes and coordinates
-- `Document`: static fields, geometries, views, controls, and layout
+- `Scene`: static fields, geometries, views, controls, and layout
 - `Session`: optional live or replay backend that emits typed updates
 - `PipeTransport`: local process transport for Python/VisPy workflows
 - `VispyFrontend`: the current frontend implementation
@@ -54,7 +54,7 @@ On Windows, live session entrypoints use `multiprocessing` with `spawn`. `run_ap
 
 The main package exports the core types, builders, and frontend entrypoint:
 
-- `Field`, `Document`, `MorphologyGeometry`, `GridGeometry`
+- `Field`, `Scene`, `MorphologyGeometry`, `GridGeometry`
 - `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
 - `NeuronSession`
 - `build_neuron_app`, `build_surface_app`, `build_replay_app`
@@ -76,3 +76,15 @@ Generate the reference indexes with:
 ```bash
 python scripts/generate_indexes.py
 ```
+
+## Contributor PR Flow
+
+Human contributors can use the same PR-readiness checks without an agent:
+
+1. Run `python scripts/pr_readiness.py check` while iterating locally. This runs the repo quality gate, including `pytest`, compile checks, architecture invariants, and generated index validation.
+2. Commit your implementation changes normally.
+3. When the branch is ready, run `python scripts/pr_readiness.py seal --commit`.
+
+`seal --commit` reruns the readiness checks, writes a commit-keyed receipt under `.compneurovis/pr-readiness/`, and creates the required final attestation commit automatically.
+
+If you change code, docs, tests, examples, or skills after sealing, run `python scripts/pr_readiness.py seal --commit` again from the new final implementation commit.

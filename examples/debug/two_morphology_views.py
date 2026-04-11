@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 
-from compneurovis import AppSpec, Document, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, View3DHostSpec, run_app
+from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, Scene, View3DHostSpec, run_app
 from compneurovis.session import BufferedSession, FieldReplace
 
 
@@ -40,7 +40,7 @@ def display_values(phase: float) -> np.ndarray:
     return values.astype(np.float32)
 
 
-def build_document() -> Document:
+def build_scene() -> Scene:
     geometry = build_geometry()
     field = Field(
         id=DISPLAY_FIELD_ID,
@@ -49,7 +49,7 @@ def build_document() -> Document:
         coords={"segment": np.asarray(geometry.entity_ids)},
         unit="mV",
     )
-    return Document(
+    return Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={
@@ -84,8 +84,8 @@ class AnimatedTwoMorphologyViewsSession(BufferedSession):
         self.update_delay_s = update_delay_s
         self.phase = 0.0
 
-    def initialize(self) -> Document:
-        return build_document()
+    def initialize(self) -> Scene:
+        return build_scene()
 
     def advance(self) -> None:
         time.sleep(self.update_delay_s)

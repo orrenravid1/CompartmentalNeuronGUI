@@ -1,6 +1,6 @@
 ---
 title: Frontends Package
-summary: Frontend implementations that consume Document and SessionUpdate models.
+summary: Frontend implementations that consume Scene and SessionUpdate models.
 ---
 
 # Frontends Package

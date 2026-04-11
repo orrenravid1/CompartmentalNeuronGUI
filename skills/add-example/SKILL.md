@@ -16,7 +16,7 @@ Reference implementations: `examples/static_surface_visualizer.py` (static) and 
    - top-of-file comment (one line) explaining what the example demonstrates
    - imports from `compneurovis`
    - data or model setup
-   - Document / AppSpec assembly
+   - Scene / AppSpec assembly
    - `run_app(app)` at the bottom, unguarded — `run_app()` handles spawn-mode multiprocessing internally
 
 3. Keep module-level code free of expensive NEURON initialization. Any NEURON setup that runs at import time will repeat in every spawned worker process on Windows. Put it inside `build_sections()` or `setup_model()`.

@@ -9,10 +9,10 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/__init__.py`
 - `src/compneurovis/backends/__init__.py`
 - `src/compneurovis/backends/jaxley/__init__.py`
-- `src/compneurovis/backends/jaxley/document.py`
+- `src/compneurovis/backends/jaxley/scene.py`
 - `src/compneurovis/backends/jaxley/session.py`
 - `src/compneurovis/backends/neuron/__init__.py`
-- `src/compneurovis/backends/neuron/document.py`
+- `src/compneurovis/backends/neuron/scene.py`
 - `src/compneurovis/backends/neuron/session.py`
 - `src/compneurovis/builders/__init__.py`
 - `src/compneurovis/builders/jaxley.py`
@@ -22,9 +22,9 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/core/__init__.py`
 - `src/compneurovis/core/bindings.py`
 - `src/compneurovis/core/controls.py`
-- `src/compneurovis/core/document.py`
 - `src/compneurovis/core/field.py`
 - `src/compneurovis/core/geometry.py`
+- `src/compneurovis/core/scene.py`
 - `src/compneurovis/core/state.py`
 - `src/compneurovis/core/views.py`
 - `src/compneurovis/frontends/__init__.py`

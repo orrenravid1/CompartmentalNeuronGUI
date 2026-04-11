@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 
-from compneurovis import AppSpec, Document, Field, LayoutSpec, LinePlotViewSpec, run_app
+from compneurovis import AppSpec, Field, LayoutSpec, LinePlotViewSpec, Scene, run_app
 from compneurovis.session import BufferedSession, Error, FieldAppend
 
 
@@ -25,7 +25,7 @@ class CrashAfterOpenSession(BufferedSession):
         self._time = 0.0
         self._warning_emitted = False
 
-    def initialize(self) -> Document:
+    def initialize(self) -> Scene:
         field = Field(
             id="demo_trace",
             values=np.array([0.0], dtype=np.float32),
@@ -41,7 +41,7 @@ class CrashAfterOpenSession(BufferedSession):
             y_label="Signal",
             rolling_window=3.0,
         )
-        return Document(
+        return Scene(
             fields={field.id: field},
             geometries={},
             views={"trace": view},

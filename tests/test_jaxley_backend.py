@@ -117,7 +117,7 @@ def test_jaxley_programmatic_geometry_has_no_compartment_gaps():
         import json
         import numpy as np
         import jax
-        from compneurovis.backends.jaxley.document import JaxleyDocumentBuilder
+        from compneurovis.backends.jaxley.scene import JaxleySceneBuilder
 
         example_path = r"{example_path}"
         text = {example_text!r}
@@ -129,7 +129,7 @@ def test_jaxley_programmatic_geometry_has_no_compartment_gaps():
         cells = session.build_cells()
         network = session.build_network(cells)
         session.setup_model(network, cells)
-        geometry = JaxleyDocumentBuilder.build_morphology_geometry(
+        geometry = JaxleySceneBuilder.build_morphology_geometry(
             network.nodes,
             xyzr=network.xyzr,
             cell_names=session.cell_names(cells),

@@ -26,6 +26,31 @@
       "exclude_paths": [
         "docs/architecture/invariants.json"
       ]
+    },
+    {
+      "term": "DocumentReady",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "DocumentPatch",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "NeuronDocumentBuilder",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "JaxleyDocumentBuilder",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "bootstrap_scene",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
     }
   ],
   "commands": [

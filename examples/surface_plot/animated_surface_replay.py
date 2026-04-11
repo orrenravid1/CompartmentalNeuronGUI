@@ -23,7 +23,7 @@ import numpy as np
 
 from compneurovis import ActionSpec, SurfaceViewSpec, build_surface_app, grid_field, run_app
 from compneurovis.core import AppSpec
-from compneurovis.session import BufferedSession, DocumentReady, FieldReplace, InvokeAction, Reset
+from compneurovis.session import BufferedSession, SceneReady, FieldReplace, InvokeAction, Reset
 
 N_FRAMES = 60
 
@@ -61,17 +61,17 @@ surface_view = SurfaceViewSpec(
     text_color="black",
 )
 
-document = build_surface_app(
+scene = build_surface_app(
     field=field,
     geometry=geometry,
     surface_view=surface_view,
     controls={},
     title="animated sinc wave — replay",
-).document
+).scene
 
 # Add a pause/resume action so space bar toggles playback.
-document.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=["Space"])
-document.layout.action_ids = ("pause",)
+scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=["Space"])
+scene.layout.action_ids = ("pause",)
 
 
 class ReplayAnimationSession(BufferedSession):
@@ -81,7 +81,7 @@ class ReplayAnimationSession(BufferedSession):
         self._playing = True
 
     def initialize(self):
-        return document
+        return scene
 
     def advance(self):
         if not self._playing:

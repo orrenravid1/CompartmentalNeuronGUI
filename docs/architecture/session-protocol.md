@@ -10,7 +10,7 @@ A `Session` is the backend execution interface. The frontend drives it via comma
 ## Lifecycle
 
 ```python
-initialize()          -> Document | None   # called once at startup
+initialize()          -> Scene | None   # called once at startup
 while running:
     advance()                             # one backend update tick
     read_updates() -> list[SessionUpdate]
@@ -62,10 +62,10 @@ def handle(self, command):
 
 | Update | Fields | When to emit |
 |---|---|---|
-| `DocumentReady` | `document: Document` | Once, from `initialize()` or early in `advance()` |
+| `SceneReady` | `document: Scene` | Once, from `initialize()` or early in `advance()` |
 | `FieldReplace` | `field_id`, `values`, `coords?`, `attrs_update?` | Replace a field wholesale |
 | `FieldAppend` | `field_id`, `append_dim`, `values`, `coord_values`, `max_length?`, `attrs_update?` | Append new samples along one dimension |
-| `DocumentPatch` | `view_updates`, `control_updates`, `metadata_updates` | When view properties or control definitions change |
+| `ScenePatch` | `view_updates`, `control_updates`, `metadata_updates` | When view properties or control definitions change |
 | `StatePatch` | `updates: dict[str, Any]` | Synchronize frontend state keys used by `StateBinding` |
 | `Status` | `message: str`, `timeout_ms?` | Progress or info messages shown in the status bar |
 | `Error` | `message: str` | Non-fatal errors shown in the status bar |
@@ -96,7 +96,7 @@ The current shared policy knob is `HistoryCaptureMode`:
 - `HistoryCaptureMode.ON_DEMAND`: keep latest display state live, retain trace history only for entities the app actively requests
 - `HistoryCaptureMode.FULL`: retain full all-entity history for retrospective trace selection or playback
 
-### FieldReplace vs FieldAppend vs DocumentPatch
+### FieldReplace vs FieldAppend vs ScenePatch
 
 Use `FieldReplace` when the entire field should be replaced:
 
@@ -137,13 +137,13 @@ For heavy live backends, the recommended default is:
 
 This preserves performance while keeping retrospective history available as an opt-in feature rather than a default cost.
 
-Use `DocumentPatch` when structure or metadata changes, for example renaming a view title, updating a control range, or changing a display property without rebuilding the whole document:
+Use `ScenePatch` when structure or metadata changes, for example renaming a view title, updating a control range, or changing a display property without rebuilding the whole document:
 
 ```python
-self.emit(DocumentPatch(view_updates={"main": {"title": "updated title"}}))
+self.emit(ScenePatch(view_updates={"main": {"title": "updated title"}}))
 ```
 
-Do not use `DocumentPatch` for value updates. Do not rebuild and re-emit `DocumentReady` just to change a view title.
+Do not use `ScenePatch` for value updates. Do not rebuild and re-emit `SceneReady` just to change a view title.
 
 Use `StatePatch` when the session needs to synchronize semantic UI state such as selected traces or other state keys consumed by `StateBinding`:
 
@@ -166,7 +166,7 @@ The transport accepts a lazy session source:
 
 For worker-backed apps, this is the required shape so session construction happens inside the worker.
 
-- Startup: spawns the worker, calls `session.initialize()`, emits `DocumentReady` if it returns a `Document`
+- Startup: spawns the worker, calls `session.initialize()`, emits `SceneReady` if it returns a `Scene`
 - Poll loop: calls `session.advance()`, drains `read_updates()`, forwards updates to the frontend
 - Commands: `transport.send_command(cmd)` queues a command for the worker
 

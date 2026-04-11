@@ -15,4 +15,4 @@ def build_jaxley_app(
             "build_jaxley_app() requires a Session subclass or top-level zero-argument factory. "
             "Do not pass an already-created session instance."
         )
-    return AppSpec(document=None, session=session, interaction_target=interaction_target, title=title)
+    return AppSpec(scene=None, session=session, interaction_target=interaction_target, title=title)

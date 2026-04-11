@@ -4,7 +4,7 @@ from compneurovis.core import (
     AttributeRef,
     AppSpec,
     ControlSpec,
-    Document,
+    Scene,
     Field,
     Geometry,
     GridGeometry,
@@ -26,7 +26,7 @@ __all__ = [
     "AttributeRef",
     "AppSpec",
     "ControlSpec",
-    "Document",
+    "Scene",
     "Field",
     "Geometry",
     "GridGeometry",
@@ -49,21 +49,21 @@ __all__ = [
 ]
 
 try:  # optional backend dependency
-    from compneurovis.backends.neuron import NeuronDocumentBuilder, NeuronSession
+    from compneurovis.backends.neuron import NeuronSceneBuilder, NeuronSession
     from compneurovis.builders.neuron import build_neuron_app
 except Exception:  # pragma: no cover - optional import
-    NeuronDocumentBuilder = None
+    NeuronSceneBuilder = None
     NeuronSession = None
     build_neuron_app = None
 else:
-    __all__.extend(["NeuronDocumentBuilder", "NeuronSession", "build_neuron_app"])
+    __all__.extend(["NeuronSceneBuilder", "NeuronSession", "build_neuron_app"])
 
 try:  # optional backend dependency
-    from compneurovis.backends.jaxley import JaxleyDocumentBuilder, JaxleySession
+    from compneurovis.backends.jaxley import JaxleySceneBuilder, JaxleySession
     from compneurovis.builders.jaxley import build_jaxley_app
 except Exception:  # pragma: no cover - optional import
-    JaxleyDocumentBuilder = None
+    JaxleySceneBuilder = None
     JaxleySession = None
     build_jaxley_app = None
 else:
-    __all__.extend(["JaxleyDocumentBuilder", "JaxleySession", "build_jaxley_app"])
+    __all__.extend(["JaxleySceneBuilder", "JaxleySession", "build_jaxley_app"])

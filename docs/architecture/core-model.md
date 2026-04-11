@@ -1,6 +1,6 @@
 ---
 title: Core Model
-summary: Architecture overview - how Field, Geometry, Document, Session, and Frontend fit together.
+summary: Architecture overview - how Field, Geometry, Scene, Session, and Frontend fit together.
 ---
 
 # Core Model
@@ -10,11 +10,11 @@ CompNeuroVis is built around five orthogonal primitives that compose cleanly and
 ```
 Field / Geometry          <- domain data
     |
-Document                  <- specification (fields + geometries + views + controls + actions + layout)
+Scene                  <- specification (fields + geometries + views + controls + actions + layout)
     |
 Session (optional)        <- live or replay backend that emits typed updates
     |
-Frontend                  <- renderer that consumes a Document and applies SessionUpdates
+Frontend                  <- renderer that consumes a Scene and applies SessionUpdates
 ```
 
 ## The Primitives
@@ -32,12 +32,12 @@ Structural embedding that tells renderers where data lives in space. Two kinds:
 
 Geometry holds structural and positional facts. It does not hold time-varying data; that belongs in a `Field`.
 
-### Document
+### Scene
 
 Mutable container for a complete visualization specification:
 
 ```python
-Document(
+Scene(
     fields={"voltage": voltage_field},
     geometries={"morph": morphology_geom},
     views={"main": MorphologyViewSpec(...)},
@@ -57,13 +57,13 @@ The important architectural split is:
 
 See [View and Layout Model](../concepts/view-layout-model.md) for the user-facing mental model behind that split.
 
-`Document` is mutable. The frontend modifies `fields` in place on `FieldReplace` / `FieldAppend` and patches `views` / `controls` on `DocumentPatch`.
+`Scene` is mutable. The frontend modifies `fields` in place on `FieldReplace` / `FieldAppend` and patches `views` / `controls` on `ScenePatch`.
 
 ### Session
 
 Optional live or replay backend. A `Session`:
 
-1. Returns an initial `Document` from `initialize()` or `None` if the document is provided externally
+1. Returns an initial `Scene` from `initialize()` or `None` if the document is provided externally
 2. Steps forward on each `advance()` call
 3. Receives `SessionCommand`s via `handle(command)`
 4. Emits `SessionUpdate`s that `read_updates()` drains
@@ -74,7 +74,7 @@ See [Session Protocol](session-protocol.md) for the full message types.
 
 ### Frontend
 
-The VisPy/PyQt6 frontend consumes a `Document` and updates panels in response to `SessionUpdate`s. It owns all UI state: selection, slice position, and control values. It sends semantic commands to the session, never raw GUI events.
+The VisPy/PyQt6 frontend consumes a `Scene` and updates panels in response to `SessionUpdate`s. It owns all UI state: selection, slice position, and control values. It sends semantic commands to the session, never raw GUI events.
 
 See [VisPy Frontend](vispy-frontend.md) for panel structure and refresh planning, and [View and Layout Model](../concepts/view-layout-model.md) for the higher-level composition model.
 
@@ -103,7 +103,7 @@ Convenience builders may exist for current workflows, but they should be underst
 
 **Frontends own UI state.** Selection, slice position, and control values live in the frontend's `state` dict. Backends receive `SetControl` / `InvokeAction`, not raw GUI events.
 
-**Prefer the narrowest correct update.** Use `FieldAppend` for incremental live history updates along one dimension. Use `DocumentPatch` for metadata, view property, or control changes that do not require rebuilding the full document. Use `FieldReplace` when replacing a field wholesale. Full replacements are valid, but they are the explicit broader-cost path, not the default.
+**Prefer the narrowest correct update.** Use `FieldAppend` for incremental live history updates along one dimension. Use `ScenePatch` for metadata, view property, or control changes that do not require rebuilding the full document. Use `FieldReplace` when replacing a field wholesale. Full replacements are valid, but they are the explicit broader-cost path, not the default.
 
 **Live display state and captured history are different concerns.** A heavy live scene often wants:
 

@@ -87,7 +87,7 @@ class LayoutSpec:
 
 
 @dataclass(slots=True)
-class Document:
+class Scene:
     fields: dict[str, Field]
     geometries: dict[str, Geometry]
     views: dict[str, ViewSpec]
@@ -118,7 +118,7 @@ class Document:
 
 @dataclass(slots=True)
 class AppSpec:
-    document: Document | None = None
+    scene: Scene | None = None
     session: Any = None
     interaction_target: Any = None
     title: str | None = None

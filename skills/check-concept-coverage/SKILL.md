@@ -18,7 +18,7 @@ Every area below must have a concept doc. Check `docs/concepts/` against this li
 | Conceptual area | What it should explain |
 |---|---|
 | Field model | What a Field is, its axes, frozen semantics, `with_values`, `select` |
-| Session and update model | What a Session is, live vs replay, the update types (DocumentReady, FieldReplace, FieldAppend, DocumentPatch), when to use each |
+| Session and update model | What a Session is, live vs replay, the update types (SceneReady, FieldReplace, FieldAppend, ScenePatch), when to use each |
 | Geometry types | MorphologyGeometry vs GridGeometry, what each represents, when to use each |
 | Controls, actions, and state | ControlSpec, ActionSpec, StateBinding — how user interaction maps to session commands and frontend state |
 | View and layout model | What a ViewSpec is, how it differs from Field/Geometry, how LayoutSpec and View3DHostSpec compose views, and how StateBinding affects view properties |

@@ -2,21 +2,21 @@ from __future__ import annotations
 
 from functools import partial
 
-from compneurovis.core import AppSpec, Document
+from compneurovis.core import AppSpec, Scene
 from compneurovis.session import BufferedSession, FieldReplace
 
 
 class ReplaySession(BufferedSession):
-    def __init__(self, *, document: Document, field_id: str, frames, interval_live: bool = True):
+    def __init__(self, *, scene: Scene, field_id: str, frames, interval_live: bool = True):
         super().__init__()
-        self.document = document
+        self.scene = scene
         self.field_id = field_id
         self.frames = list(frames)
         self.index = 0
         self.interval_live = interval_live
 
     def initialize(self):
-        return self.document
+        return self.scene
 
     def is_live(self) -> bool:
         return self.interval_live
@@ -32,9 +32,9 @@ class ReplaySession(BufferedSession):
         return None
 
 
-def build_replay_app(*, document: Document, field_id: str, frames) -> AppSpec:
+def build_replay_app(*, scene: Scene, field_id: str, frames) -> AppSpec:
     return AppSpec(
-        document=document,
-        session=partial(ReplaySession, document=document, field_id=field_id, frames=frames),
-        title=document.layout.title,
+        scene=scene,
+        session=partial(ReplaySession, scene=scene, field_id=field_id, frames=frames),
+        title=scene.layout.title,
     )

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from compneurovis.core import Document, Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, StateBinding
+from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding
 
 
-class JaxleyDocumentBuilder:
+class JaxleySceneBuilder:
     DISPLAY_FIELD_ID = "segment_display"
     HISTORY_FIELD_ID = "segment_history"
     TRACE_FIELD_ID = HISTORY_FIELD_ID
@@ -63,7 +63,7 @@ class JaxleyDocumentBuilder:
     ) -> MorphologyGeometry:
         ordered = nodes.sort_values("global_comp_index").reset_index(drop=True)
         if ordered.empty:
-            raise ValueError("JaxleyDocumentBuilder requires at least one compartment")
+            raise ValueError("JaxleySceneBuilder requires at least one compartment")
 
         positions = ordered[["x", "y", "z"]].to_numpy(np.float32)
         lengths = np.maximum(ordered["length"].to_numpy(np.float32), 1e-6)
@@ -74,7 +74,7 @@ class JaxleyDocumentBuilder:
             idxs = branch.index.to_numpy()
             if xyzr is not None and int(branch_idx) < len(xyzr):
                 branch_xyzr = np.asarray(xyzr[int(branch_idx)], dtype=np.float32)
-                segments = JaxleyDocumentBuilder._split_xyzr_into_equal_length_segments(branch_xyzr, len(idxs))
+                segments = JaxleySceneBuilder._split_xyzr_into_equal_length_segments(branch_xyzr, len(idxs))
                 branch_positions = []
                 branch_lengths = []
                 branch_radii = []
@@ -91,7 +91,7 @@ class JaxleyDocumentBuilder:
                         seg_dir = diff / seg_length
                     branch_positions.append(0.5 * (start + end))
                     branch_lengths.append(seg_length)
-                    branch_radii.append(max(JaxleyDocumentBuilder._segment_radius(segment), 1e-6))
+                    branch_radii.append(max(JaxleySceneBuilder._segment_radius(segment), 1e-6))
                     branch_dirs.append(seg_dir)
                 positions[idxs] = np.asarray(branch_positions, dtype=np.float32)
                 lengths[idxs] = np.asarray(branch_lengths, dtype=np.float32)
@@ -155,7 +155,7 @@ class JaxleyDocumentBuilder:
         )
 
     @staticmethod
-    def build_document(
+    def build_scene(
         *,
         geometry: MorphologyGeometry,
         display_values: np.ndarray,
@@ -177,9 +177,9 @@ class JaxleyDocumentBuilder:
         title: str = "CompNeuroVis",
         control_ids: tuple[str, ...] | None = None,
         action_ids: tuple[str, ...] | None = None,
-    ) -> Document:
-        display_field_id = display_field_id or JaxleyDocumentBuilder.DISPLAY_FIELD_ID
-        history_field_id = history_field_id or JaxleyDocumentBuilder.HISTORY_FIELD_ID
+    ) -> Scene:
+        display_field_id = display_field_id or JaxleySceneBuilder.DISPLAY_FIELD_ID
+        history_field_id = history_field_id or JaxleySceneBuilder.HISTORY_FIELD_ID
         history_unit = display_unit if history_unit is None else history_unit
         trace_y_unit = (history_unit or "") if trace_y_unit is None else trace_y_unit
         display_field = Field(
@@ -226,7 +226,7 @@ class JaxleyDocumentBuilder:
                 pen="#1f3c88",
             ),
         }
-        return Document(
+        return Scene(
             fields={display_field.id: display_field, trace_field.id: trace_field},
             geometries={geometry.id: geometry},
             views=views,

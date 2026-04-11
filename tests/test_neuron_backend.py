@@ -1,6 +1,6 @@
 import numpy as np
 
-from compneurovis.backends.neuron.document import NeuronDocumentBuilder
+from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.backends.neuron.session import NeuronSession
 from compneurovis.core import MorphologyGeometry
 from compneurovis.session import EntityClicked, FieldReplace
@@ -21,7 +21,7 @@ def _geometry() -> MorphologyGeometry:
 
 
 def test_neuron_document_builder_splits_display_and_trace_fields():
-    document = NeuronDocumentBuilder.build_document(
+    document = NeuronSceneBuilder.build_scene(
         geometry=_geometry(),
         display_values=np.array([1.0, 2.0], dtype=np.float32),
         trace_values=np.array([[1.0, 2.0]], dtype=np.float32),
@@ -31,12 +31,12 @@ def test_neuron_document_builder_splits_display_and_trace_fields():
     )
 
     assert set(document.fields.keys()) == {
-        NeuronDocumentBuilder.DISPLAY_FIELD_ID,
-        NeuronDocumentBuilder.HISTORY_FIELD_ID,
+        NeuronSceneBuilder.DISPLAY_FIELD_ID,
+        NeuronSceneBuilder.HISTORY_FIELD_ID,
     }
 
-    display_field = document.fields[NeuronDocumentBuilder.DISPLAY_FIELD_ID]
-    trace_field = document.fields[NeuronDocumentBuilder.HISTORY_FIELD_ID]
+    display_field = document.fields[NeuronSceneBuilder.DISPLAY_FIELD_ID]
+    trace_field = document.fields[NeuronSceneBuilder.HISTORY_FIELD_ID]
     morphology_view = document.views["morphology"]
     trace_view = document.views["trace"]
 
@@ -44,11 +44,11 @@ def test_neuron_document_builder_splits_display_and_trace_fields():
     assert np.allclose(display_field.values, np.array([1.0, 2.0], dtype=np.float32))
     assert trace_field.dims == ("segment", "time")
     assert trace_field.coords["segment"].tolist() == ["seg-a"]
-    assert morphology_view.color_field_id == NeuronDocumentBuilder.DISPLAY_FIELD_ID
+    assert morphology_view.color_field_id == NeuronSceneBuilder.DISPLAY_FIELD_ID
     assert morphology_view.sample_dim is None
     assert morphology_view.color_map == "scalar"
     assert morphology_view.color_norm == "auto"
-    assert trace_view.field_id == NeuronDocumentBuilder.HISTORY_FIELD_ID
+    assert trace_view.field_id == NeuronSceneBuilder.HISTORY_FIELD_ID
 
 
 class DummyNeuronSession(NeuronSession):
@@ -70,7 +70,7 @@ def test_neuron_session_captures_new_trace_history_on_click():
 
     assert len(updates) == 1
     assert isinstance(updates[0], FieldReplace)
-    assert updates[0].field_id == NeuronDocumentBuilder.HISTORY_FIELD_ID
+    assert updates[0].field_id == NeuronSceneBuilder.HISTORY_FIELD_ID
     assert updates[0].coords["segment"].tolist() == ["seg-a", "seg-b"]
     assert updates[0].coords["time"].tolist() == [0.0]
 
@@ -113,7 +113,7 @@ def test_neuron_session_default_document_uses_fixed_morphology_color_limits():
     session = DummyNeuronSession()
     geometry = _geometry()
 
-    document = session.build_document(
+    document = session.build_scene(
         geometry=geometry,
         display_values=np.array([1.0, 2.0], dtype=np.float32),
         time_value=0.0,

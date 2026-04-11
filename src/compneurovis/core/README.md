@@ -10,7 +10,7 @@ summary: Field, geometry, view, control, and document primitives.
 - `Field`
 - `MorphologyGeometry`
 - `GridGeometry`
-- `Document`
+- `Scene`
 - `LayoutSpec`
 - `View3DHostSpec`
 - `ViewSpec`

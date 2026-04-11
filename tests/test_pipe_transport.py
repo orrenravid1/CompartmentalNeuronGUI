@@ -3,7 +3,7 @@ import time
 import numpy as np
 import pytest
 
-from compneurovis.core import Document, Field, LayoutSpec
+from compneurovis.core import Field, LayoutSpec, Scene
 from compneurovis.session import BufferedSession, EntityClicked, Error, FieldReplace, PipeTransport, SetControl, StatePatch, Status
 
 
@@ -15,7 +15,7 @@ class DummySession(BufferedSession):
             dims=("x",),
             coords={"x": np.array([0.0, 1.0], dtype=np.float32)},
         )
-        return Document(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
+        return Scene(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
 
     def is_live(self) -> bool:
         return False
@@ -41,7 +41,7 @@ class DummyInteractionSession(BufferedSession):
             dims=("x",),
             coords={"x": np.array([0.0], dtype=np.float32)},
         )
-        return Document(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
+        return Scene(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
 
     def is_live(self) -> bool:
         return False

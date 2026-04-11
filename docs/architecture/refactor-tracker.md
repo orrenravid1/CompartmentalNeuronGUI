@@ -19,7 +19,7 @@ Do not use this document as a file-by-file changelog.
 ## Current Architectural Direction
 
 - Keep `Field` as the primary data primitive.
-- Keep `Document + optional Session + Frontend + Transport` as the top-level split.
+- Keep `Scene + optional Session + Frontend + Transport` as the top-level split.
 - Keep frontend state owned by the frontend, not by sessions.
 - Prefer typed append/patch messages over bundled full-state replacements when only part of the state changed.
 - Prefer builder-driven simple entrypoints for common workflows.
@@ -32,7 +32,7 @@ These are the main architectural mismatches still present in code. If work resum
 
 1. Build a genuinely feature-composable public authoring layer
    Current issue:
-   real apps such as signaling-cascade and pharynx still expose too much `Document`/session plumbing for the intended scientific user.
+   real apps such as signaling-cascade and pharynx still expose too much `Scene`/session plumbing for the intended scientific user.
    Needed direction:
    users should declare features, controls, tracked series, and small hooks without needing to think about transport or low-level document assembly.
 
@@ -62,7 +62,7 @@ Status: largely complete
 
 Scope:
 
-- replace the old simulation-rooted model with `Document + optional Session + Frontend + Transport`
+- replace the old simulation-rooted model with `Scene + optional Session + Frontend + Transport`
 - make `Field` the primary data primitive
 - establish a typed session protocol
 - recover practical parity for the current Python + VisPy + pipes workflows
@@ -204,12 +204,12 @@ Phase 2 has meaningfully started only when all of the following are true:
 ### Startup layout behavior
 
 - A live app should not visibly start in a fallback layout and then jump to the intended layout if the initial structure is already knowable.
-- If layout and views are known before the session starts, provide a bootstrap `Document` up front.
+- If layout and views are known before the session starts, provide a bootstrap `Scene` up front.
 
 ### Protocol granularity
 
 - High-throughput rendering workflows should default to need-to-know updates, not bundled full-state pushes.
-- `FieldAppend` and `DocumentPatch` should be the normal path when they can express the change correctly.
+- `FieldAppend` and `ScenePatch` should be the normal path when they can express the change correctly.
 - `FieldReplace` remains the full-replacement field path and should be treated as the broader-cost option.
 - Full replacements are acceptable, but they should be treated as the explicit expensive path.
 - Latest-state display and captured history should be modeled as separate concerns.
@@ -251,7 +251,7 @@ Phase 2 has meaningfully started only when all of the following are true:
 ### Public authoring surface
 
 - The simplified public API must stay feature-composable.
-- High-level helpers should assemble the same underlying `Document + Session + Frontend + Transport` model rather than introducing separate app families such as "trace app" vs "morphology app" vs "surface app".
+- High-level helpers should assemble the same underlying `Scene + Session + Frontend + Transport` model rather than introducing separate app families such as "trace app" vs "morphology app" vs "surface app".
 - Backend-specific helpers such as `build_neuron_app(...)` are acceptable as transitional conveniences, but they should not become the conceptual boundary of the library.
 - Backend choice, feature choice, and layout choice must stay orthogonal.
 - A NEURON-backed signaling cascade app with controls and traces but no morphology is still a valid first-class app shape.
@@ -359,7 +359,7 @@ These are the benchmark apps to use when validating architectural changes. If a 
 
 ### Developer experience for custom interactions
 
-- `Document`/`ViewSpec`/layout internals are acceptable framework building blocks, but they are too low-level as the primary authoring surface for domain users.
+- `Scene`/`ViewSpec`/layout internals are acceptable framework building blocks, but they are too low-level as the primary authoring surface for domain users.
 - If a user has to override document construction just to reorder controls, tune the default trace plot, or express a simple click-mode workflow, the public API is still too exposed.
 - The default NEURON-style path should prefer small hook methods and simple overrides over forcing authors to manually assemble interaction machinery.
 - Users must not have to reason about transport boundaries when deciding where interaction code belongs.
@@ -389,12 +389,12 @@ These are the benchmark apps to use when validating architectural changes. If a 
 
 ### Session bootstrap API
 
-- Implemented: sessions can now provide `@classmethod bootstrap_document(cls) -> Document | None`.
-- `run_app(...)` uses that hook automatically when `AppSpec.document` is absent.
+- Implemented: sessions can now provide `@classmethod startup_scene(cls) -> Scene | None`.
+- `run_app(...)` uses that hook automatically when `AppSpec.scene` is absent.
 - Intended use:
   - startup layout, controls, and placeholder fields known before worker start
   - open directly into the intended view without a loading-only phase
-- This keeps the bootstrap path generic and avoids hand-building `AppSpec(document=...)` in each app script.
+- This keeps the bootstrap path generic and avoids hand-building `AppSpec(scene=...)` in each app script.
 
 ### Plot configuration model
 

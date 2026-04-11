@@ -11,10 +11,10 @@ from vispy import app as vispy_app, use
 
 use(app="pyqt6", gl="gl+")
 
-from compneurovis.core import AppSpec, Document, MorphologyGeometry, MorphologyViewSpec, StateBinding, SurfaceViewSpec, View3DHostSpec
+from compneurovis.core import AppSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding, SurfaceViewSpec, View3DHostSpec
 from compneurovis.frontends.vispy.panels import ControlsPanel, IndependentCanvas3DHostPanel, LinePlotPanel, Viewport3DPanel
-from compneurovis.session import DocumentPatch, DocumentReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
-from compneurovis.session.base import resolve_bootstrap_document_source
+from compneurovis.session import ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
+from compneurovis.session.base import resolve_startup_scene_source
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,14 +87,14 @@ class RefreshPlanner:
         }
     )
 
-    def __init__(self, document: Document):
-        self.document = document
+    def __init__(self, scene: Scene):
+        self.scene = scene
 
     def _view_3d_ids(self) -> tuple[str, ...]:
-        return self.document.layout.resolved_3d_view_ids()
+        return self.scene.layout.resolved_3d_view_ids()
 
     def _view_3d(self, view_id: str):
-        return self.document.views.get(view_id)
+        return self.scene.views.get(view_id)
 
     def morphology_views(self) -> dict[str, MorphologyViewSpec]:
         return {
@@ -111,9 +111,9 @@ class RefreshPlanner:
         }
 
     def line_view(self):
-        if self.document.layout.line_plot_view_id is None:
+        if self.scene.layout.line_plot_view_id is None:
             return None
-        return self.document.views.get(self.document.layout.line_plot_view_id)
+        return self.scene.views.get(self.scene.layout.line_plot_view_id)
 
     def full_refresh_targets(self) -> set[RefreshTarget]:
         targets = {RefreshTarget.CONTROLS}
@@ -180,7 +180,7 @@ class RefreshPlanner:
         return targets
 
     def targets_for_view_patch(self, view_id: str, changed_props: set[str]) -> set[RefreshTarget]:
-        view = self.document.views.get(view_id)
+        view = self.scene.views.get(view_id)
         if isinstance(view, MorphologyViewSpec):
             return {RefreshTarget.morphology(view_id)}
         if isinstance(view, SurfaceViewSpec):
@@ -201,10 +201,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def __init__(self, app_spec: AppSpec):
         super().__init__()
         self.app_spec = app_spec
-        initial_document = app_spec.document
-        if initial_document is None and app_spec.session is not None:
-            initial_document = resolve_bootstrap_document_source(app_spec.session)
-        self.document: Document | None = None
+        initial_scene = app_spec.scene
+        if initial_scene is None and app_spec.session is not None:
+            initial_scene = resolve_startup_scene_source(app_spec.session)
+        self.scene: Scene | None = None
         self.state: dict[str, Any] = {}
         self.transport: PipeTransport | None = None
         self.refresh_planner: RefreshPlanner | None = None
@@ -252,8 +252,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage("Starting CompNeuroVis")
         self._show_loading_state()
 
-        if initial_document is not None:
-            self._set_document(initial_document)
+        if initial_scene is not None:
+            self._set_scene(initial_scene)
 
         if app_spec.session is not None:
             configure_multiprocessing()
@@ -278,19 +278,19 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _show_content_state(self) -> None:
         self._stack.setCurrentWidget(self._horizontal_splitter)
 
-    def _set_document(self, document: Document) -> None:
-        self.document = document
-        self.refresh_planner = RefreshPlanner(document)
+    def _set_scene(self, scene: Scene) -> None:
+        self.scene = scene
+        self.refresh_planner = RefreshPlanner(scene)
         self._active_selection_action_id = None
-        self.setWindowTitle(self.app_spec.title or document.layout.title)
-        for control in document.controls.values():
+        self.setWindowTitle(self.app_spec.title or scene.layout.title)
+        for control in scene.controls.values():
             self.state.setdefault(control.resolved_state_key(), control.default)
 
         self._rebuild_view_hosts()
 
         morphology_view = self._first_morphology_view()
         if morphology_view is not None:
-            geometry = document.geometries[morphology_view.geometry_id]
+            geometry = scene.geometries[morphology_view.geometry_id]
             if isinstance(geometry, MorphologyGeometry) and geometry.entity_ids:
                 self.state.setdefault("selected_entity_id", geometry.entity_ids[0])
                 self.state.setdefault("selected_entity_label", geometry.label_for(geometry.entity_ids[0]))
@@ -300,9 +300,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._show_content_state()
 
     def _view_3d_ids(self) -> tuple[str, ...]:
-        if self.document is None:
+        if self.scene is None:
             return ()
-        return self.document.layout.resolved_3d_view_ids()
+        return self.scene.layout.resolved_3d_view_ids()
 
     def _create_view_host(self, host: View3DHostSpec):
         if host.kind != "independent_canvas":
@@ -312,7 +312,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 f"3D host '{host.id}' with kind='independent_canvas' must contain exactly one view id"
             )
         view_id = host.view_ids[0]
-        view = self.document.views.get(view_id) if self.document is not None else None
+        view = self.scene.views.get(view_id) if self.scene is not None else None
         title = host.title or getattr(view, "title", None) or view_id
         return IndependentCanvas3DHostPanel(
             host_id=host.id,
@@ -329,9 +329,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.viewports.clear()
         self.view_hosts.clear()
         self._view_to_host_id.clear()
-        if self.document is None:
+        if self.scene is None:
             return
-        for host in self.document.layout.view_3d_hosts:
+        for host in self.scene.layout.view_3d_hosts:
             panel = self._create_view_host(host)
             self._viewport_splitter.addWidget(panel)
             self.view_hosts[host.id] = panel
@@ -340,30 +340,30 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 self._view_to_host_id[view_id] = host.id
 
     def _first_morphology_view(self):
-        if self.document is None:
+        if self.scene is None:
             return None
         for view_id in self._view_3d_ids():
-            view = self.document.views.get(view_id)
+            view = self.scene.views.get(view_id)
             if isinstance(view, MorphologyViewSpec):
                 return view
         return None
 
     def _morphology_view(self, view_id: str):
-        if self.document is None:
+        if self.scene is None:
             return None
-        view = self.document.views.get(view_id)
+        view = self.scene.views.get(view_id)
         return view if isinstance(view, MorphologyViewSpec) else None
 
     def _surface_view(self, view_id: str):
-        if self.document is None:
+        if self.scene is None:
             return None
-        view = self.document.views.get(view_id)
+        view = self.scene.views.get(view_id)
         return view if isinstance(view, SurfaceViewSpec) else None
 
     def _line_view(self):
-        if self.document is None or self.document.layout.line_plot_view_id is None:
+        if self.scene is None or self.scene.layout.line_plot_view_id is None:
             return None
-        return self.document.views.get(self.document.layout.line_plot_view_id)
+        return self.scene.views.get(self.scene.layout.line_plot_view_id)
 
     def _view_host(self, view_id: str):
         host_id = self._view_to_host_id.get(view_id)
@@ -388,10 +388,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             self._horizontal_splitter.setSizes([0, width])
 
     def _refresh_controls(self) -> None:
-        if self.document is None:
+        if self.scene is None:
             return
-        controls = [self.document.controls[control_id] for control_id in self.document.layout.control_ids if control_id in self.document.controls]
-        actions = [self.document.actions[action_id] for action_id in self.document.layout.action_ids if action_id in self.document.actions]
+        controls = [self.scene.controls[control_id] for control_id in self.scene.layout.control_ids if control_id in self.scene.controls]
+        actions = [self.scene.actions[action_id] for action_id in self.scene.layout.action_ids if action_id in self.scene.actions]
         self.controls.set_controls(controls, actions, self.state)
 
     def _resolved_morphology_state(self, view: MorphologyViewSpec) -> dict[str, Any]:
@@ -428,7 +428,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         return resolved
 
     def _refresh_morphology(self, view_id: str) -> None:
-        if self.document is None:
+        if self.scene is None:
             return
         host = self._view_host(view_id)
         if host is None:
@@ -437,11 +437,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         morphology_geometry = None
         morphology_colors = None
         if morph_view is not None:
-            geometry = self.document.geometries.get(morph_view.geometry_id)
+            geometry = self.scene.geometries.get(morph_view.geometry_id)
             if isinstance(geometry, MorphologyGeometry):
                 morphology_geometry = geometry
                 if morph_view.color_field_id:
-                    field = self.document.fields[morph_view.color_field_id]
+                    field = self.scene.fields[morph_view.color_field_id]
                     if morph_view.sample_dim and morph_view.sample_dim in field.dims:
                         latest = field.select({morph_view.sample_dim: -1})
                         morphology_colors = latest.values
@@ -456,7 +456,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         )
 
     def _refresh_surface_visual(self, view_id: str) -> None:
-        if self.document is None:
+        if self.scene is None:
             return
         host = self._view_host(view_id)
         if host is None:
@@ -465,9 +465,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         surface_field = None
         grid_geometry = None
         if surface_view is not None:
-            surface_field = self.document.fields[surface_view.field_id]
+            surface_field = self.scene.fields[surface_view.field_id]
             if surface_view.geometry_id is not None:
-                grid_geometry = self.document.geometries.get(surface_view.geometry_id)
+                grid_geometry = self.scene.geometries.get(surface_view.geometry_id)
         host.refresh_surface_visual(
             view_id=view_id,
             surface_view=surface_view,
@@ -499,15 +499,15 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         )
 
     def _refresh_line_plot(self) -> None:
-        if self.document is None:
+        if self.scene is None:
             return
         line_view = self._line_view()
         geometry_lookup = {
             key: value
-            for key, value in self.document.geometries.items()
+            for key, value in self.scene.geometries.items()
             if isinstance(value, MorphologyGeometry)
         }
-        line_field = self.document.fields.get(line_view.field_id) if line_view is not None else None
+        line_field = self.scene.fields.get(line_view.field_id) if line_view is not None else None
         self.line_plot.refresh(line_view, line_field, self.state, geometry_lookup)
 
     def _apply_refresh_targets(self, targets: set[RefreshTarget]) -> None:
@@ -557,24 +557,24 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         pending_targets: set[RefreshTarget] = set()
         pending_status: str | None = None
         for update in self.transport.poll_updates():
-            if isinstance(update, DocumentReady):
-                self._set_document(update.document)
+            if isinstance(update, SceneReady):
+                self._set_scene(update.scene)
                 pending_targets.clear()
-                pending_status = "Document ready"
+                pending_status = "Scene ready"
             elif isinstance(update, FieldReplace):
-                if self.document is None:
+                if self.scene is None:
                     continue
-                current = self.document.fields[update.field_id]
+                current = self.scene.fields[update.field_id]
                 coords_changed = update.coords is not None
                 coords = current.coords if update.coords is None else update.coords
-                self.document.fields[update.field_id] = current.with_values(update.values, coords=coords, attrs_update=update.attrs_update)
+                self.scene.fields[update.field_id] = current.with_values(update.values, coords=coords, attrs_update=update.attrs_update)
                 if self.refresh_planner is not None:
                     pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id, coords_changed=coords_changed))
             elif isinstance(update, FieldAppend):
-                if self.document is None:
+                if self.scene is None:
                     continue
-                current = self.document.fields[update.field_id]
-                self.document.fields[update.field_id] = current.append(
+                current = self.scene.fields[update.field_id]
+                self.scene.fields[update.field_id] = current.append(
                     update.append_dim,
                     update.values,
                     update.coord_values,
@@ -583,17 +583,17 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 )
                 if self.refresh_planner is not None:
                     pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id))
-            elif isinstance(update, DocumentPatch):
-                if self.document is None:
+            elif isinstance(update, ScenePatch):
+                if self.scene is None:
                     continue
                 for view_id, patch in update.view_updates.items():
-                    self.document.replace_view(view_id, patch)
+                    self.scene.replace_view(view_id, patch)
                     if self.refresh_planner is not None:
                         pending_targets.update(self.refresh_planner.targets_for_view_patch(view_id, set(patch.keys())))
                 for control_id, patch in update.control_updates.items():
-                    self.document.replace_control(control_id, patch)
+                    self.scene.replace_control(control_id, patch)
                     pending_targets.add(RefreshTarget.CONTROLS)
-                self.document.metadata.update(update.metadata_updates)
+                self.scene.metadata.update(update.metadata_updates)
             elif isinstance(update, StatePatch):
                 if self.refresh_planner is None:
                     continue
@@ -628,14 +628,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
     def _on_entity_selected(self, entity_id: str) -> None:
         self.state["selected_entity_id"] = entity_id
-        if self.document is not None:
-            for geometry in self.document.geometries.values():
+        if self.scene is not None:
+            for geometry in self.scene.geometries.values():
                 if isinstance(geometry, MorphologyGeometry) and entity_id in geometry.entity_ids:
                     self.state["selected_entity_label"] = geometry.label_for(entity_id)
                     break
             consumed = self._invoke_interaction_entity_click(entity_id)
             if not consumed and self._active_selection_action_id is not None:
-                action = self.document.actions.get(self._active_selection_action_id)
+                action = self.scene.actions.get(self._active_selection_action_id)
                 if action is not None:
                     payload = {
                         key: resolve_value(value, self.state)
@@ -672,7 +672,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if key_text and self._invoke_interaction_key_press(key_text):
             event.accept()
             return
-        if self.document is not None:
+        if self.scene is not None:
             matched_action = self._action_for_event(event)
             if matched_action is not None:
                 payload = {
@@ -693,11 +693,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         super().keyPressEvent(event)
 
     def _action_for_event(self, event: QtGui.QKeyEvent):
-        if self.document is None:
+        if self.scene is None:
             return None
         pressed = self._event_key_text(event)
-        for action_id in self.document.layout.action_ids:
-            action = self.document.actions.get(action_id)
+        for action_id in self.scene.layout.action_ids:
+            action = self.scene.actions.get(action_id)
             if action is None:
                 continue
             for shortcut in action.shortcuts:
@@ -773,8 +773,8 @@ class FrontendInteractionContext:
         self.window = window
 
     @property
-    def document(self) -> Document | None:
-        return self.window.document
+    def scene(self) -> Scene | None:
+        return self.window.scene
 
     @property
     def selected_entity_id(self) -> str | None:
@@ -786,9 +786,9 @@ class FrontendInteractionContext:
 
     def entity_info(self, entity_id: str | None = None) -> dict[str, Any] | None:
         current_id = entity_id or self.selected_entity_id
-        if current_id is None or self.window.document is None:
+        if current_id is None or self.window.scene is None:
             return None
-        for geometry in self.window.document.geometries.values():
+        for geometry in self.window.scene.geometries.values():
             if not isinstance(geometry, MorphologyGeometry):
                 continue
             try:
@@ -811,9 +811,9 @@ class FrontendInteractionContext:
         self.window.statusBar().clearMessage()
 
     def invoke_action(self, action_id: str, payload: dict[str, Any] | None = None) -> None:
-        if self.window.document is None:
+        if self.window.scene is None:
             return
-        action = self.window.document.actions.get(action_id)
+        action = self.window.scene.actions.get(action_id)
         if action is None:
             return
         resolved_payload = payload if payload is not None else {
@@ -823,9 +823,9 @@ class FrontendInteractionContext:
         self.window._send_action(action, resolved_payload)
 
     def set_control(self, control_id: str, value: Any) -> None:
-        if self.window.document is None:
+        if self.window.scene is None:
             return
-        control = self.window.document.controls.get(control_id)
+        control = self.window.scene.controls.get(control_id)
         if control is None:
             return
         self.window._on_control_changed(control, value)

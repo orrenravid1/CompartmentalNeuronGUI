@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 import numpy as np
 
-from compneurovis.backends.jaxley.document import JaxleyDocumentBuilder
+from compneurovis.backends.jaxley.scene import JaxleySceneBuilder
 from compneurovis.core.controls import ControlSpec
-from compneurovis.core.document import Document
+from compneurovis.core.scene import Scene
 from compneurovis.core.views import LinePlotViewSpec
 from compneurovis.session import BufferedSession, EntityClicked, FieldAppend, FieldReplace, HistoryCaptureMode, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
 
@@ -128,10 +128,10 @@ class JaxleySession(BufferedSession, ABC):
         return {}
 
     def display_field_id(self) -> str:
-        return JaxleyDocumentBuilder.DISPLAY_FIELD_ID
+        return JaxleySceneBuilder.DISPLAY_FIELD_ID
 
     def history_field_id(self) -> str:
-        return JaxleyDocumentBuilder.HISTORY_FIELD_ID
+        return JaxleySceneBuilder.HISTORY_FIELD_ID
 
     def display_unit(self) -> str | None:
         return "mV"
@@ -184,11 +184,11 @@ class JaxleySession(BufferedSession, ABC):
         del entity_id, context
         return True
 
-    def build_document(self, *, geometry, display_values: np.ndarray, time_value: float) -> Document:
+    def build_scene(self, *, geometry, display_values: np.ndarray, time_value: float) -> Scene:
         controls = self.control_specs()
         actions = self.action_specs()
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
-        document = JaxleyDocumentBuilder.build_document(
+        scene = JaxleySceneBuilder.build_scene(
             geometry=geometry,
             display_values=display_values,
             trace_values=trace_values,
@@ -212,8 +212,8 @@ class JaxleySession(BufferedSession, ABC):
         )
         trace_updates = self.trace_view_updates()
         if trace_updates:
-            document.replace_view("trace", trace_updates)
-        return document
+            scene.replace_view("trace", trace_updates)
+        return scene
 
     def initialize(self):
         import jax  # noqa: F401
@@ -236,7 +236,7 @@ class JaxleySession(BufferedSession, ABC):
         self._rec_states = tuple(str(value) for value in self.network.recordings.state.to_numpy().tolist())
         self._time = 0.0
         self._step_index = 0
-        self.geometry = JaxleyDocumentBuilder.build_morphology_geometry(
+        self.geometry = JaxleySceneBuilder.build_morphology_geometry(
             self.network.nodes,
             xyzr=self.network.xyzr,
             cell_names=self.cell_names(self.cells),
@@ -244,18 +244,18 @@ class JaxleySession(BufferedSession, ABC):
         display_values = self._read_display_values()
         self._entity_index_by_id = {entity_id: index for index, entity_id in enumerate(self.geometry.entity_ids)}
         self._initialize_trace_history(self._time, display_values)
-        document = self.build_document(
+        scene = self.build_scene(
             geometry=self.geometry,
             display_values=display_values,
             time_value=self._time,
         )
         self._field_max_samples[self.history_field_id()] = self._resolved_field_max_samples(
-            document,
+            scene,
             field_id=self.history_field_id(),
             append_dim="time",
         )
         self._ui_state = {}
-        return document
+        return scene
 
     def _read_display_values(self) -> np.ndarray:
         if self._rec_indices is None:
@@ -370,11 +370,11 @@ class JaxleySession(BufferedSession, ABC):
             raise ValueError("JaxleySession display_dt must be positive or None")
         return max(1, int(math.ceil(float(self.display_dt) / float(self.dt))))
 
-    def _resolved_field_max_samples(self, document: Document, *, field_id: str, append_dim: str) -> int:
+    def _resolved_field_max_samples(self, scene: Scene, *, field_id: str, append_dim: str) -> int:
         required = int(self.max_samples)
         if self.dt <= 0:
             return required
-        for view in document.views.values():
+        for view in scene.views.values():
             if not isinstance(view, LinePlotViewSpec):
                 continue
             if view.field_id != field_id:

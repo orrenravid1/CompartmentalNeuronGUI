@@ -2,8 +2,8 @@ from compneurovis.session.base import BufferedSession, Session, SessionSource, r
 from compneurovis.session.history import HistoryCaptureMode
 from compneurovis.session.pipe import PipeTransport, configure_multiprocessing
 from compneurovis.session.protocol import (
-    DocumentPatch,
-    DocumentReady,
+    ScenePatch,
+    SceneReady,
     EntityClicked,
     Error,
     FieldAppend,
@@ -20,8 +20,8 @@ from compneurovis.session.protocol import (
 
 __all__ = [
     "BufferedSession",
-    "DocumentPatch",
-    "DocumentReady",
+    "ScenePatch",
+    "SceneReady",
     "EntityClicked",
     "Error",
     "FieldAppend",

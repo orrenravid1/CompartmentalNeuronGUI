@@ -20,7 +20,7 @@ import numpy as np
 
 from compneurovis import ActionSpec, ControlSpec, SurfaceViewSpec, build_surface_app, grid_field, run_app
 from compneurovis.core import AppSpec
-from compneurovis.session import BufferedSession, DocumentReady, FieldReplace, InvokeAction, Reset, SetControl
+from compneurovis.session import BufferedSession, SceneReady, FieldReplace, InvokeAction, Reset, SetControl
 
 x = np.linspace(-4.0, 4.0, 120, dtype=np.float32)
 y = np.linspace(-4.0, 4.0, 120, dtype=np.float32)
@@ -49,17 +49,17 @@ surface_view = SurfaceViewSpec(
     text_color="black",
 )
 
-document = build_surface_app(
+scene = build_surface_app(
     field=field,
     geometry=geometry,
     surface_view=surface_view,
     # send_to_session=True so the session receives SetControl when the slider moves.
     controls={"speed": ControlSpec("speed", "float", "Speed", 1.0, min=0.1, max=4.0, steps=78, send_to_session=True)},
     title="animated sinc wave — live",
-).document
+).scene
 
-document.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=["Space"])
-document.layout.action_ids = ("pause",)
+scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=["Space"])
+scene.layout.action_ids = ("pause",)
 
 
 class LiveAnimationSession(BufferedSession):
@@ -70,7 +70,7 @@ class LiveAnimationSession(BufferedSession):
         self._playing = True
 
     def initialize(self):
-        return document
+        return scene
 
     def advance(self):
         if not self._playing:

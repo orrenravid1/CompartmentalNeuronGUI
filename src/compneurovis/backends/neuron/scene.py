@@ -4,10 +4,10 @@ import time
 
 import numpy as np
 
-from compneurovis.core import Document, Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, StateBinding
+from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding
 
 
-class NeuronDocumentBuilder:
+class NeuronSceneBuilder:
     DISPLAY_FIELD_ID = "segment_display"
     HISTORY_FIELD_ID = "segment_history"
     TRACE_FIELD_ID = HISTORY_FIELD_ID
@@ -103,7 +103,7 @@ class NeuronDocumentBuilder:
         )
 
     @staticmethod
-    def build_document(
+    def build_scene(
         *,
         geometry: MorphologyGeometry,
         display_values: np.ndarray,
@@ -125,9 +125,9 @@ class NeuronDocumentBuilder:
         title: str = "CompNeuroVis",
         control_ids: tuple[str, ...] | None = None,
         action_ids: tuple[str, ...] | None = None,
-    ) -> Document:
-        display_field_id = display_field_id or NeuronDocumentBuilder.DISPLAY_FIELD_ID
-        history_field_id = history_field_id or NeuronDocumentBuilder.HISTORY_FIELD_ID
+    ) -> Scene:
+        display_field_id = display_field_id or NeuronSceneBuilder.DISPLAY_FIELD_ID
+        history_field_id = history_field_id or NeuronSceneBuilder.HISTORY_FIELD_ID
         history_unit = display_unit if history_unit is None else history_unit
         trace_y_unit = (history_unit or "") if trace_y_unit is None else trace_y_unit
         display_field = Field(
@@ -174,7 +174,7 @@ class NeuronDocumentBuilder:
                 pen="#1f3c88",
             ),
         }
-        return Document(
+        return Scene(
             fields={display_field.id: display_field, trace_field.id: trace_field},
             geometries={geometry.id: geometry},
             views=views,

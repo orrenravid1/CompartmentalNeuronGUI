@@ -35,7 +35,7 @@ class MyCellSession(NeuronSession):
 `NeuronSession` handles:
 - calling `build_sections()` and `setup_model()` at initialization
 - building the `MorphologyGeometry` from your sections' 3-D coordinates
-- constructing the `Document` and emitting `DocumentReady`
+- constructing the `Scene` and emitting `SceneReady`
 - stepping the simulation with `h.fadvance()` inside each `advance()` call
 - emitting incremental display/history updates with `FieldAppend` rather than resending full trace history every frame
 - batching multiple internal simulation steps per frontend update via `display_dt`
@@ -92,13 +92,13 @@ By default, `NeuronSession` shows a `MorphologyViewSpec` as the main 3-D view an
 
 The current sampled quantity in `NeuronSession` is still voltage by default, but the field roles are no longer voltage-named. `history_capture_mode=HistoryCaptureMode.ON_DEMAND` is the default. It keeps current display values live while retaining trace history only for segments the user actually asks to inspect. Use `HistoryCaptureMode.FULL` when the app needs full all-entity history for retrospective selection or playback.
 
-To customize layout or views, override `build_document()` from `NeuronDocumentBuilder`:
+To customize layout or views, override `build_scene()` from `NeuronSceneBuilder`:
 
 ```python
 class MyCellSession(NeuronSession):
     ...
-    def build_document(self, *, geometry, display_values, time_value):
-        document = super().build_document(
+    def build_scene(self, *, geometry, display_values, time_value):
+        document = super().build_scene(
             geometry=geometry,
             display_values=display_values,
             time_value=time_value,
@@ -107,7 +107,7 @@ class MyCellSession(NeuronSession):
         return document
 ```
 
-See `src/compneurovis/backends/neuron/document.py` for the default document construction logic.
+See `src/compneurovis/backends/neuron/scene.py` for the default document construction logic.
 
 ## Loading from SWC
 

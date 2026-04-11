@@ -24,12 +24,17 @@ Run this sequence:
    - `pytest`
    - `python -m compileall src examples tests`
    - `python scripts/generate_indexes.py --check`
+   - for human contributors without agent support, `python scripts/pr_readiness.py check` is the one-command local quality gate
+11. When the implementation commit is complete and the working tree is clean, run `python scripts/pr_readiness.py seal`.
+12. Human contributors should usually prefer `python scripts/pr_readiness.py seal --commit`, which creates the standalone final attestation commit automatically.
+13. If any code, docs, examples, or skill files change after the seal, regenerate the attestation and create a new final seal commit.
 
 Finish with a short readiness report that states:
 
 - what changed
 - which maintenance skills were applied
 - what verification ran
+- which commit was sealed by `python scripts/pr_readiness.py seal`
 - any remaining risk, skipped coverage, or manual GUI checks still needed
 
 Do not mark a change ready if tests or generated indexes are knowingly stale.

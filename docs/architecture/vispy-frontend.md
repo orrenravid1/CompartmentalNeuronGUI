@@ -23,7 +23,7 @@ Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, 
 
 If `view_3d_hosts` is omitted, the layout derives one independent host per `view_3d_id`. If the resolved 3D host list is empty, the 3D splitter is hidden and the right panel fills the window.
 
-Before the first `Document` arrives, the frontend stays in an explicit loading state rather than briefly showing an empty fallback plot layout. That avoids a visible startup jump for worker-backed live apps.
+Before the first `Scene` arrives, the frontend stays in an explicit loading state rather than briefly showing an empty fallback plot layout. That avoids a visible startup jump for worker-backed live apps.
 
 ## Refresh Planning
 
@@ -71,9 +71,9 @@ Three trigger sources:
 
 - **`FieldReplace` / `FieldAppend`** -> `targets_for_field_replace(field_id)`: marks whichever panels reference that field
 - **State change** (control moved, entity clicked) -> `targets_for_state_change(state_key)`: marks panels with a `StateBinding` on that key
-- **`DocumentPatch`** -> `targets_for_view_patch(view_id, changed_props)`: marks panels based on which props changed
+- **`ScenePatch`** -> `targets_for_view_patch(view_id, changed_props)`: marks panels based on which props changed
 
-The full refresh on `DocumentReady` marks every target that the current document's layout requires.
+The full refresh on `SceneReady` marks every target that the current document's layout requires.
 
 ## State and StateBinding
 
@@ -111,7 +111,7 @@ def on_action(self, action_id: str, payload: dict, ctx: FrontendInteractionConte
 
 Return `True` to consume the event. `FrontendInteractionContext` provides:
 
-- `ctx.document` - current `Document`
+- `ctx.scene` - current `Scene`
 - `ctx.selected_entity_id` - currently selected entity
 - `ctx.entity_info(entity_id)` - section name, xloc, label
 - `ctx.set_state(key, value)` - set frontend state and trigger refresh

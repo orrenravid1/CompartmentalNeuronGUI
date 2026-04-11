@@ -17,24 +17,24 @@ The important mental model is:
 
 Every session fits the same shape:
 
-1. `initialize()` creates or returns the first `Document`
+1. `initialize()` creates or returns the first `Scene`
 2. `advance()` moves the backend forward by one backend tick
 3. `handle(command)` reacts to semantic user input
 4. `read_updates()` drains queued updates for the frontend
 
 For most backends, subclass `BufferedSession`. It gives you `emit(update)` and handles the update queue.
 
-## Optional Bootstrap Document
+## Optional Bootstrap Scene
 
 Some apps know their initial layout, controls, and placeholder field structure before the worker starts. In that case, the session class can provide:
 
 ```python
 @classmethod
-def bootstrap_document(cls) -> Document | None:
+def startup_scene(cls) -> Scene | None:
     return ...
 ```
 
-When present, `run_app(...)` uses that document immediately so the frontend opens straight into the intended view instead of waiting on the first worker-side `DocumentReady`.
+When present, `run_app(...)` uses that document immediately so the frontend opens straight into the intended view instead of waiting on the first worker-side `SceneReady`.
 
 This hook is for static startup structure only. Live data still comes from `initialize()`, `advance()`, and normal typed updates.
 
@@ -70,13 +70,13 @@ The frontend should learn exactly what changed, not infer it from one giant payl
 
 The main update types are:
 
-- `DocumentReady`
+- `SceneReady`
   - the initial document is ready
 - `FieldReplace`
   - replace a field wholesale
 - `FieldAppend`
   - append new samples along one dimension
-- `DocumentPatch`
+- `ScenePatch`
   - patch view, control, or metadata properties
 - `StatePatch`
   - synchronize semantic frontend state keys
@@ -125,7 +125,7 @@ Use this rule when writing or reviewing a session:
 - if the backend is generating new data over time, start from a live session
 - if the data already exists as frames, start from `ReplaySession`
 - if the change extends one axis, prefer `FieldAppend`
-- if only view/control metadata changed, prefer `DocumentPatch`
+- if only view/control metadata changed, prefer `ScenePatch`
 - if the whole field truly changed, use `FieldReplace`
 
 If a change cannot be described clearly in those terms, the model probably needs clarification before more code is added.

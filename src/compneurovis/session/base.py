@@ -4,17 +4,17 @@ from abc import ABC, abstractmethod
 from collections import deque
 from typing import Any, Callable, Deque, TypeAlias
 
-from compneurovis.core.document import Document
+from compneurovis.core.scene import Scene
 from compneurovis.session.protocol import SessionCommand, SessionUpdate
 
 
 class Session(ABC):
     @classmethod
-    def bootstrap_document(cls) -> Document | None:
+    def startup_scene(cls) -> Scene | None:
         return None
 
     @abstractmethod
-    def initialize(self) -> Document | None:
+    def initialize(self) -> Scene | None:
         pass
 
     @abstractmethod
@@ -56,26 +56,26 @@ SessionFactory: TypeAlias = Callable[[], Session]
 SessionSource: TypeAlias = type[Session] | SessionFactory
 
 
-def resolve_bootstrap_document_source(source: SessionSource | None) -> Document | None:
+def resolve_startup_scene_source(source: SessionSource | None) -> Scene | None:
     if source is None:
         return None
     if isinstance(source, type):
         if not issubclass(source, Session):
             raise TypeError(f"Expected Session subclass, got {source!r}")
-        document = source.bootstrap_document()
+        scene = source.startup_scene()
     else:
         if isinstance(source, Session):
             raise TypeError(
                 "Eager session instances are not supported for worker-backed apps. "
                 "Pass a Session subclass or a top-level zero-argument factory instead."
             )
-        bootstrap = getattr(source, "bootstrap_document", None)
+        bootstrap = getattr(source, "startup_scene", None)
         if not callable(bootstrap):
             return None
-        document = bootstrap()
-    if document is not None and not isinstance(document, Document):
-        raise TypeError(f"Bootstrap document source returned {type(document)!r}, expected Document | None")
-    return document
+        scene = bootstrap()
+    if scene is not None and not isinstance(scene, Scene):
+        raise TypeError(f"Startup scene source returned {type(scene)!r}, expected Scene | None")
+    return scene
 
 
 def resolve_session_source(source: SessionSource) -> Session:

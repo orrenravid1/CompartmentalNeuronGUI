@@ -14,14 +14,14 @@ The key public pieces are:
 
 You normally use the builder. `ReplaySession` is the session implementation underneath it.
 
-## 1. Build the Document
+## 1. Build the Scene
 
-Replay still needs a normal `Document`. The difference is that the data frames already exist.
+Replay still needs a normal `Scene`. The difference is that the data frames already exist.
 
 ```python
 import numpy as np
 
-from compneurovis import Document, Field, LayoutSpec, LinePlotViewSpec
+from compneurovis import Scene, Field, LayoutSpec, LinePlotViewSpec
 
 field = Field(
     id="trace",
@@ -30,7 +30,7 @@ field = Field(
     coords={"time": np.array([0.0], dtype=np.float32)},
 )
 
-document = Document(
+document = Scene(
     fields={field.id: field},
     geometries={},
     views={
@@ -86,7 +86,7 @@ That is enough to get a replaying line plot.
 
 Its job is simple:
 
-- return the provided `Document` from `initialize()`
+- return the provided `Scene` from `initialize()`
 - cycle through the frame list in `advance()`
 - emit `FieldReplace` for the target field
 

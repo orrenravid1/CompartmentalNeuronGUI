@@ -10,16 +10,16 @@ from multiprocessing import Pipe, Process
 from PyQt6 import QtCore
 
 from compneurovis.session.base import Session, SessionSource, resolve_session_source
-from compneurovis.session.protocol import DocumentReady, Error, SessionCommand, SessionUpdate, StopSession
+from compneurovis.session.protocol import SceneReady, Error, SessionCommand, SessionUpdate, StopSession
 
 
 def _session_process(session_source: SessionSource, update_pipe, command_pipe) -> None:
     session: Session | None = None
     try:
         session = resolve_session_source(session_source)
-        document = session.initialize()
-        if document is not None:
-            update_pipe.send(DocumentReady(document))
+        scene = session.initialize()
+        if scene is not None:
+            update_pipe.send(SceneReady(scene))
 
         while True:
             while command_pipe.poll():
@@ -51,9 +51,9 @@ def _session_process_queue(session_source: SessionSource, update_queue, command_
     session: Session | None = None
     try:
         session = resolve_session_source(session_source)
-        document = session.initialize()
-        if document is not None:
-            update_queue.put(DocumentReady(document))
+        scene = session.initialize()
+        if scene is not None:
+            update_queue.put(SceneReady(scene))
 
         while True:
             if stop_event is not None and stop_event.is_set():

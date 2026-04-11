@@ -7,7 +7,7 @@ summary: Live NEURON session and morphology document-building helpers.
 
 This package contains:
 
-- `NeuronDocumentBuilder`
+- `NeuronSceneBuilder`
 - `NeuronSession`
 
 By default, the NEURON backend splits latest live display state from retained trace history:

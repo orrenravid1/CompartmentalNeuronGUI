@@ -9,7 +9,7 @@ summary: Generated list of names exported by compneurovis.__init__.
 - `AttributeRef`
 - `AppSpec`
 - `ControlSpec`
-- `Document`
+- `Scene`
 - `Field`
 - `Geometry`
 - `GridGeometry`
@@ -29,9 +29,9 @@ summary: Generated list of names exported by compneurovis.__init__.
 - `build_surface_app`
 - `grid_field`
 - `run_app`
-- `NeuronDocumentBuilder`
+- `NeuronSceneBuilder`
 - `NeuronSession`
 - `build_neuron_app`
-- `JaxleyDocumentBuilder`
+- `JaxleySceneBuilder`
 - `JaxleySession`
 - `build_jaxley_app`

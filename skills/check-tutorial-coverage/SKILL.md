@@ -21,7 +21,7 @@ A mention only in architecture docs (`docs/architecture/`) or concept docs (`doc
 - Session classes: `*Session`
 - View spec types: `*ViewSpec`
 - Geometry types: `*Geometry`
-- Core constructors used directly: `Field`, `Document`, `ControlSpec`, `ActionSpec`, `StateBinding`, `LayoutSpec`, `grid_field`, `run_app`
+- Core constructors used directly: `Field`, `Scene`, `ControlSpec`, `ActionSpec`, `StateBinding`, `LayoutSpec`, `grid_field`, `run_app`
 
 ## Steps
 

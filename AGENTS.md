@@ -22,7 +22,7 @@ Primary exports live in `src/compneurovis/__init__.py`.
 
 Key names:
 
-- Core types: `Field`, `Document`, `LayoutSpec`, `MorphologyGeometry`, `GridGeometry`
+- Core types: `Field`, `Scene`, `LayoutSpec`, `MorphologyGeometry`, `GridGeometry`
 - View types: `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
 - Backend/session: `NeuronSession`, `ReplaySession`
 - Backend/session: `NeuronSession`, `JaxleySession`, `ReplaySession`
@@ -45,6 +45,11 @@ Key names:
 - Check architecture invariants: `python scripts/check_architecture_invariants.py`
 - Regenerate reference indexes: `python scripts/generate_indexes.py`
 - Check generated indexes: `python scripts/generate_indexes.py --check`
+- Run the local PR-readiness quality gate: `python scripts/pr_readiness.py check`
+- Seal PR readiness: `python scripts/pr_readiness.py seal`
+- Seal PR readiness and create the final attestation commit automatically: `python scripts/pr_readiness.py seal --commit`
+- Verify a sealed PR tip: `python scripts/pr_readiness.py verify`
+- Verify a sealed PR tip and rerun the recorded checks: `python scripts/pr_readiness.py verify --rerun-commands`
 - Run a live example: `python examples/neuron/visualizer_example.py`
 - Run a static example: `python examples/static_surface_visualizer.py`
 
@@ -54,6 +59,10 @@ Key names:
 - Generated reference files in `docs/reference/` do not count as authored coverage.
 - Required concept docs under `docs/concepts/` are a hard gate, not optional cleanup.
 - Do not mark a change PR-ready while docs coverage or concept coverage is knowingly incomplete.
+- Human contributors should prefer `python scripts/pr_readiness.py check` during iteration and `python scripts/pr_readiness.py seal --commit` once the final implementation commit is in place.
+- A PR-ready branch must end with a standalone attestation commit produced by `python scripts/pr_readiness.py seal`.
+- That final commit must add exactly one attestation under `.compneurovis/pr-readiness/` and must target `HEAD^` via the required subject and `PR-Readiness-*` trailers.
+- If any code, docs, examples, or skill content changes after sealing, regenerate the attestation and create a new final seal commit.
 
 ## Skill Catalog
 
@@ -87,6 +96,7 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 
 - Architecture overview: `docs/architecture/core-model.md`
 - Refactor tracker: `docs/architecture/refactor-tracker.md`
+- PR readiness attestation: `docs/architecture/pr-readiness-attestation.md`
 - Session protocol: `docs/architecture/session-protocol.md`
 - Architecture invariants: `docs/architecture/invariants.json`
 - VisPy frontend: `docs/architecture/vispy-frontend.md`
@@ -108,7 +118,7 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 - Treat `Field` as the core data primitive; do not introduce new foundational “timeseries” or “surface” types when a labeled field plus a view is sufficient.
 - Frontends own UI state such as selection and slice position. Backends receive semantic commands, not raw GUI events.
 - `FieldReplace` replaces field values and may update coordinates; schema changes should rebuild or patch the document explicitly.
-- `DocumentPatch` is intended for metadata/view/control changes, not arbitrary structural rewrites.
+- `ScenePatch` is intended for metadata/view/control changes, not arbitrary structural rewrites.
 - Architectural vocabulary changes should be encoded in `docs/architecture/invariants.json` and enforced with `python scripts/check_architecture_invariants.py`.
 - Keep docs and skills concise and cross-reference canonical docs instead of duplicating large explanations.
 - Authored docs coverage is a correctness requirement for this repo, not just polish. Fresh contributors and fresh agents must be able to recover the intended model from repo state.

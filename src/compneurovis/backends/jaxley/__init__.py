@@ -1,4 +1,4 @@
-from compneurovis.backends.jaxley.document import JaxleyDocumentBuilder
+from compneurovis.backends.jaxley.scene import JaxleySceneBuilder
 from compneurovis.backends.jaxley.session import JaxleySession
 
-__all__ = ["JaxleyDocumentBuilder", "JaxleySession"]
+__all__ = ["JaxleySceneBuilder", "JaxleySession"]

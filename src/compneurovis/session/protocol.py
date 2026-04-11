@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from compneurovis.core.document import Document
+from compneurovis.core.scene import Scene
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,8 +51,8 @@ class SessionUpdate:
 
 
 @dataclass(frozen=True, slots=True)
-class DocumentReady(SessionUpdate):
-    document: Document
+class SceneReady(SessionUpdate):
+    scene: Scene
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +74,7 @@ class FieldAppend(SessionUpdate):
 
 
 @dataclass(frozen=True, slots=True)
-class DocumentPatch(SessionUpdate):
+class ScenePatch(SessionUpdate):
     view_updates: dict[str, dict[str, Any]] = field(default_factory=dict)
     control_updates: dict[str, dict[str, Any]] = field(default_factory=dict)
     metadata_updates: dict[str, Any] = field(default_factory=dict)

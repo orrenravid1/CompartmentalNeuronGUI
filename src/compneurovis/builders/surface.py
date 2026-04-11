@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from compneurovis.core import AppSpec, ControlSpec, Document, Field, GridGeometry, LayoutSpec, LinePlotViewSpec, SurfaceViewSpec
+from compneurovis.core import AppSpec, ControlSpec, Field, GridGeometry, LayoutSpec, LinePlotViewSpec, Scene, SurfaceViewSpec
 
 
 def grid_field(
@@ -59,11 +59,11 @@ def build_surface_app(
         layout.line_plot_view_id = line_view.id
     controls = {} if controls is None else dict(controls)
     layout.control_ids = tuple(controls.keys())
-    document = Document(
+    scene = Scene(
         fields={field.id: field},
         geometries={} if geometry is None else {geometry.id: geometry},
         views=views,
         controls=controls,
         layout=layout,
     )
-    return AppSpec(document=document, title=title)
+    return AppSpec(scene=scene, title=title)

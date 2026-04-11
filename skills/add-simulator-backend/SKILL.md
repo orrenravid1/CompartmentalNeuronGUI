@@ -1,6 +1,6 @@
 ---
 name: add-simulator-backend
-description: Add or update a simulator backend/session for CompNeuroVis. Use when creating a new live or replay backend under compneurovis.backends, wiring it to the Session protocol, or documenting how a backend should emit DocumentReady, FieldReplace, and DocumentPatch updates.
+description: Add or update a simulator backend/session for CompNeuroVis. Use when creating a new live or replay backend under compneurovis.backends, wiring it to the Session protocol, or documenting how a backend should emit SceneReady, FieldReplace, and ScenePatch updates.
 ---
 
 # Add a Simulator Backend
@@ -11,7 +11,7 @@ Reference implementation: `src/compneurovis/backends/neuron/session.py`.
 
 1. Create a package under `src/compneurovis/backends/<name>`.
 2. Subclass `Session` or `BufferedSession`; emit only typed protocol updates — no direct frontend calls.
-3. Emit `DocumentReady` with a fully-built `Document` on initialization.
+3. Emit `SceneReady` with a fully-built `Scene` on initialization.
 4. Express all measured or simulated values as `Field` objects, delivered via `FieldReplace` or `FieldAppend` as appropriate.
 5. Accept `SetControl` and `InvokeAction` as the only semantic inputs; keep GUI state out of the backend.
 6. Update the backend package `README.md`.

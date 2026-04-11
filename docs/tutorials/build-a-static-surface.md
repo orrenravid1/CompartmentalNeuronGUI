@@ -87,7 +87,7 @@ app = build_surface_app(
 run_app(app)
 ```
 
-`build_surface_app()` builds the `Document` and `AppSpec` for you. There is no `Session` — the field values are static.
+`build_surface_app()` builds the `Scene` and `AppSpec` for you. There is no `Session` — the field values are static.
 
 ## Adding a Line Plot Slice
 

@@ -39,17 +39,17 @@ def setup_model(self, network, cells):
 
 If you need a custom network instead of the default `jx.Network(cells)`, override `build_network()`.
 
-## 3. Use the Default Geometry and Document Builders
+## 3. Use the Default Geometry and Scene Builders
 
 `JaxleySession` handles:
 
 - building the live `jx.Network`
 - recording a default displayed quantity
 - converting Jaxley compartment geometry into `MorphologyGeometry`
-- constructing the default `Document`
+- constructing the default `Scene`
 - emitting live field updates
 
-The geometry conversion step is handled by `JaxleyDocumentBuilder`. It turns Jaxley node and `xyzr` data into the frontend-facing morphology model.
+The geometry conversion step is handled by `JaxleySceneBuilder`. It turns Jaxley node and `xyzr` data into the frontend-facing morphology model.
 
 That means user code usually does not need to construct geometry manually. The current sampled quantity is still voltage by default, but the default field roles are generic display/history roles rather than voltage-named fields.
 
@@ -88,13 +88,13 @@ run_app(app)
 
 Pass the session class, not an already-created session instance. That keeps construction lazy and consistent with worker-backed transport behavior.
 
-## 6. Customize the Default Document (optional)
+## 6. Customize the Default Scene (optional)
 
-If you want to keep the default morphology/trace setup but tweak it, override `build_document()`:
+If you want to keep the default morphology/trace setup but tweak it, override `build_scene()`:
 
 ```python
-def build_document(self, *, geometry, display_values, time_value):
-    document = super().build_document(
+def build_scene(self, *, geometry, display_values, time_value):
+    document = super().build_scene(
         geometry=geometry,
         display_values=display_values,
         time_value=time_value,

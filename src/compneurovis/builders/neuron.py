@@ -16,4 +16,4 @@ def build_neuron_app(
             "Do not pass an already-created session instance."
         )
     inferred_title = title
-    return AppSpec(document=None, session=session, interaction_target=interaction_target, title=inferred_title)
+    return AppSpec(scene=None, session=session, interaction_target=interaction_target, title=inferred_title)

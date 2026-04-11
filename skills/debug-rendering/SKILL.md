@@ -11,7 +11,7 @@ Reference: `src/compneurovis/frontends/vispy/renderers.py` and `src/compneurovis
 
 Debug in this order:
 
-1. **Confirm the Document is wired correctly.** Check that the `ViewSpec` `field_id` and `geometry_id` actually exist in `document.fields` and `document.geometries`. A missing key silently skips rendering.
+1. **Confirm the Scene is wired correctly.** Check that the `ViewSpec` `field_id` and `geometry_id` actually exist in `document.fields` and `document.geometries`. A missing key silently skips rendering.
 
 2. **Confirm the correct `RefreshTarget` is being triggered.** Add a temporary print in `_apply_refresh_targets()` to verify which targets fire on the expected event. If no target fires, the issue is in `RefreshPlanner` — check `targets_for_field_replace()` or `targets_for_state_change()`.
 
