@@ -22,6 +22,12 @@ These axes are meant to stay orthogonal. A NEURON-backed app is not automaticall
 pip install -e .
 ```
 
+If you plan to contribute or run the PR-readiness checks locally, also install `pytest`:
+
+```bash
+pip install -e . pytest
+```
+
 Optional simulator backends are exposed as Poetry extras:
 
 ```bash
@@ -81,10 +87,11 @@ python scripts/generate_indexes.py
 
 Human contributors can use the same PR-readiness checks without an agent:
 
-1. Run `python scripts/pr_readiness.py check` while iterating locally. This runs the repo quality gate, including `pytest`, compile checks, architecture invariants, and generated index validation.
-2. Commit your implementation changes normally.
-3. When the branch is ready, run `python scripts/pr_readiness.py seal --commit`.
+1. Install contributor dependencies with `pip install -e . pytest`.
+2. Run `python scripts/pr_readiness.py check` while iterating locally. This runs the repo quality gate, including `pytest`, compile checks, architecture invariants, and generated index validation.
+3. Commit your implementation changes normally.
+4. As the last commit before you push or open the PR, run `python scripts/pr_readiness.py seal --commit`.
 
-`seal --commit` reruns the readiness checks, writes a commit-keyed receipt under `.compneurovis/pr-readiness/`, and creates the required final attestation commit automatically.
+`seal --commit` does not replace your normal code or docs commits. It reruns the readiness checks, writes a commit-keyed receipt under `.compneurovis/pr-readiness/`, and adds one final attestation commit automatically.
 
 If you change code, docs, tests, examples, or skills after sealing, run `python scripts/pr_readiness.py seal --commit` again from the new final implementation commit.
