@@ -94,13 +94,13 @@ If you want to keep the default morphology/trace setup but tweak it, override `b
 
 ```python
 def build_scene(self, *, geometry, display_values, time_value):
-    document = super().build_scene(
+    scene = super().build_scene(
         geometry=geometry,
         display_values=display_values,
         time_value=time_value,
     )
-    document.replace_view("trace", {"rolling_window": 40.0})
-    return document
+    scene.replace_view("trace", {"rolling_window": 40.0})
+    return scene
 ```
 
 This is usually the right layer for adjusting the default views without redoing the whole backend integration.

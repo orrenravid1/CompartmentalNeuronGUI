@@ -12,6 +12,20 @@ ROOT_MARKDOWN_FILES = (
     ROOT / "README.md",
     ROOT / "AGENTS.md",
 )
+FORBIDDEN_BARE_MKDOCS_COMMAND_PATTERNS = (
+    re.compile(r"(?<!python -m )mkdocs serve\b"),
+    re.compile(r"(?<!python -m )mkdocs build --strict\b"),
+)
+README_PUBLIC_API_SECTION_PATTERN = re.compile(r"^## Public API\n(?P<body>.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL)
+README_PUBLIC_API_REQUIRED_NAMES = (
+    "NeuronSession",
+    "JaxleySession",
+    "build_neuron_app",
+    "build_jaxley_app",
+    "build_surface_app",
+    "build_replay_app",
+    "run_app",
+)
 MARKDOWN_LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]+\]\((?P<target>[^)]+)\)")
 FENCED_CODE_BLOCK_PATTERN = re.compile(r"```.*?```", re.DOTALL)
 INLINE_CODE_PATTERN = re.compile(r"`([^`\n]+)`")
@@ -139,3 +153,25 @@ def test_markdown_paths_resolve():
                 if error:
                     unresolved.append(error)
     assert not unresolved, "unresolved markdown paths:\n" + "\n".join(sorted(set(unresolved)))
+
+
+def test_readme_public_api_mentions_backend_and_builder_entrypoints():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    match = README_PUBLIC_API_SECTION_PATTERN.search(text)
+    assert match is not None, "README.md is missing a Public API section"
+    public_api_section = match.group("body")
+    missing = [name for name in README_PUBLIC_API_REQUIRED_NAMES if name not in public_api_section]
+    assert not missing, "README.md Public API section is missing: " + ", ".join(missing)
+
+
+def test_docs_use_python_module_invocation_for_mkdocs_commands():
+    violations: list[str] = []
+    for path in markdown_files():
+        text = path.read_text(encoding="utf-8")
+        for pattern in FORBIDDEN_BARE_MKDOCS_COMMAND_PATTERNS:
+            for match in pattern.finditer(text):
+                line = text.count("\n", 0, match.start()) + 1
+                violations.append(
+                    f"{path.relative_to(ROOT).as_posix()}:{line}: use 'python -m {match.group(0)}'"
+                )
+    assert not violations, "bare mkdocs commands found:\n" + "\n".join(violations)

@@ -16,6 +16,15 @@ Use this workflow when a branch is ready for review:
 
 `seal --commit` is the preferred human path. It reruns the canonical checks, writes the commit-keyed JSON receipt under `.compneurovis/pr-readiness/`, and creates the standalone final attestation commit automatically.
 
+The canonical checks currently include:
+
+- architecture invariants
+- packaging metadata validation for `pyproject.toml` and `poetry.lock`
+- `pytest`
+- compile checks
+- generated reference index checks
+- MkDocs strict-site validation
+
 The attestation records:
 
 - the sealed parent commit hash

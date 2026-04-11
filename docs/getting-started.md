@@ -110,13 +110,13 @@ Use this if your data already exists as frames and you want to play them back th
 Serve the docs site locally:
 
 ```bash
-mkdocs serve
+python -m mkdocs serve
 ```
 
 Build the docs site in strict mode:
 
 ```bash
-mkdocs build --strict
+python -m mkdocs build --strict
 ```
 
 ## Contributor PR Flow

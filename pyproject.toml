@@ -32,8 +32,8 @@ pymoose         = { version = "^4.1", optional = true }
 neuron  = ["neuron"]
 jaxley  = ["jaxley"]
 arbor   = ["arbor"]
-moose   = ["moose"]
-all     = ["neuron", "jaxley", "arbor", "moose"]
+moose   = ["pymoose"]
+all     = ["neuron", "jaxley", "arbor", "pymoose"]
 
 [tool.poetry.group.dev]
 optional = false

@@ -6,11 +6,11 @@ CompNeuroVis is a neuroscience visualization toolkit with a core data model buil
 
 ## Stable Package Map
 
-- `src/compneurovis/core`: data primitives, views, controls, and app/document types
+- `src/compneurovis/core`: data primitives, views, controls, and app/scene types
 - `src/compneurovis/session`: session base classes, protocol types, and pipe transport
 - `src/compneurovis/frontends/vispy`: current frontend window, panels, and renderers
-- `src/compneurovis/backends/neuron`: live NEURON session and morphology document builder
-- `src/compneurovis/backends/jaxley`: live Jaxley session and morphology document builder
+- `src/compneurovis/backends/neuron`: live NEURON session and morphology scene builder
+- `src/compneurovis/backends/jaxley`: live Jaxley session and morphology scene builder
 - `src/compneurovis/builders`: high-level app builders for neuron, surface, and replay workflows
 - `src/compneurovis/jaxleyutils`: Jaxley-specific SWC, cache, and geometry helpers
 
@@ -33,7 +33,7 @@ Key names:
 
 - Add new data-bearing features by introducing new `Field` instances and `ViewSpec` consumers.
 - Add new live backends by subclassing `Session` or `BufferedSession`.
-- Add new transports under `src/compneurovis/session` without changing the core document model.
+- Add new transports under `src/compneurovis/session` without changing the core scene model.
 - Add new frontend renderers under `src/compneurovis/frontends`.
 
 ## Build, Test, and Run
@@ -43,8 +43,9 @@ Key names:
 - Run fast tests: `pytest`
 - Run Jaxley backend tests: `pytest --run-jaxley tests/test_jaxley_backend.py`
 - Check architecture invariants: `python scripts/check_architecture_invariants.py`
-- Serve docs locally: `mkdocs serve`
-- Build docs site: `mkdocs build --strict`
+- Check packaging metadata: `python scripts/check_packaging_metadata.py`
+- Serve docs locally: `python -m mkdocs serve`
+- Build docs site: `python -m mkdocs build --strict`
 - Regenerate reference indexes: `python scripts/generate_indexes.py`
 - Check generated indexes: `python scripts/generate_indexes.py --check`
 - Run the local PR-readiness quality gate: `python scripts/pr_readiness.py check`
@@ -60,7 +61,8 @@ Key names:
 - Every public export in `src/compneurovis/__init__.py` must appear in at least one authored doc under `docs/`.
 - Generated reference files in `docs/reference/` do not count as authored coverage.
 - Required concept docs under `docs/concepts/` are a hard gate, not optional cleanup.
-- The MkDocs site must build with `mkdocs build --strict` before a branch is considered doc-complete.
+- The MkDocs site must build with `python -m mkdocs build --strict` before a branch is considered doc-complete.
+- `pyproject.toml` and `poetry.lock` must stay in sync, and every published Poetry extra must resolve to a declared optional dependency.
 - Do not mark a change PR-ready while docs coverage or concept coverage is knowingly incomplete.
 - Human contributors should prefer `python scripts/pr_readiness.py check` during iteration and `python scripts/pr_readiness.py seal --commit` once the final implementation commit is in place.
 - A PR-ready branch must end with a standalone attestation commit produced by `python scripts/pr_readiness.py seal`.

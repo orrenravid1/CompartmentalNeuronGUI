@@ -40,7 +40,7 @@ class MyCellSession(NeuronSession):
 - emitting incremental display/history updates with `FieldAppend` rather than resending full trace history every frame
 - batching multiple internal simulation steps per frontend update via `display_dt`
 
-You do not need to manage the NEURON run loop, pt3d parsing, or document construction yourself.
+You do not need to manage the NEURON run loop, pt3d parsing, or scene construction yourself.
 
 `NeuronSession(display_dt=...)` controls the simulation-time interval between frontend updates. The simulation still advances at `dt`; `display_dt` only affects how often batched live samples are emitted to the frontend.
 
@@ -98,16 +98,16 @@ To customize layout or views, override `build_scene()` from `NeuronSceneBuilder`
 class MyCellSession(NeuronSession):
     ...
     def build_scene(self, *, geometry, display_values, time_value):
-        document = super().build_scene(
+        scene = super().build_scene(
             geometry=geometry,
             display_values=display_values,
             time_value=time_value,
         )
-        document.replace_view("trace", {"rolling_window": 50.0})
-        return document
+        scene.replace_view("trace", {"rolling_window": 50.0})
+        return scene
 ```
 
-See `src/compneurovis/backends/neuron/scene.py` for the default document construction logic.
+See `src/compneurovis/backends/neuron/scene.py` for the default scene construction logic.
 
 ## Loading from SWC
 

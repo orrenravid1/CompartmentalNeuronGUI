@@ -16,6 +16,7 @@ ATTESTATION_DIR_REL_PATH = Path(".compneurovis/pr-readiness")
 SCHEMA_VERSION = 1
 DEFAULT_VERIFICATION_COMMANDS: tuple[tuple[str, ...], ...] = (
     ("python", "scripts/check_architecture_invariants.py"),
+    ("python", "scripts/check_packaging_metadata.py"),
     ("pytest",),
     ("python", "-m", "compileall", "src", "examples", "tests"),
     ("python", "scripts/generate_indexes.py", "--check"),

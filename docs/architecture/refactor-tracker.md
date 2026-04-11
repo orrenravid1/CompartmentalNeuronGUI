@@ -360,7 +360,7 @@ These are the benchmark apps to use when validating architectural changes. If a 
 ### Developer experience for custom interactions
 
 - `Scene`/`ViewSpec`/layout internals are acceptable framework building blocks, but they are too low-level as the primary authoring surface for domain users.
-- If a user has to override document construction just to reorder controls, tune the default trace plot, or express a simple click-mode workflow, the public API is still too exposed.
+- If a user has to override scene construction just to reorder controls, tune the default trace plot, or express a simple click-mode workflow, the public API is still too exposed.
 - The default NEURON-style path should prefer small hook methods and simple overrides over forcing authors to manually assemble interaction machinery.
 - Users must not have to reason about transport boundaries when deciding where interaction code belongs.
 - If a user has to ask "does this method go in the frontend object or the session object or it breaks pipes?", the authoring model has failed.
@@ -428,6 +428,12 @@ These are the benchmark apps to use when validating architectural changes. If a 
   - Unity frontend
   - richer remote command/update semantics
   - more granular patch/update messages for remote scenes where bandwidth and serialization cost make bundled updates especially expensive
+
+### Potential Zensical migration
+
+- The current docs site should stay on `MkDocs + Material + mkdocstrings` until there is a clear stable replacement path.
+- `Zensical` is worth revisiting later because it can consume `mkdocs.yml`, which lowers migration cost if it matures.
+- Migration should be reconsidered only once Zensical is stable enough to preserve strict local builds, predictable local authoring, and the current generated API-doc workflow without repo-specific workarounds.
 
 ### Interaction system cleanup
 

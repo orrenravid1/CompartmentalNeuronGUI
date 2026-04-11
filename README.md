@@ -103,13 +103,13 @@ If you want to adapt an example rather than just run it:
 Serve the docs site locally:
 
 ```bash
-mkdocs serve
+python -m mkdocs serve
 ```
 
 Build the docs site in strict mode:
 
 ```bash
-mkdocs build --strict
+python -m mkdocs build --strict
 ```
 
 ## Mental Model
@@ -127,11 +127,13 @@ The main package exports the core types, builders, and frontend entrypoint:
 
 - `Field`, `Scene`, `MorphologyGeometry`, `GridGeometry`
 - `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
-- `NeuronSession`
-- `build_neuron_app`, `build_surface_app`, `build_replay_app`
+- `NeuronSession`, `JaxleySession`
+- `build_neuron_app`, `build_jaxley_app`, `build_surface_app`, `build_replay_app`
 - `run_app`
 
-`build_neuron_app(...)` is a current convenience helper for NEURON-backed workflows, not the intended long-term conceptual boundary of the library. The long-term direction is a feature-composable public API over the same shared core model.
+Backend-specific session classes and builders are conditional exports: install the matching backend extra first when you want to use `NeuronSession`, `JaxleySession`, `build_neuron_app(...)`, or `build_jaxley_app(...)`.
+
+`build_neuron_app(...)` and `build_jaxley_app(...)` are current convenience helpers for backend-backed workflows, not the intended long-term conceptual boundary of the library. The long-term direction is a feature-composable public API over the same shared core model.
 
 ## Repository Docs
 
@@ -153,7 +155,7 @@ python scripts/generate_indexes.py
 Human contributors can use the same PR-readiness checks without an agent:
 
 1. Install contributor dependencies with `pip install -e . pytest mkdocs mkdocs-material "mkdocstrings[python]"`.
-2. Run `python scripts/pr_readiness.py check` while iterating locally. This runs the repo quality gate, including `pytest`, compile checks, architecture invariants, and generated index validation.
+2. Run `python scripts/pr_readiness.py check` while iterating locally. This runs the repo quality gate, including packaging metadata validation, `pytest`, compile checks, architecture invariants, and generated index validation.
 3. Commit your implementation changes normally.
 4. As the last commit before you push or open the PR, run `python scripts/pr_readiness.py seal --commit`.
 

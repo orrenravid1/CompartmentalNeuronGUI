@@ -30,7 +30,7 @@ field = Field(
     coords={"time": np.array([0.0], dtype=np.float32)},
 )
 
-document = Scene(
+scene = Scene(
     fields={field.id: field},
     geometries={},
     views={
@@ -70,7 +70,7 @@ for phase in np.linspace(0.0, 2.0 * np.pi, 30, dtype=np.float32):
 from compneurovis import build_replay_app, run_app
 
 app = build_replay_app(
-    document=document,
+    scene=scene,
     field_id="trace",
     frames=frames,
 )

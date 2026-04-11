@@ -21,6 +21,7 @@ Run this sequence:
 10. Run the verification set that matches the impact:
    - targeted `pytest` modules first
    - `python scripts/check_architecture_invariants.py`
+   - `python scripts/check_packaging_metadata.py`
    - `pytest`
    - `python -m compileall src examples tests`
    - `python scripts/generate_indexes.py --check`
