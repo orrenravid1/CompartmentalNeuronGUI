@@ -26,6 +26,7 @@ Run this sequence:
    - `python -m compileall src examples tests`
    - `python scripts/generate_indexes.py --check`
    - `python -m mkdocs build --strict`
+   - optionally, for stricter docs-language CI, `python scripts/check_docs_vocabulary.py --fail-on-warnings`
    - for human contributors without agent support, `python scripts/pr_readiness.py check` is the one-command local quality gate
 11. When the implementation commit is complete and the working tree is clean, run `python scripts/pr_readiness.py seal`.
 12. Human contributors should usually prefer `python scripts/pr_readiness.py seal --commit`, which creates the standalone final attestation commit automatically.

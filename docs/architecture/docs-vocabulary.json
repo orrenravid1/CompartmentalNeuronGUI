@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "name": "prefer-scene-in-user-facing-docs",
+      "severity": "warning",
+      "pattern": "document",
+      "match_mode": "word",
+      "paths": [
+        "README.md",
+        "AGENTS.md",
+        "docs/index.md",
+        "docs/getting-started.md",
+        "docs/tutorials"
+      ],
+      "exclude_paths": [
+        "docs/architecture/docs-vocabulary.json"
+      ],
+      "ignore_code_blocks": true,
+      "ignore_inline_code": true,
+      "ignore_front_matter": true,
+      "message": "Prefer 'scene' in user-facing docs unless you are intentionally describing historical terminology."
+    }
+  ]
+}

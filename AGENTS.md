@@ -44,6 +44,8 @@ Key names:
 - Run Jaxley backend tests: `pytest --run-jaxley tests/test_jaxley_backend.py`
 - Check architecture invariants: `python scripts/check_architecture_invariants.py`
 - Check packaging metadata: `python scripts/check_packaging_metadata.py`
+- Check docs vocabulary drift: `python scripts/check_docs_vocabulary.py`
+- Fail on docs vocabulary warnings in stricter CI: `python scripts/check_docs_vocabulary.py --fail-on-warnings`
 - Serve docs locally: `python -m mkdocs serve`
 - Build docs site: `python -m mkdocs build --strict`
 - Regenerate reference indexes: `python scripts/generate_indexes.py`
@@ -123,7 +125,7 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 
 - Treat `Field` as the core data primitive; do not introduce new foundational “timeseries” or “surface” types when a labeled field plus a view is sufficient.
 - Frontends own UI state such as selection and slice position. Backends receive semantic commands, not raw GUI events.
-- `FieldReplace` replaces field values and may update coordinates; schema changes should rebuild or patch the document explicitly.
+- `FieldReplace` replaces field values and may update coordinates; schema changes should rebuild or patch the scene explicitly.
 - `ScenePatch` is intended for metadata/view/control changes, not arbitrary structural rewrites.
 - Architectural vocabulary changes should be encoded in `docs/architecture/invariants.json` and enforced with `python scripts/check_architecture_invariants.py`.
 - Keep docs and skills concise and cross-reference canonical docs instead of duplicating large explanations.
