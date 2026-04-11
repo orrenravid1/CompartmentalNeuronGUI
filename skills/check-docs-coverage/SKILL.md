@@ -1,6 +1,10 @@
 ---
 name: check-docs-coverage
 description: Audit whether every name exported in compneurovis.__all__ appears in at least one authored doc. Use in the pr-readiness pipeline whenever public API is added or changed, and whenever a suspected doc gap needs surfacing.
+kind: coverage
+surface: docs
+stage: verify
+trust: general
 ---
 
 # Check Docs Coverage

@@ -1,6 +1,10 @@
 ---
 name: check-concept-coverage
 description: Audit whether every major conceptual area in CompNeuroVis has a concept doc in docs/concepts/. Use in the pr-readiness pipeline when a new major primitive, model, or user-facing idea is introduced.
+kind: coverage
+surface: docs
+stage: verify
+trust: general
 ---
 
 # Check Concept Coverage

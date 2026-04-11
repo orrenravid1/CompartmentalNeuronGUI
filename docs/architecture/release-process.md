@@ -35,7 +35,7 @@ Use GitHub Releases as the public wrapper around a tagged commit, not as the pla
 - Tag the sealed final commit, not the implementation commit that precedes it.
 - If anything changes after sealing, rerun the checks, create a new seal commit, and retag the new final commit.
 - Keep changelog entries short and user-facing: focus on behavior, workflows, packaging, and docs that matter to users.
-- Do not use `docs/architecture/refactor-tracker.md` as a substitute for release notes; it is a design tracker, not a public changelog.
+- Do not use `docs/architecture/design/roadmap.md` or `docs/architecture/design/backlog.md` as a substitute for release notes; they are design planning docs, not a public changelog.
 
 ## Suggested Changelog Shape
 

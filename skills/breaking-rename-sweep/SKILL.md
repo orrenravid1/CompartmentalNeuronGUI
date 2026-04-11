@@ -1,11 +1,15 @@
 ---
 name: breaking-rename-sweep
 description: Apply a deliberate breaking rename or taxonomy cleanup across CompNeuroVis code, docs, generated references, and skills, then verify no banned legacy terms remain. Use when a canonical architectural term changes and compatibility aliases are not desired.
+kind: meta
+surface: cross-cutting
+stage: implement
+trust: maintainer-only
 ---
 
 # Breaking Rename Sweep
 
-Read `AGENTS.md`, `docs/architecture/refactor-tracker.md`, and `docs/architecture/invariants.json` first.
+Read `AGENTS.md`, `docs/architecture/design/decisions.md`, `docs/architecture/design/roadmap.md`, and `docs/architecture/invariants.json` first.
 
 Use this when the repo has decided on a new canonical term and wants to remove the old one completely.
 

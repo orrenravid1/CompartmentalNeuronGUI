@@ -10,7 +10,7 @@ Trade-offs vs the replay approach (see animated_surface_replay.py):
   - Controls can modify the computation itself, not just visual properties
 
 Note: the current authoring pattern requires subclassing BufferedSession directly. A future
-build_animated_surface_app(fn=...) builder is planned (see refactor-tracker.md) that will make
+build_animated_surface_app(fn=...) builder is planned (see docs/architecture/design/backlog.md) that will make
 this pattern available without writing a session class.
 
 Run: python examples/surface_plot/animated_surface_live.py
@@ -58,8 +58,9 @@ scene = build_surface_app(
     title="animated sinc wave — live",
 ).scene
 
-scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=["Space"])
-scene.layout.action_ids = ("pause",)
+scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=("Space",))
+scene.actions["reset"] = ActionSpec("reset", "Reset", shortcuts=("R",))
+scene.layout.action_ids = ("pause", "reset")
 
 
 class LiveAnimationSession(BufferedSession):

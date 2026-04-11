@@ -1,6 +1,10 @@
 ---
 name: check-test-coverage-drift
 description: Audit whether a CompNeuroVis change set is still covered by the current tests and add or update tests when behavior, protocol contracts, builders, docs validations, or examples change. Use before merging code when test expectations may have drifted from the implementation.
+kind: coverage
+surface: cross-cutting
+stage: verify
+trust: general
 ---
 
 # Check Test Coverage Drift

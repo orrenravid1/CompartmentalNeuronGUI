@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -11,6 +12,62 @@ SRC = ROOT / "src" / "compneurovis"
 DOCS_REF = ROOT / "docs" / "reference"
 EXAMPLES = ROOT / "examples"
 SKILLS = ROOT / "skills"
+SKILL_KIND_LABELS = {
+    "authoring": "Authoring",
+    "coverage": "Coverage",
+    "debug": "Debugging",
+    "orchestration": "Orchestration",
+    "meta": "Repo Maintenance",
+}
+SKILL_SURFACE_LABELS = {
+    "backend": "Backend",
+    "cross-cutting": "Cross-Cutting",
+    "docs": "Docs",
+    "examples": "Examples",
+    "frontend": "Frontend",
+    "repo-infra": "Repo Infrastructure",
+}
+SKILL_STAGE_LABELS = {
+    "debug": "Debug",
+    "explore": "Explore",
+    "implement": "Implement",
+    "release": "Release",
+    "verify": "Verify",
+}
+SKILL_TRUST_LABELS = {
+    "general": "General",
+    "maintainer-only": "Maintainer Only",
+    "proposal-only": "Proposal Only",
+}
+
+
+@dataclass(frozen=True)
+class SkillEntry:
+    name: str
+    description: str
+    kind: str
+    surface: str
+    stage: str
+    trust: str
+    path: Path
+
+
+def parse_frontmatter(path: Path) -> dict[str, str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    metadata: dict[str, str] = {}
+    in_frontmatter = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "---":
+            if in_frontmatter:
+                break
+            in_frontmatter = True
+            continue
+        if not in_frontmatter or ":" not in stripped:
+            continue
+        key, value = stripped.split(":", 1)
+        metadata[key.strip()] = value.strip()
+    return metadata
 
 
 def write(path: Path, content: str) -> None:
@@ -35,26 +92,52 @@ def public_api_names() -> list[str]:
         sys.path.pop(0)
 
 
-def skill_entries() -> list[tuple[str, str, Path]]:
-    entries: list[tuple[str, str, Path]] = []
+def skill_entries() -> list[SkillEntry]:
+    entries: list[SkillEntry] = []
     for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
-        name = ""
-        description = ""
-        lines = skill_md.read_text(encoding="utf-8").splitlines()
-        in_frontmatter = False
-        for line in lines:
-            stripped = line.strip()
-            if stripped == "---":
-                in_frontmatter = not in_frontmatter
-                continue
-            if not in_frontmatter:
-                continue
-            if stripped.startswith("name:"):
-                name = stripped.split(":", 1)[1].strip()
-            elif stripped.startswith("description:"):
-                description = stripped.split(":", 1)[1].strip()
-        entries.append((name, description, skill_md))
+        metadata = parse_frontmatter(skill_md)
+        missing = [
+            key
+            for key in ("name", "description", "kind", "surface", "stage", "trust")
+            if not metadata.get(key)
+        ]
+        if missing:
+            raise SystemExit(
+                f"{relative(skill_md)} is missing skill frontmatter fields: {', '.join(missing)}"
+            )
+        if metadata["kind"] not in SKILL_KIND_LABELS:
+            raise SystemExit(f"{relative(skill_md)} has unsupported skill kind: {metadata['kind']}")
+        if metadata["surface"] not in SKILL_SURFACE_LABELS:
+            raise SystemExit(
+                f"{relative(skill_md)} has unsupported skill surface: {metadata['surface']}"
+            )
+        if metadata["stage"] not in SKILL_STAGE_LABELS:
+            raise SystemExit(
+                f"{relative(skill_md)} has unsupported skill stage: {metadata['stage']}"
+            )
+        if metadata["trust"] not in SKILL_TRUST_LABELS:
+            raise SystemExit(
+                f"{relative(skill_md)} has unsupported skill trust: {metadata['trust']}"
+            )
+        entries.append(
+            SkillEntry(
+                name=metadata["name"],
+                description=metadata["description"],
+                kind=metadata["kind"],
+                surface=metadata["surface"],
+                stage=metadata["stage"],
+                trust=metadata["trust"],
+                path=skill_md,
+            )
+        )
     return entries
+
+
+def append_group(lines: list[str], heading: str, entries: list[SkillEntry]) -> None:
+    lines.extend([f"### {heading}", ""])
+    for entry in entries:
+        lines.append(f"- `{entry.name}`")
+    lines.append("")
 
 
 def build_repo_map() -> str:
@@ -74,8 +157,8 @@ def build_repo_map() -> str:
     for example in sorted(EXAMPLES.rglob("*.py")):
         lines.append(f"- `{relative(example)}`")
     lines.extend(["", "## Skills"])
-    for name, _, skill_md in skill_entries():
-        lines.append(f"- `{name}`: `{relative(skill_md)}`")
+    for entry in skill_entries():
+        lines.append(f"- `{entry.name}`: `{relative(entry.path)}`")
     return "\n".join(lines) + "\n"
 
 
@@ -111,17 +194,49 @@ def build_example_index() -> str:
 
 
 def build_skill_index() -> str:
+    entries = skill_entries()
     lines = [
         "---",
         "title: Skill Index",
-        "summary: Generated list of repo-owned skills and their trigger descriptions.",
+        "summary: Generated taxonomy and catalog of repo-owned skills.",
         "---",
         "",
         "# Skill Index",
         "",
+        "The canonical skill files stay under `skills/*/SKILL.md`. This generated index",
+        "groups them by workflow metadata so discovery does not depend on a flat path list.",
+        "",
+        "## By Kind",
+        "",
     ]
-    for name, description, skill_md in skill_entries():
-        lines.append(f"- `{name}`: {description} (`{relative(skill_md)}`)")
+    for kind, heading in SKILL_KIND_LABELS.items():
+        append_group(lines, heading, [entry for entry in entries if entry.kind == kind])
+
+    lines.extend(["## By Surface", ""])
+    for surface, heading in SKILL_SURFACE_LABELS.items():
+        append_group(lines, heading, [entry for entry in entries if entry.surface == surface])
+
+    lines.extend(["## By Workflow Stage", ""])
+    for stage, heading in SKILL_STAGE_LABELS.items():
+        append_group(lines, heading, [entry for entry in entries if entry.stage == stage])
+
+    lines.extend(["## By Trust", ""])
+    for trust, heading in SKILL_TRUST_LABELS.items():
+        append_group(lines, heading, [entry for entry in entries if entry.trust == trust])
+
+    lines.extend(["## Full Catalog", ""])
+    for entry in entries:
+        metadata = ", ".join(
+            [
+                f"kind: {entry.kind}",
+                f"surface: {entry.surface}",
+                f"stage: {entry.stage}",
+                f"trust: {entry.trust}",
+            ]
+        )
+        lines.append(
+            f"- `{entry.name}` ({metadata}): {entry.description} (`{relative(entry.path)}`)"
+        )
     return "\n".join(lines) + "\n"
 
 

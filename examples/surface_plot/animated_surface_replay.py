@@ -13,7 +13,7 @@ Trade-offs vs the live approach (see animated_surface_live.py):
   - No straightforward path to parameter-driven or interactive computation
 
 Note: the current authoring pattern requires subclassing BufferedSession directly. A future
-build_animated_surface_app(fn=...) builder is planned (see refactor-tracker.md) that will make
+build_animated_surface_app(fn=...) builder is planned (see docs/architecture/design/backlog.md) that will make
 this pattern available without writing a session class.
 
 Run: python examples/surface_plot/animated_surface_replay.py
@@ -69,9 +69,10 @@ scene = build_surface_app(
     title="animated sinc wave — replay",
 ).scene
 
-# Add a pause/resume action so space bar toggles playback.
-scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=["Space"])
-scene.layout.action_ids = ("pause",)
+# Add explicit playback controls so the example exposes buttons in the controls panel.
+scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=("Space",))
+scene.actions["reset"] = ActionSpec("reset", "Reset", shortcuts=("R",))
+scene.layout.action_ids = ("pause", "reset")
 
 
 class ReplayAnimationSession(BufferedSession):

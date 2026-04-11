@@ -60,7 +60,7 @@ Typical keys include:
 
 `StateBinding(key)` lets a view property read from that dictionary at render time.
 
-That is how a control can drive a visual property without the backend needing to rebuild the whole document.
+That is how a control can drive a visual property without the backend needing to rebuild the whole scene.
 
 ## Session-Driven State
 

@@ -1,6 +1,10 @@
 ---
 name: add-example
 description: Add a new runnable example to CompNeuroVis. Use when demonstrating a new workflow, builder pattern, or visualization type that is not already covered by an existing example.
+kind: authoring
+surface: examples
+stage: implement
+trust: general
 ---
 
 # Add an Example

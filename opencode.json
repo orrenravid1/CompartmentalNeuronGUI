@@ -1,0 +1,41 @@
+{
+  "mcp": {
+    "fetch": {
+      "enabled": true,
+      "type": "local",
+      "command": [
+        "python",
+        "-c",
+        "import os,subprocess,sys; cmd=sys.argv[1:]; cmd=(['cmd','/c',*cmd] if os.name=='nt' and cmd and cmd[0].lower()=='npx' else cmd); raise SystemExit(subprocess.call(cmd))",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-fetch"
+      ]
+    },
+    "context7": {
+      "enabled": true,
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "arxiv": {
+      "enabled": true,
+      "type": "local",
+      "command": [
+        "uvx",
+        "arxiv-mcp-server"
+      ]
+    },
+    "sequential-thinking": {
+      "enabled": true,
+      "type": "local",
+      "command": [
+        "python",
+        "-c",
+        "import os,subprocess,sys; cmd=sys.argv[1:]; cmd=(['cmd','/c',*cmd] if os.name=='nt' and cmd and cmd[0].lower()=='npx' else cmd); raise SystemExit(subprocess.call(cmd))",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    }
+  }
+}

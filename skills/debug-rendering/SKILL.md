@@ -1,5 +1,9 @@
 ---
 name: debug-rendering
+kind: debug
+surface: frontend
+stage: debug
+trust: general
 description: Debug visual rendering issues in CompNeuroVis — wrong colors, missing geometry, blank panels, or performance problems. Use when the protocol dataflow is confirmed correct but the rendered output is wrong or absent.
 ---
 

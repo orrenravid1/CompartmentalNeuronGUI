@@ -1,6 +1,10 @@
 ---
 name: scratch-exploration
 description: Write a one-off exploratory script, prototype, or technical spike. Use when testing a library, validating an assumption, or prototyping something before committing to integration. Do NOT use for polished examples, reusable utilities, or tests.
+kind: authoring
+surface: examples
+stage: explore
+trust: general
 ---
 
 # Scratch Exploration

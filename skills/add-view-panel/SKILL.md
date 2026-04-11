@@ -1,6 +1,10 @@
 ---
 name: add-view-panel
 description: Add or update a frontend view or panel in CompNeuroVis. Use when extending the VisPy frontend with a new panel, renderer, or view-spec consumer, or when changing how frontend-owned state maps onto rendered output.
+kind: authoring
+surface: frontend
+stage: implement
+trust: general
 ---
 
 # Add a View Panel
@@ -15,4 +19,3 @@ Reference implementations: `src/compneurovis/frontends/vispy/panels.py` and `src
 4. Wire the panel into `VispyFrontendWindow` and register it with `RefreshPlanner`.
 5. Update the frontend package `README.md`.
 6. Add at least one test or example that exercises the new panel end-to-end.
-

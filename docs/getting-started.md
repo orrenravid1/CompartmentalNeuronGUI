@@ -129,6 +129,6 @@ python -m mkdocs build --strict
 
 1. Run `python scripts/pr_readiness.py check` while iterating locally.
 2. Commit your implementation changes normally.
-3. As the last commit before you push or open the PR, run `python scripts/pr_readiness.py seal --commit`.
+3. As the last commit before you push to `main` or open a PR, run `python scripts/pr_readiness.py seal --commit`.
 
 `seal --commit` reruns the readiness checks, writes a commit-keyed receipt under `.compneurovis/pr-readiness/`, and adds one final attestation commit automatically.

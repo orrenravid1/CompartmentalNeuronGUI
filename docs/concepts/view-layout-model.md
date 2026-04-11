@@ -1,6 +1,6 @@
 ---
 title: View and Layout Model
-summary: Mental model for ViewSpec, StateBinding, 3-D hosts, and how documents compose multiple views over the same data.
+summary: Mental model for ViewSpec, StateBinding, 3-D hosts, and how scenes compose multiple views over the same data.
 ---
 
 # View and Layout Model

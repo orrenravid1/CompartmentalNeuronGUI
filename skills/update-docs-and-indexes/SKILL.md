@@ -1,6 +1,10 @@
 ---
 name: update-docs-and-indexes
 description: Update CompNeuroVis documentation, AGENTS metadata, package READMEs, and generated reference indexes after code or workflow changes. Use when implementation is finished or when documentation has drifted from the current architecture.
+kind: meta
+surface: docs
+stage: implement
+trust: general
 ---
 
 # Update Docs and Indexes

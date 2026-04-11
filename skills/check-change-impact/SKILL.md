@@ -1,6 +1,10 @@
 ---
 name: check-change-impact
 description: Review a CompNeuroVis change set and determine what code, tests, docs, AGENTS metadata, generated indexes, and repo-owned skills need to be updated. Use when code has changed and Codex should audit downstream impact before or after implementation.
+kind: coverage
+surface: cross-cutting
+stage: verify
+trust: general
 ---
 
 # Check Change Impact

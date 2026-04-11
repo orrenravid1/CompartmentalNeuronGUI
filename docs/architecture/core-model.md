@@ -63,7 +63,7 @@ See [View and Layout Model](../concepts/view-layout-model.md) for the user-facin
 
 Optional live or replay backend. A `Session`:
 
-1. Returns an initial `Scene` from `initialize()` or `None` if the document is provided externally
+1. Returns an initial `Scene` from `initialize()` or `None` if the scene is provided externally
 2. Steps forward on each `advance()` call
 3. Receives `SessionCommand`s via `handle(command)`
 4. Emits `SessionUpdate`s that `read_updates()` drains
@@ -103,7 +103,7 @@ Convenience builders may exist for current workflows, but they should be underst
 
 **Frontends own UI state.** Selection, slice position, and control values live in the frontend's `state` dict. Backends receive `SetControl` / `InvokeAction`, not raw GUI events.
 
-**Prefer the narrowest correct update.** Use `FieldAppend` for incremental live history updates along one dimension. Use `ScenePatch` for metadata, view property, or control changes that do not require rebuilding the full document. Use `FieldReplace` when replacing a field wholesale. Full replacements are valid, but they are the explicit broader-cost path, not the default.
+**Prefer the narrowest correct update.** Use `FieldAppend` for incremental live history updates along one dimension. Use `ScenePatch` for metadata, view property, or control changes that do not require rebuilding the full scene. Use `FieldReplace` when replacing a field wholesale. Full replacements are valid, but they are the explicit broader-cost path, not the default.
 
 **Live display state and captured history are different concerns.** A heavy live scene often wants:
 

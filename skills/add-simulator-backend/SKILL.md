@@ -1,6 +1,10 @@
 ---
 name: add-simulator-backend
 description: Add or update a simulator backend/session for CompNeuroVis. Use when creating a new live or replay backend under compneurovis.backends, wiring it to the Session protocol, or documenting how a backend should emit SceneReady, FieldReplace, and ScenePatch updates.
+kind: authoring
+surface: backend
+stage: implement
+trust: general
 ---
 
 # Add a Simulator Backend

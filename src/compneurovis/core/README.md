@@ -1,6 +1,6 @@
 ---
 title: Core Package
-summary: Field, geometry, view, control, and document primitives.
+summary: Field, geometry, view, control, and scene primitives.
 ---
 
 # Core Package

@@ -1,6 +1,6 @@
 ---
 title: Jaxley Backend
-summary: Jaxley-backed live session and morphology document builder.
+summary: Jaxley-backed live session and morphology scene builder.
 ---
 
 # Jaxley Backend

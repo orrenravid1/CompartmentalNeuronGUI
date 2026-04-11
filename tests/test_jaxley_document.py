@@ -184,3 +184,32 @@ def test_jaxley_session_default_document_uses_generic_auto_morphology_coloring()
 
     assert document.views["morphology"].color_map == "scalar"
     assert document.views["morphology"].color_norm == "auto"
+
+
+def test_jaxley_session_default_document_exposes_reset_action():
+    session = DummyJaxleySession()
+    geometry = MorphologyGeometry(
+        id="morphology",
+        positions=np.zeros((2, 3), dtype=np.float32),
+        orientations=np.repeat(np.eye(3, dtype=np.float32)[None, :, :], 2, axis=0),
+        radii=np.ones(2, dtype=np.float32),
+        lengths=np.ones(2, dtype=np.float32),
+        entity_ids=("seg-a", "seg-b"),
+        section_names=("sec-a", "sec-b"),
+        xlocs=np.array([0.25, 0.75], dtype=np.float32),
+        labels=("sec-a@0.25", "sec-b@0.75"),
+    )
+    session.geometry = geometry
+    session._entity_index_by_id = {"seg-a": 0, "seg-b": 1}
+    session._initialize_trace_history(0.0, np.array([1.0, 2.0], dtype=np.float32))
+
+    document = session.build_scene(
+        geometry=geometry,
+        display_values=np.array([1.0, 2.0], dtype=np.float32),
+        time_value=0.0,
+    )
+
+    assert "reset" in document.actions
+    assert document.actions["reset"].label == "Reset"
+    assert document.actions["reset"].shortcuts == ("Space",)
+    assert document.layout.action_ids == ("reset",)

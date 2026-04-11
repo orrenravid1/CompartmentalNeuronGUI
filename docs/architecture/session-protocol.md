@@ -62,7 +62,7 @@ def handle(self, command):
 
 | Update | Fields | When to emit |
 |---|---|---|
-| `SceneReady` | `document: Scene` | Once, from `initialize()` or early in `advance()` |
+| `SceneReady` | `scene: Scene` | Once, from `initialize()` or early in `advance()` |
 | `FieldReplace` | `field_id`, `values`, `coords?`, `attrs_update?` | Replace a field wholesale |
 | `FieldAppend` | `field_id`, `append_dim`, `values`, `coord_values`, `max_length?`, `attrs_update?` | Append new samples along one dimension |
 | `ScenePatch` | `view_updates`, `control_updates`, `metadata_updates` | When view properties or control definitions change |
@@ -137,7 +137,7 @@ For heavy live backends, the recommended default is:
 
 This preserves performance while keeping retrospective history available as an opt-in feature rather than a default cost.
 
-Use `ScenePatch` when structure or metadata changes, for example renaming a view title, updating a control range, or changing a display property without rebuilding the whole document:
+Use `ScenePatch` when structure or metadata changes, for example renaming a view title, updating a control range, or changing a display property without rebuilding the whole scene:
 
 ```python
 self.emit(ScenePatch(view_updates={"main": {"title": "updated title"}}))

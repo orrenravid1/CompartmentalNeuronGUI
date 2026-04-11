@@ -1,6 +1,10 @@
 ---
 name: pr-readiness
 description: Run the CompNeuroVis pre-PR maintenance workflow by checking downstream change impact, test drift, docs/index updates, and skill registration updates before a branch is considered ready for review. Use near the end of a change when Codex should apply the relevant repo maintenance skills in sequence.
+kind: orchestration
+surface: cross-cutting
+stage: release
+trust: general
 ---
 
 # PR Readiness

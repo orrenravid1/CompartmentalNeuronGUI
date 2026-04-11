@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 from neuron import h
 
-from compneurovis.core.controls import ControlSpec
+from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.scene import Scene
 from compneurovis.core.views import LinePlotViewSpec
 from compneurovis.session import BufferedSession, EntityClicked, FieldAppend, FieldReplace, HistoryCaptureMode, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
@@ -101,7 +101,7 @@ class NeuronSession(BufferedSession, ABC):
     def control_specs(self) -> dict[str, ControlSpec]:
         return {}
 
-    def action_specs(self) -> dict[str, object]:
+    def action_specs(self) -> dict[str, ActionSpec]:
         return {}
 
     def control_order(self) -> tuple[str, ...] | None:
@@ -109,6 +109,23 @@ class NeuronSession(BufferedSession, ABC):
 
     def action_order(self) -> tuple[str, ...] | None:
         return None
+
+    def _default_action_specs(self) -> dict[str, ActionSpec]:
+        return {
+            "reset": ActionSpec("reset", "Reset", shortcuts=("Space",)),
+        }
+
+    def _resolved_action_specs(self) -> dict[str, ActionSpec]:
+        actions = dict(self.action_specs())
+        for action_id, action in self._default_action_specs().items():
+            actions.setdefault(action_id, action)
+        return actions
+
+    def _resolved_action_order(self, actions: dict[str, ActionSpec]) -> tuple[str, ...] | None:
+        action_order = self.action_order()
+        if action_order is not None:
+            return action_order
+        return tuple(actions.keys()) if actions else None
 
     def trace_view_updates(self) -> dict[str, Any]:
         return {}
@@ -174,7 +191,7 @@ class NeuronSession(BufferedSession, ABC):
         """Build the initial Scene from sampled values and morphology geometry."""
 
         controls = self.control_specs()
-        actions = self.action_specs()
+        actions = self._resolved_action_specs()
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
         scene = NeuronSceneBuilder.build_scene(
             geometry=geometry,
@@ -196,7 +213,7 @@ class NeuronSession(BufferedSession, ABC):
             actions=actions,
             title=self.title,
             control_ids=self.control_order(),
-            action_ids=self.action_order(),
+            action_ids=self._resolved_action_order(actions),
         )
         trace_updates = self.trace_view_updates()
         if trace_updates:

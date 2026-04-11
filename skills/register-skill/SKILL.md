@@ -1,6 +1,10 @@
 ---
 name: register-skill
 description: Register a newly created CompNeuroVis repo skill in the canonical metadata and generated indexes. Use after adding or renaming a skill under `skills/` when `AGENTS.md` and `docs/reference/skill-index.md` must be updated and validated.
+kind: meta
+surface: repo-infra
+stage: implement
+trust: proposal-only
 ---
 
 # Register Skill
@@ -10,7 +14,9 @@ Read `AGENTS.md` first.
 Run this workflow after creating a new repo-owned skill or changing a skill name.
 
 1. Confirm the skill folder contains a valid `SKILL.md` with concise frontmatter and instructions.
-2. Add the skill path to the `Skill Catalog` section in `AGENTS.md`.
+   Required frontmatter keys:
+   `name`, `description`, `kind`, `surface`, `stage`, `trust`.
+2. Update the `Skill Usage` section in `AGENTS.md` if the new skill changes the grouped catalog summary or discovery guidance.
 3. If the new skill changes reusable maintenance workflow, update any related meta-skills under `skills/`.
 4. Regenerate the reference indexes with `python scripts/generate_indexes.py`.
 5. Validate consistency with:

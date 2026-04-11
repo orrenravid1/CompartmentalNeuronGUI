@@ -24,9 +24,10 @@ Key names:
 
 - Core types: `Field`, `Scene`, `LayoutSpec`, `MorphologyGeometry`, `GridGeometry`
 - View types: `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
-- Backend/session: `NeuronSession`, `ReplaySession`
 - Backend/session: `NeuronSession`, `JaxleySession`, `ReplaySession`
-- Builders: `build_neuron_app`, `build_jaxley_app`, `build_surface_app`, `build_replay_app`, `grid_field`
+- Backend scene builders: `NeuronSceneBuilder`, `JaxleySceneBuilder`
+- Workflow helpers: `HistoryCaptureMode`, `grid_field`
+- Builders: `build_neuron_app`, `build_jaxley_app`, `build_surface_app`, `build_replay_app`
 - Frontend entrypoint: `run_app`
 
 ## Extension Points
@@ -35,6 +36,51 @@ Key names:
 - Add new live backends by subclassing `Session` or `BufferedSession`.
 - Add new transports under `src/compneurovis/session` without changing the core scene model.
 - Add new frontend renderers under `src/compneurovis/frontends`.
+
+## MCP Servers
+
+`mcp.json` at the repo root is the canonical source of truth for MCP server
+configuration. Edit it there; never edit the generated agent configs directly.
+Generated outputs may adapt local stdio launch commands for portability; for
+example, `npx`-backed servers are wrapped so the generated configs still work
+on Windows.
+
+Run the generator to (re)produce all agent-specific config files:
+
+```bash
+python scripts/generate_mcp_configs.py
+```
+
+Verify that generated configs are up to date (used in CI checks):
+
+```bash
+python scripts/generate_mcp_configs.py --check
+```
+
+| Server | Transport | Purpose |
+|---|---|---|
+| `fetch` | stdio (`npx`) | Fetch live docs from NEURON, Jaxley, VisPy, and other external sites |
+| `context7` | HTTP | Version-accurate library docs for VisPy, PyQt6, NumPy, Jaxley, etc. |
+| `arxiv` | stdio (`uvx`) | Search and read arXiv papers for algorithm/morphology/simulator references |
+| `sequential-thinking` | stdio (`npx`) | Externalized reasoning scratchpad for multi-step planning and complex refactors |
+
+Generated outputs (do not edit directly):
+
+- `.claude/settings.json` — Claude Code (mcpServers key merged, other keys preserved)
+- `.vscode/mcp.json` — VS Code / GitHub Copilot
+- `.cursor/mcp.json` — Cursor
+- `.codex/config.toml` — OpenAI Codex
+- `.gemini/settings.json` — Gemini CLI (mcpServers key merged, other keys preserved)
+- `opencode.json` — OpenCode (mcp key merged; different structure: merged command array, `environment` not `env`, explicit `type` field)
+
+Not generated (no repo file):
+
+- GitHub Copilot Cloud Agent — configured via GitHub repository Settings UI under
+  `Settings > Copilot > Cloud agent > MCP configuration`. Uses the same mcpServers
+  JSON schema but entered through the web interface, not a committed file.
+
+To add or remove a server: edit `mcp.json`, rerun the generator, and commit
+the canonical source plus all regenerated outputs together.
 
 ## Build, Test, and Run
 
@@ -53,6 +99,8 @@ Key names:
 - Build docs site: `python -m mkdocs build --strict`
 - Regenerate reference indexes: `python scripts/generate_indexes.py`
 - Check generated indexes: `python scripts/generate_indexes.py --check`
+- Regenerate agent MCP configs: `python scripts/generate_mcp_configs.py`
+- Check agent MCP configs: `python scripts/generate_mcp_configs.py --check`
 - Run the local PR-readiness quality gate: `python scripts/pr_readiness.py check`
 - Seal PR readiness: `python scripts/pr_readiness.py seal`
 - Seal PR readiness and create the final attestation commit automatically: `python scripts/pr_readiness.py seal --commit`
@@ -89,33 +137,20 @@ Key names:
 
 - Repo-local skills live under `skills/<name>/SKILL.md` and are the canonical workflow instructions for recurring repo tasks.
 - Any agent working in this repo should consult the relevant `SKILL.md` before executing a task that matches the skill description.
-- If a task matches one of the cataloged skills below, read that skill first, then follow its workflow.
-- Use `docs/reference/skill-index.md` to discover which skill best matches a task.
-
-- `skills/add-example/SKILL.md`
-- `skills/scratch-exploration/SKILL.md`
-- `skills/add-simulator-backend/SKILL.md`
-- `skills/add-field-visualization/SKILL.md`
-- `skills/add-view-panel/SKILL.md`
-- `skills/audit-skill-coverage/SKILL.md`
-- `skills/breaking-rename-sweep/SKILL.md`
-- `skills/check-change-impact/SKILL.md`
-- `skills/check-concept-coverage/SKILL.md`
-- `skills/check-docs-coverage/SKILL.md`
-- `skills/check-test-coverage-drift/SKILL.md`
-- `skills/check-tutorial-coverage/SKILL.md`
-- `skills/debug-protocol-dataflow/SKILL.md`
-- `skills/debug-rendering/SKILL.md`
-- `skills/pr-readiness/SKILL.md`
-- `skills/register-skill/SKILL.md`
-- `skills/update-docs-and-indexes/SKILL.md`
-
-Read the generated skill index at `docs/reference/skill-index.md` for descriptions.
+- Use `docs/reference/skill-index.md` to discover the right skill by kind, surface, workflow stage, or trust level.
+- The current catalog is organized conceptually as:
+  - authoring and exploration: `add-example`, `add-field-visualization`, `add-simulator-backend`, `add-view-panel`, `scratch-exploration`
+  - coverage and verification: `check-change-impact`, `check-docs-coverage`, `check-tutorial-coverage`, `check-concept-coverage`, `check-test-coverage-drift`, `audit-skill-coverage`, `pr-readiness`
+  - debugging: `debug-protocol-dataflow`, `debug-rendering`
+  - repo maintenance: `breaking-rename-sweep`, `register-skill`, `update-docs-and-indexes`
+- Read the generated skill index at `docs/reference/skill-index.md` for descriptions and canonical paths.
 
 ## Documentation Index
 
 - Architecture overview: `docs/architecture/core-model.md`
-- Refactor tracker: `docs/architecture/refactor-tracker.md`
+- Roadmap (phases, next steps, transition targets): `docs/architecture/design/roadmap.md`
+- Design decisions (settled doctrine and lessons): `docs/architecture/design/decisions.md`
+- Backlog (deferred features, infrastructure, cleanup): `docs/architecture/design/backlog.md`
 - Release process: `docs/architecture/release-process.md`
 - PR readiness attestation: `docs/architecture/pr-readiness-attestation.md`
 - Session protocol: `docs/architecture/session-protocol.md`
@@ -137,7 +172,7 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 
 ## Non-Obvious Invariants and Boundaries
 
-- Treat `Field` as the core data primitive; do not introduce new foundational “timeseries” or “surface” types when a labeled field plus a view is sufficient.
+- Treat `Field` as the core data primitive; do not introduce new foundational "timeseries" or "surface" types when a labeled field plus a view is sufficient.
 - Frontends own UI state such as selection and slice position. Backends receive semantic commands, not raw GUI events.
 - `FieldReplace` replaces field values and may update coordinates; schema changes should rebuild or patch the scene explicitly.
 - `ScenePatch` is intended for metadata/view/control changes, not arbitrary structural rewrites.

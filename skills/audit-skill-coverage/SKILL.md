@@ -1,6 +1,10 @@
 ---
 name: audit-skill-coverage
 description: Check whether a CompNeuroVis change introduces a new reusable workflow that deserves a repo-owned skill. Use after check-change-impact and before register-skill in the pr-readiness pipeline.
+kind: coverage
+surface: repo-infra
+stage: verify
+trust: general
 ---
 
 # Audit Skill Coverage

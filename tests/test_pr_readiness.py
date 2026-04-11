@@ -131,3 +131,7 @@ def test_pr_readiness_workflow_verifies_pr_heads_and_main_pushes():
     assert "- main" in workflow
     assert "ref: ${{ github.event.pull_request.head.sha }}" in workflow
     assert "python scripts/pr_readiness.py verify --rerun-commands" in workflow
+
+
+def test_pr_readiness_default_commands_include_mcp_config_check():
+    assert ("python", "scripts/generate_mcp_configs.py", "--check") in pr_readiness.DEFAULT_VERIFICATION_COMMANDS

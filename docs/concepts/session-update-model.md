@@ -71,7 +71,7 @@ The frontend should learn exactly what changed, not infer it from one giant payl
 The main update types are:
 
 - `SceneReady`
-  - the initial document is ready
+  - the initial scene is ready
 - `FieldReplace`
   - replace a field wholesale
 - `FieldAppend`

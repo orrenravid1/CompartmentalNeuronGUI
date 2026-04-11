@@ -122,3 +122,19 @@ def test_neuron_session_default_document_uses_fixed_morphology_color_limits():
     assert document.views["morphology"].color_map == "scalar"
     assert document.views["morphology"].color_limits == (-80.0, 50.0)
     assert document.views["morphology"].color_norm == "auto"
+
+
+def test_neuron_session_default_document_exposes_reset_action():
+    session = DummyNeuronSession()
+    geometry = _geometry()
+
+    document = session.build_scene(
+        geometry=geometry,
+        display_values=np.array([1.0, 2.0], dtype=np.float32),
+        time_value=0.0,
+    )
+
+    assert "reset" in document.actions
+    assert document.actions["reset"].label == "Reset"
+    assert document.actions["reset"].shortcuts == ("Space",)
+    assert document.layout.action_ids == ("reset",)

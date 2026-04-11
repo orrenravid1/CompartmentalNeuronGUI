@@ -1,6 +1,10 @@
 ---
 name: add-field-visualization
 description: Add or update a field-driven visualization in CompNeuroVis. Use when building static or precomputed field views, grid-backed surfaces, line-plot slices, or field-oriented example apps with the builder layer.
+kind: authoring
+surface: examples
+stage: implement
+trust: general
 ---
 
 # Add a Field Visualization

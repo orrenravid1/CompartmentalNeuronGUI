@@ -1,6 +1,6 @@
 ---
 title: Backends Package
-summary: Backend-specific sessions and document builders.
+summary: Backend-specific sessions and scene builders.
 ---
 
 # Backends Package

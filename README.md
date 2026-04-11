@@ -135,7 +135,8 @@ The main package exports the core types, builders, and frontend entrypoint:
 
 - `Field`, `Scene`, `MorphologyGeometry`, `GridGeometry`
 - `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
-- `NeuronSession`, `JaxleySession`
+- `NeuronSession`, `JaxleySession`, `ReplaySession`
+- `HistoryCaptureMode`, `grid_field`
 - `build_neuron_app`, `build_jaxley_app`, `build_surface_app`, `build_replay_app`
 - `run_app`
 
@@ -158,12 +159,24 @@ Generate the reference indexes with:
 python scripts/generate_indexes.py
 ```
 
+## MCP Servers
+
+`mcp.json` at the repo root is the canonical list of MCP servers for this project. Agent-specific config files (`.claude/settings.json`, `.vscode/mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, `.gemini/settings.json`, `opencode.json`) are generated from it and committed alongside it. Do not edit them directly.
+
+For portability, the generator may adapt local stdio launch commands in agent-specific outputs. In particular, `npx`-backed servers are wrapped so the generated configs still launch correctly on Windows.
+
+If you add, remove, or change a server, edit `mcp.json` and regenerate:
+
+```bash
+python scripts/generate_mcp_configs.py
+```
+
 ## Contributor PR Flow
 
 Human contributors can use the same PR-readiness checks without an agent:
 
 1. Install contributor dependencies with `pip install -e ".[contrib]"`.
-2. Run `python scripts/pr_readiness.py check` while iterating locally. This runs the repo quality gate, including packaging metadata validation, `pytest`, compile checks, architecture invariants, and generated index validation.
+2. Run `python scripts/pr_readiness.py check` while iterating locally. This runs the repo quality gate, including architecture invariants, packaging metadata validation, generated MCP config validation, `pytest`, compile checks, generated index validation, and the strict MkDocs build.
 3. Commit your implementation changes normally.
 4. As the last commit before you push to `main` or open a PR, run `python scripts/pr_readiness.py seal --commit`.
 

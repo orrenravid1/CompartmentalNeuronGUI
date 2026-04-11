@@ -1,6 +1,10 @@
 ---
 name: check-tutorial-coverage
 description: Audit whether every primary user-facing API name has a tutorial or non-debug example. Use in the pr-readiness pipeline when a new builder, session type, view spec, or geometry type is added.
+kind: coverage
+surface: examples
+stage: verify
+trust: general
 ---
 
 # Check Tutorial Coverage

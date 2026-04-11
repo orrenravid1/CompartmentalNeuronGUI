@@ -17,6 +17,7 @@ SCHEMA_VERSION = 1
 DEFAULT_VERIFICATION_COMMANDS: tuple[tuple[str, ...], ...] = (
     ("python", "scripts/check_architecture_invariants.py"),
     ("python", "scripts/check_packaging_metadata.py"),
+    ("python", "scripts/generate_mcp_configs.py", "--check"),
     ("pytest",),
     ("python", "-m", "compileall", "src", "examples", "tests"),
     ("python", "scripts/generate_indexes.py", "--check"),

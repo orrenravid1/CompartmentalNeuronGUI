@@ -1,0 +1,17 @@
+# Generated from mcp.json — edit mcp.json, then run:
+#   python scripts/generate_mcp_configs.py
+
+[mcp_servers.fetch]
+command = "python"
+args = ["-c", "import os,subprocess,sys; cmd=sys.argv[1:]; cmd=(['cmd','/c',*cmd] if os.name=='nt' and cmd and cmd[0].lower()=='npx' else cmd); raise SystemExit(subprocess.call(cmd))", "npx", "-y", "@modelcontextprotocol/server-fetch"]
+
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"
+
+[mcp_servers.arxiv]
+command = "uvx"
+args = ["arxiv-mcp-server"]
+
+[mcp_servers.sequential-thinking]
+command = "python"
+args = ["-c", "import os,subprocess,sys; cmd=sys.argv[1:]; cmd=(['cmd','/c',*cmd] if os.name=='nt' and cmd and cmd[0].lower()=='npx' else cmd); raise SystemExit(subprocess.call(cmd))", "npx", "-y", "@modelcontextprotocol/server-sequential-thinking"]

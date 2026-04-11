@@ -665,7 +665,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
     def _send_action(self, action, payload: dict[str, Any]) -> None:
         if self.transport is not None:
-            self.transport.send_command(InvokeAction(action.id, payload))
+            if action.id == "reset":
+                self.transport.send_command(Reset())
+            else:
+                self.transport.send_command(InvokeAction(action.id, payload))
 
     def keyPressEvent(self, event) -> None:
         key_text = self._event_key_text(event)

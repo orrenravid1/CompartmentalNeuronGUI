@@ -15,4 +15,4 @@ The builder layer keeps common user workflows short:
 
 For live backends, pass a session class or top-level zero-argument factory. Already-created session instances are not the supported path for worker-backed apps.
 
-`build_replay_app(...)` is the replay counterpart. It wraps `ReplaySession` so stored frames can use the same frontend and document model as live apps.
+`build_replay_app(...)` is the replay counterpart. It wraps `ReplaySession` so stored frames can use the same frontend and scene model as live apps.

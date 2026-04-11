@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from functools import partial
 
-from compneurovis.core import AppSpec, Scene
-from compneurovis.session import BufferedSession, FieldReplace
+from compneurovis.core import ActionSpec, AppSpec, Scene
+from compneurovis.session import BufferedSession, FieldReplace, Reset
 
 
 class ReplaySession(BufferedSession):
@@ -31,11 +31,21 @@ class ReplaySession(BufferedSession):
         self.index = (self.index + 1) % len(self.frames)
 
     def handle(self, command) -> None:
+        if isinstance(command, Reset):
+            self.index = 0
+            if not self.frames:
+                return None
+            values, coords = self.frames[0]
+            self.emit(FieldReplace(field_id=self.field_id, values=values, coords=coords))
         return None
 
 
 def build_replay_app(*, scene: Scene, field_id: str, frames) -> AppSpec:
     """Build an app that replays precomputed frames through ReplaySession."""
+
+    scene.actions.setdefault("reset", ActionSpec("reset", "Reset", shortcuts=("Space",)))
+    if "reset" not in scene.layout.action_ids:
+        scene.layout.action_ids = (*scene.layout.action_ids, "reset")
 
     return AppSpec(
         scene=scene,

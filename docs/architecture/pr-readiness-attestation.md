@@ -20,6 +20,7 @@ The canonical checks currently include:
 
 - architecture invariants
 - packaging metadata validation for `pyproject.toml` and `poetry.lock`
+- generated MCP config validation from `mcp.json`
 - `pytest`
 - compile checks
 - generated reference index checks

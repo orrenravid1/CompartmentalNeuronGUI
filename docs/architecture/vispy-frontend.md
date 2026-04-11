@@ -73,7 +73,7 @@ Three trigger sources:
 - **State change** (control moved, entity clicked) -> `targets_for_state_change(state_key)`: marks panels with a `StateBinding` on that key
 - **`ScenePatch`** -> `targets_for_view_patch(view_id, changed_props)`: marks panels based on which props changed
 
-The full refresh on `SceneReady` marks every target that the current document's layout requires.
+The full refresh on `SceneReady` marks every target that the current scene's layout requires.
 
 ## State and StateBinding
 

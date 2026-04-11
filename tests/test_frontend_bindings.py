@@ -16,7 +16,7 @@ from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
 from compneurovis.frontends.vispy.panels import LinePlotPanel, Viewport3DPanel
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer
-from compneurovis.session import BufferedSession, Error, FieldAppend, StatePatch, resolve_interaction_target_source
+from compneurovis.session import BufferedSession, Error, FieldAppend, Reset, StatePatch, resolve_interaction_target_source
 
 
 def test_line_plot_panel_resolves_selected_entity_binding():
@@ -1253,6 +1253,49 @@ def test_frontend_interaction_context_resolves_entity_info_from_document():
     assert info["entity_id"] == "seg-b"
     assert info["section_name"] == "sec-b"
     assert info["label"] == "sec-b@0.9"
+
+    window.close()
+    app.quit()
+
+
+def test_frontend_reset_action_sends_reset_command():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    field = Field(
+        id="voltage",
+        values=np.array([[1.0], [2.0]], dtype=np.float32),
+        dims=("segment", "time"),
+        coords={
+            "segment": np.array(["seg-a", "seg-b"]),
+            "time": np.array([0.0], dtype=np.float32),
+        },
+    )
+    geometry = MorphologyGeometry(
+        id="morphology",
+        positions=np.zeros((2, 3), dtype=np.float32),
+        orientations=np.repeat(np.eye(3, dtype=np.float32)[None, :, :], 2, axis=0),
+        radii=np.ones(2, dtype=np.float32),
+        lengths=np.ones(2, dtype=np.float32),
+        entity_ids=("seg-a", "seg-b"),
+        section_names=("sec-a", "sec-b"),
+        xlocs=np.array([0.1, 0.9], dtype=np.float32),
+        labels=("sec-a@0.1", "sec-b@0.9"),
+    )
+    document = Scene(
+        fields={field.id: field},
+        geometries={geometry.id: geometry},
+        views={"morphology": MorphologyViewSpec(id="morphology", geometry_id=geometry.id)},
+        actions={"reset": ActionSpec(id="reset", label="Reset")},
+        layout=LayoutSpec(title="Reset button test", main_3d_view_id="morphology", action_ids=("reset",)),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=document, title="Reset button test"))
+    window.timer.stop()
+    window.transport = Mock()
+
+    window._on_action_invoked(document.actions["reset"], {})
+
+    window.transport.send_command.assert_called_once()
+    command = window.transport.send_command.call_args[0][0]
+    assert isinstance(command, Reset)
 
     window.close()
     app.quit()
