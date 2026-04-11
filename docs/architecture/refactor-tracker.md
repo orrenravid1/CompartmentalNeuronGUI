@@ -32,7 +32,7 @@ These are the main architectural mismatches still present in code. If work resum
 
 1. Build a genuinely feature-composable public authoring layer
    Current issue:
-   real apps such as signaling-cascade and pharynx still expose too much `Scene`/session plumbing for the intended scientific user.
+   real apps such as signaling-cascade and the external pharynx research workflow still expose too much `Scene`/session plumbing for the intended scientific user.
    Needed direction:
    users should declare features, controls, tracked series, and small hooks without needing to think about transport or low-level document assembly.
 
@@ -73,7 +73,7 @@ Included outcomes:
 - core model and typed protocol are in place
 - incremental live updates now use `FieldAppend`
 - targeted frontend invalidation is in place
-- stock NEURON examples, static surfaces, cross-sections, signaling cascade, and pharynx-style workflows have all been exercised on the new stack
+- stock NEURON examples, static surfaces, cross-sections, signaling cascade, and external pharynx-style workflows have all been exercised on the new stack
 - docs scaffold, `AGENTS.md`, skill catalog, and generated indexes are in place
 
 Remaining edge work inside this phase:
@@ -106,7 +106,7 @@ Target outcomes:
   - full escape hatches for advanced users
 - cleaner interaction model based on strong defaults plus small semantic hooks
 - clearer plot/view composition model once multiple plot panels and more editor-like workflows are added
-- real research-facing examples such as signaling-cascade and pharynx scripts should read more like simple plotting or lightweight simulation code than frontend-framework code
+- real research-facing examples such as signaling-cascade and the external pharynx workflow should read more like simple plotting or lightweight simulation code than frontend-framework code
 
 ### Phase 3: Alternate Frontends, Transports, and Editing Workflows
 
@@ -133,7 +133,7 @@ These are the recommended next implementation steps in order. If only one thing 
    Scope:
    let users declare controls, tracked series, morphology, surfaces, actions, and layout features without manual document plumbing.
    Concrete implications:
-   signaling-cascade and pharynx-style apps should get materially shorter and stop exposing transport-aware structure.
+   signaling-cascade and external pharynx-style apps should get materially shorter and stop exposing transport-aware structure.
    Why second:
    the architecture is now strong enough that the main remaining pain is authoring complexity.
 
@@ -159,7 +159,7 @@ Phase 2 has meaningfully started only when all of the following are true:
 
 - default backend builders no longer imply that morphology coloring is inherently voltage-only
 - at least one higher-level, feature-composable builder path exists for common scientific apps
-- signaling-cascade and pharynx-style examples can be expressed without transport-aware author code
+- signaling-cascade and external pharynx-style examples can be expressed without transport-aware author code
 - the tracker's current transition targets are reflected in code-level abstractions, not just prose
 - current parity examples still work while the new public authoring layer is introduced
 
@@ -270,9 +270,10 @@ These are the benchmark apps to use when validating architectural changes. If a 
 - signaling-cascade
   Purpose:
   benchmark for "scientific plotting + controls + live updates" without morphology being the main story.
-- pharynx
+- external pharynx research workflow
   Purpose:
   benchmark for custom interactions, multi-trace selection, mode-like workflows, and real scientific authoring pressure.
+  This is a separate research codebase, so CompNeuroVis should reference it only as a high-level benchmark, not via repo-local paths or implementation-specific docs.
 - complex NEURON morphology example
   Purpose:
   benchmark for heavy live morphology rendering, update cadence, and click-to-trace behavior under load.
@@ -365,7 +366,7 @@ These are the benchmark apps to use when validating architectural changes. If a 
 - Users must not have to reason about transport boundaries when deciding where interaction code belongs.
 - If a user has to ask "does this method go in the frontend object or the session object or it breaks pipes?", the authoring model has failed.
 - Refactored app examples should be treated as usability benchmarks:
-  - if a pharynx or signaling-cascade app still reads like framework plumbing, the public API is not done
+  - if an external pharynx workflow or signaling-cascade app still reads like framework plumbing, the public API is not done
   - the target is code that feels comparable in complexity to a plotting script or a lightweight simulation harness
 
 ### Declarative composition vs specialized app types
@@ -443,7 +444,7 @@ These are the benchmark apps to use when validating architectural changes. If a 
   - prefer callback-driven or declarative-simple interaction hooks for common app authoring
   - avoid baking one workflow model into `ActionSpec`
 - Near-term priority:
-  - simplify the public authoring layer so real apps like the pharynx workflow and signaling cascade can be expressed with mostly defaults, concise configuration, and small semantic callbacks
+  - simplify the public authoring layer so real apps like the external pharynx workflow and signaling cascade can be expressed with mostly defaults, concise configuration, and small semantic callbacks
 
 ### Transitional APIs And Assumptions To Retire
 

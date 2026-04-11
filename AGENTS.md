@@ -75,6 +75,14 @@ Key names:
 - If any code, docs, examples, or skill content changes after sealing, regenerate the attestation and create a new final seal commit.
 - The same sealed-tip verification workflow runs on pull request heads and on pushes to `main`.
 
+## Release Flow
+
+- Keep release notes in `CHANGELOG.md`, with current work collected under `## Unreleased`.
+- When cutting a release, update both `CHANGELOG.md` and `pyproject.toml` to the same version.
+- Run `python scripts/pr_readiness.py check`, commit the release-prep changes, then run `python scripts/pr_readiness.py seal --commit`.
+- Tag the sealed final commit with a version tag such as `v0.2.0`.
+- Create the GitHub Release from that tag and reuse the matching `CHANGELOG.md` section as the published notes.
+
 ## Skill Catalog
 
 ## Skill Usage
@@ -108,6 +116,7 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 
 - Architecture overview: `docs/architecture/core-model.md`
 - Refactor tracker: `docs/architecture/refactor-tracker.md`
+- Release process: `docs/architecture/release-process.md`
 - PR readiness attestation: `docs/architecture/pr-readiness-attestation.md`
 - Session protocol: `docs/architecture/session-protocol.md`
 - Architecture invariants: `docs/architecture/invariants.json`
@@ -124,6 +133,7 @@ Read the generated skill index at `docs/reference/skill-index.md` for descriptio
 - Generated repo map: `docs/reference/repo-map.md`
 - Generated API index: `docs/reference/api-index.md`
 - Generated example index: `docs/reference/example-index.md`
+- Changelog: `CHANGELOG.md`
 
 ## Non-Obvious Invariants and Boundaries
 

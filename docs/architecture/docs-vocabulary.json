@@ -1,6 +1,24 @@
 {
   "rules": [
     {
+      "name": "prefer-startup-over-bootstrap-in-docs",
+      "severity": "error",
+      "pattern": "bootstrap",
+      "match_mode": "word",
+      "paths": [
+        "README.md",
+        "AGENTS.md",
+        "docs"
+      ],
+      "exclude_paths": [
+        "docs/architecture/docs-vocabulary.json"
+      ],
+      "ignore_code_blocks": true,
+      "ignore_inline_code": true,
+      "ignore_front_matter": true,
+      "message": "Prefer 'startup' terminology in docs; 'bootstrap' is retired for this workflow."
+    },
+    {
       "name": "prefer-scene-in-user-facing-docs",
       "severity": "warning",
       "pattern": "document",

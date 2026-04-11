@@ -24,7 +24,7 @@ Every session fits the same shape:
 
 For most backends, subclass `BufferedSession`. It gives you `emit(update)` and handles the update queue.
 
-## Optional Bootstrap Scene
+## Optional Startup Scene
 
 Some apps know their initial layout, controls, and placeholder field structure before the worker starts. In that case, the session class can provide:
 
@@ -34,7 +34,7 @@ def startup_scene(cls) -> Scene | None:
     return ...
 ```
 
-When present, `run_app(...)` uses that document immediately so the frontend opens straight into the intended view instead of waiting on the first worker-side `SceneReady`.
+When present, `run_app(...)` uses that scene immediately so the frontend opens straight into the intended view instead of waiting on the first worker-side `SceneReady`.
 
 This hook is for static startup structure only. Live data still comes from `initialize()`, `advance()`, and normal typed updates.
 

@@ -172,3 +172,19 @@ Human contributors can use the same PR-readiness checks without an agent:
 If you change code, docs, tests, examples, or skills after sealing, run `python scripts/pr_readiness.py seal --commit` again from the new final implementation commit.
 
 GitHub Actions verifies the sealed tip on pull request heads and on pushes to `main`.
+
+## Releases And Changelog
+
+Use [CHANGELOG.md](CHANGELOG.md) as the canonical release history and GitHub Releases as the published wrapper around a tagged commit.
+
+Recommended release flow:
+
+1. Keep current work under `## Unreleased` in `CHANGELOG.md`.
+2. When cutting a release, move those notes into a new version section and update [pyproject.toml](pyproject.toml) to the same version.
+3. Run `python scripts/pr_readiness.py check`.
+4. Commit the release-prep changes.
+5. Run `python scripts/pr_readiness.py seal --commit`.
+6. Tag that sealed final commit, for example `git tag v0.2.0`.
+7. Push the branch and tag, then create a GitHub Release from that tag using the matching changelog section as the release notes.
+
+The detailed repo workflow lives in [docs/architecture/release-process.md](docs/architecture/release-process.md).

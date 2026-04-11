@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ROOT_MARKDOWN_FILES = (
     ROOT / "README.md",
     ROOT / "AGENTS.md",
+    ROOT / "CHANGELOG.md",
 )
 CONTRIB_INSTALL_DOCS = (
     ROOT / "README.md",
@@ -36,7 +37,7 @@ INLINE_CODE_PATTERN = re.compile(r"`([^`\n]+)`")
 ROOT_PATH_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.:-])"
     r"(?P<path>"
-    r"AGENTS\.md|README\.md|LICENSE|pyproject\.toml|poetry\.lock|"
+    r"AGENTS\.md|README\.md|CHANGELOG\.md|LICENSE|pyproject\.toml|poetry\.lock|"
     r"(?:\.compneurovis|\.github|docs|skills|scripts|src|tests|examples|res)(?:/[A-Za-z0-9._-]+)*/?"
     r")"
     r"(?![A-Za-z0-9_.-])"
@@ -196,3 +197,17 @@ def test_contributor_docs_use_named_contrib_extra():
 
     assert not missing, "docs missing contributor extra install command:\n" + "\n".join(missing)
     assert not legacy_hits, "docs still use legacy raw contributor dependency command:\n" + "\n".join(legacy_hits)
+
+
+def test_changelog_tracks_current_package_version():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    version_match = re.search(r'^version\s*=\s*"(?P<version>[^"]+)"', pyproject, re.MULTILINE)
+    assert version_match is not None, "pyproject.toml is missing a package version"
+    version = version_match.group("version")
+
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "## Unreleased" in changelog, "CHANGELOG.md should keep an Unreleased section"
+    assert re.search(rf"^## {re.escape(version)}\b", changelog, re.MULTILINE), (
+        "CHANGELOG.md should contain a section for the current package version "
+        f"{version}"
+    )

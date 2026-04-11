@@ -76,6 +76,7 @@ nav:
       - Core Model: architecture/core-model.md
       - Session Protocol: architecture/session-protocol.md
       - VisPy Frontend: architecture/vispy-frontend.md
+      - Release Process: architecture/release-process.md
       - PR Readiness Attestation: architecture/pr-readiness-attestation.md
       - Refactor Tracker: architecture/refactor-tracker.md
   - API Reference:
