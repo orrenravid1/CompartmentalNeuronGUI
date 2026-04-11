@@ -43,6 +43,8 @@ Key names:
 - Run fast tests: `pytest`
 - Run Jaxley backend tests: `pytest --run-jaxley tests/test_jaxley_backend.py`
 - Check architecture invariants: `python scripts/check_architecture_invariants.py`
+- Serve docs locally: `mkdocs serve`
+- Build docs site: `mkdocs build --strict`
 - Regenerate reference indexes: `python scripts/generate_indexes.py`
 - Check generated indexes: `python scripts/generate_indexes.py --check`
 - Run the local PR-readiness quality gate: `python scripts/pr_readiness.py check`
@@ -51,13 +53,14 @@ Key names:
 - Verify a sealed PR tip: `python scripts/pr_readiness.py verify`
 - Verify a sealed PR tip and rerun the recorded checks: `python scripts/pr_readiness.py verify --rerun-commands`
 - Run a live example: `python examples/neuron/visualizer_example.py`
-- Run a static example: `python examples/static_surface_visualizer.py`
+- Run a static example: `python examples/surface_plot/static_surface_visualizer.py`
 
 ## PR Requirements
 
 - Every public export in `src/compneurovis/__init__.py` must appear in at least one authored doc under `docs/`.
 - Generated reference files in `docs/reference/` do not count as authored coverage.
 - Required concept docs under `docs/concepts/` are a hard gate, not optional cleanup.
+- The MkDocs site must build with `mkdocs build --strict` before a branch is considered doc-complete.
 - Do not mark a change PR-ready while docs coverage or concept coverage is knowingly incomplete.
 - Human contributors should prefer `python scripts/pr_readiness.py check` during iteration and `python scripts/pr_readiness.py seal --commit` once the final implementation commit is in place.
 - A PR-ready branch must end with a standalone attestation commit produced by `python scripts/pr_readiness.py seal`.
@@ -74,6 +77,7 @@ Key names:
 - Use `docs/reference/skill-index.md` to discover which skill best matches a task.
 
 - `skills/add-example/SKILL.md`
+- `skills/scratch-exploration/SKILL.md`
 - `skills/add-simulator-backend/SKILL.md`
 - `skills/add-static-field-visualization/SKILL.md`
 - `skills/add-view-panel/SKILL.md`

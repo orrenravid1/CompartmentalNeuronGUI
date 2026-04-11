@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -7,6 +8,80 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ROOT_MARKDOWN_FILES = (
+    ROOT / "README.md",
+    ROOT / "AGENTS.md",
+)
+MARKDOWN_LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]+\]\((?P<target>[^)]+)\)")
+FENCED_CODE_BLOCK_PATTERN = re.compile(r"```.*?```", re.DOTALL)
+INLINE_CODE_PATTERN = re.compile(r"`([^`\n]+)`")
+ROOT_PATH_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_.:-])"
+    r"(?P<path>"
+    r"AGENTS\.md|README\.md|LICENSE|pyproject\.toml|poetry\.lock|"
+    r"(?:\.compneurovis|\.github|docs|skills|scripts|src|tests|examples|res)(?:/[A-Za-z0-9._-]+)*/?"
+    r")"
+    r"(?![A-Za-z0-9_.-])"
+)
+ABSOLUTE_LOCAL_PATH_PATTERN = re.compile(r"^(?:/[A-Za-z]:/|[A-Za-z]:[/\\])")
+
+
+def markdown_files() -> list[Path]:
+    files = [path for path in ROOT_MARKDOWN_FILES if path.exists()]
+    files.extend(sorted((ROOT / "docs").rglob("*.md")))
+    files.extend(sorted((ROOT / "skills").rglob("SKILL.md")))
+    if (ROOT / ".github").exists():
+        files.extend(sorted((ROOT / ".github").rglob("*.md")))
+    if (ROOT / ".compneurovis").exists():
+        files.extend(sorted((ROOT / ".compneurovis").rglob("*.md")))
+    return files
+
+
+def is_within_root(path: Path) -> bool:
+    resolved = path.resolve()
+    return resolved == ROOT or ROOT in resolved.parents
+
+
+def normalize_markdown_target(raw_target: str) -> str:
+    target = raw_target.strip()
+    if target.startswith("<") and target.endswith(">"):
+        target = target[1:-1].strip()
+    if " " in target and not target.startswith(("http://", "https://", "mailto:")):
+        target = target.split(" ", 1)[0]
+    return target
+
+
+def resolve_markdown_target(path: Path, target: str) -> str | None:
+    normalized = normalize_markdown_target(target)
+    if not normalized or normalized.startswith("#"):
+        return None
+    if normalized.startswith(("http://", "https://", "mailto:")):
+        return None
+    if ABSOLUTE_LOCAL_PATH_PATTERN.match(normalized):
+        return f"{path.relative_to(ROOT).as_posix()}: absolute local markdown path is not allowed: {normalized}"
+    if normalized.startswith("/"):
+        return f"{path.relative_to(ROOT).as_posix()}: root-absolute markdown path is not allowed: {normalized}"
+
+    target_path = normalized.split("#", 1)[0]
+    candidate = (path.parent / target_path).resolve()
+    if not is_within_root(candidate):
+        return f"{path.relative_to(ROOT).as_posix()}: markdown link escapes repo root: {normalized}"
+    if not candidate.exists():
+        return f"{path.relative_to(ROOT).as_posix()}: unresolved markdown link: {normalized}"
+    return None
+
+
+def resolve_root_relative_path(path: Path, candidate: str) -> str | None:
+    resolved = (ROOT / candidate.rstrip("/")).resolve()
+    if not is_within_root(resolved):
+        return f"{path.relative_to(ROOT).as_posix()}: path escapes repo root: {candidate}"
+    if not resolved.exists():
+        return f"{path.relative_to(ROOT).as_posix()}: unresolved repo path: {candidate}"
+    return None
+
+
+def iter_root_relative_candidates(text: str) -> list[str]:
+    return [match.group("path") for match in ROOT_PATH_PATTERN.finditer(text)]
 
 
 def test_generated_indexes_are_in_sync():
@@ -25,26 +100,42 @@ def test_architecture_invariants_hold():
     )
 
 
+def test_mkdocs_builds_in_strict_mode():
+    subprocess.run(
+        [sys.executable, "-m", "mkdocs", "build", "--strict"],
+        cwd=ROOT,
+        env=os.environ | {"NO_MKDOCS_2_WARNING": "true"},
+        check=True,
+    )
+
+
 def test_docs_and_skills_have_front_matter():
-    markdown_files = list((ROOT / "docs").rglob("*.md")) + list((ROOT / "skills").rglob("SKILL.md"))
-    assert markdown_files
-    for path in markdown_files:
+    files = list((ROOT / "docs").rglob("*.md")) + list((ROOT / "skills").rglob("SKILL.md"))
+    assert files
+    for path in files:
         text = path.read_text(encoding="utf-8")
         assert text.startswith("---\n"), f"missing front matter start: {path}"
         assert "\n---\n" in text[4:], f"missing front matter end: {path}"
 
 
-def test_agents_links_resolve():
-    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    candidates = re.findall(r"`([A-Za-z0-9._/-]+)`", agents)
-    unresolved = []
-    for candidate in candidates:
-        if candidate.startswith("http"):
-            continue
-        if candidate.startswith("python"):
-            continue
-        if "/" not in candidate:
-            continue
-        if not (ROOT / candidate).exists():
-            unresolved.append(candidate)
-    assert not unresolved, f"unresolved AGENTS paths: {unresolved}"
+def test_markdown_paths_resolve():
+    unresolved: list[str] = []
+    for path in markdown_files():
+        text = path.read_text(encoding="utf-8")
+        for match in MARKDOWN_LINK_PATTERN.finditer(text):
+            error = resolve_markdown_target(path, match.group("target"))
+            if error:
+                unresolved.append(error)
+
+        fenced_blocks = FENCED_CODE_BLOCK_PATTERN.findall(text)
+        text_without_fences = FENCED_CODE_BLOCK_PATTERN.sub("", text)
+
+        candidate_texts = list(fenced_blocks)
+        candidate_texts.extend(INLINE_CODE_PATTERN.findall(text_without_fences))
+
+        for candidate_text in candidate_texts:
+            for candidate in iter_root_relative_candidates(candidate_text):
+                error = resolve_root_relative_path(path, candidate)
+                if error:
+                    unresolved.append(error)
+    assert not unresolved, "unresolved markdown paths:\n" + "\n".join(sorted(set(unresolved)))

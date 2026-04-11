@@ -74,4 +74,5 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `debug-rendering`: `skills/debug-rendering/SKILL.md`
 - `pr-readiness`: `skills/pr-readiness/SKILL.md`
 - `register-skill`: `skills/register-skill/SKILL.md`
+- `scratch-exploration`: `skills/scratch-exploration/SKILL.md`
 - `update-docs-and-indexes`: `skills/update-docs-and-indexes/SKILL.md`

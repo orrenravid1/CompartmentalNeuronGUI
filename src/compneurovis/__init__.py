@@ -1,3 +1,5 @@
+"""Public authoring surface for CompNeuroVis."""
+
 from compneurovis.builders import ReplaySession, build_replay_app, build_surface_app, grid_field
 from compneurovis.core import (
     ActionSpec,

@@ -10,6 +10,8 @@ def build_jaxley_app(
     title: str | None = None,
     interaction_target=None,
 ) -> AppSpec:
+    """Build a live app backed by a JaxleySession subclass or session factory."""
+
     if isinstance(session, Session):
         raise TypeError(
             "build_jaxley_app() requires a Session subclass or top-level zero-argument factory. "

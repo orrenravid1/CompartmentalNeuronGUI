@@ -5,7 +5,7 @@ summary: Step-by-step guide to building a live Jaxley-backed visualization by su
 
 # Build a Jaxley Session
 
-This tutorial shows the minimal pattern for a live Jaxley simulation. See [examples/jaxley/multicell_example.py](/c:/Users/orren/Documents/PythonProjects/CompartmentalNeuronGUI/examples/jaxley/multicell_example.py) for a fuller example.
+This tutorial shows the minimal pattern for a live Jaxley simulation. See `examples/jaxley/multicell_example.py` and the [Example Index](../reference/example-index.md) for a fuller runnable example.
 
 ## 1. Subclass JaxleySession
 
@@ -73,7 +73,7 @@ def apply_control(self, control_id, value):
     return False
 ```
 
-For a fuller runtime-update pattern, see [examples/jaxley/multicell_example.py](/c:/Users/orren/Documents/PythonProjects/CompartmentalNeuronGUI/examples/jaxley/multicell_example.py), which rebuilds stimulus externals and refreshes runtime parameters after control changes.
+For a fuller runtime-update pattern, see `examples/jaxley/multicell_example.py` in the [Example Index](../reference/example-index.md), which rebuilds stimulus externals and refreshes runtime parameters after control changes.
 
 Keep the controls semantic. The frontend will route `SetControl` and `InvokeAction` to the session for you.
 

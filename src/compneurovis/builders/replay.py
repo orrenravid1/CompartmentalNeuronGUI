@@ -7,6 +7,8 @@ from compneurovis.session import BufferedSession, FieldReplace
 
 
 class ReplaySession(BufferedSession):
+    """Session that replays a precomputed sequence of frame replacements."""
+
     def __init__(self, *, scene: Scene, field_id: str, frames, interval_live: bool = True):
         super().__init__()
         self.scene = scene
@@ -33,6 +35,8 @@ class ReplaySession(BufferedSession):
 
 
 def build_replay_app(*, scene: Scene, field_id: str, frames) -> AppSpec:
+    """Build an app that replays precomputed frames through ReplaySession."""
+
     return AppSpec(
         scene=scene,
         session=partial(ReplaySession, scene=scene, field_id=field_id, frames=frames),

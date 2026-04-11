@@ -50,6 +50,8 @@ class SessionInteractionContext:
 
 
 class NeuronSession(BufferedSession, ABC):
+    """Base class for live NEURON-backed CompNeuroVis sessions."""
+
     HISTORY_CAPTURE_ON_DEMAND = HistoryCaptureMode.ON_DEMAND
     HISTORY_CAPTURE_FULL = HistoryCaptureMode.FULL
 
@@ -87,9 +89,13 @@ class NeuronSession(BufferedSession, ABC):
 
     @abstractmethod
     def build_sections(self):
+        """Return the NEURON sections that define the model morphology."""
+
         pass
 
     def setup_model(self, sections):
+        """Insert mechanisms, stimuli, or recorders after sections are created."""
+
         return None
 
     def control_specs(self) -> dict[str, ControlSpec]:
@@ -165,6 +171,8 @@ class NeuronSession(BufferedSession, ABC):
         return True
 
     def build_scene(self, *, geometry, display_values: np.ndarray, time_value: float) -> Scene:
+        """Build the initial Scene from sampled values and morphology geometry."""
+
         controls = self.control_specs()
         actions = self.action_specs()
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
@@ -196,6 +204,8 @@ class NeuronSession(BufferedSession, ABC):
         return scene
 
     def initialize(self):
+        """Initialize the NEURON model, sample it once, and return the first Scene."""
+
         self.sections = self.build_sections()
         self._runtime_handles = self.setup_model(self.sections)
         self.geometry = NeuronSceneBuilder.build_morphology_geometry(self.sections)
@@ -365,6 +375,8 @@ class NeuronSession(BufferedSession, ABC):
         return required
 
     def advance(self) -> None:
+        """Advance the simulation and emit incremental frontend updates."""
+
         samples: list[np.ndarray] = []
         times: list[float] = []
         for _ in range(self.steps_per_update()):

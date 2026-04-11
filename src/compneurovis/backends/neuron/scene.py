@@ -8,12 +8,16 @@ from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeo
 
 
 class NeuronSceneBuilder:
+    """Build default morphology geometry and Scene objects for NEURON sessions."""
+
     DISPLAY_FIELD_ID = "segment_display"
     HISTORY_FIELD_ID = "segment_history"
     TRACE_FIELD_ID = HISTORY_FIELD_ID
 
     @staticmethod
     def build_morphology_geometry(sections):
+        """Convert NEURON sections with pt3d data into MorphologyGeometry."""
+
         t0 = time.perf_counter()
 
         if any(int(sec.n3d()) < 2 for sec in sections):
@@ -126,6 +130,8 @@ class NeuronSceneBuilder:
         control_ids: tuple[str, ...] | None = None,
         action_ids: tuple[str, ...] | None = None,
     ) -> Scene:
+        """Build the default morphology-plus-trace Scene for a NEURON session."""
+
         display_field_id = display_field_id or NeuronSceneBuilder.DISPLAY_FIELD_ID
         history_field_id = history_field_id or NeuronSceneBuilder.HISTORY_FIELD_ID
         history_unit = display_unit if history_unit is None else history_unit

@@ -7,11 +7,10 @@ description: Add or update a static field, surface, or slice-based visualization
 
 Read `docs/concepts/field-model.md` and `docs/tutorials/build-a-static-surface.md` first.
 
-Reference implementation: `examples/static_surface_visualizer.py`.
+Reference implementation: `examples/surface_plot/static_surface_visualizer.py`.
 
 1. Create a `Field` with named dims and coordinate metadata.
 2. Create a `GridGeometry` only if the view needs explicit grid semantics; omit it otherwise.
 3. Define one or more `ViewSpec` objects that express rendering intent.
 4. Assemble the app with `build_surface_app(...)` or a minimal custom `Scene` — do not introduce new foundational data types when a `Field` plus a view is sufficient.
 5. Update the closest tutorial or example when adding a new visualization pattern.
-

@@ -5,7 +5,7 @@ summary: Step-by-step guide to building an interactive surface visualization fro
 
 # Build a Static Surface
 
-This tutorial builds the `examples/static_surface_visualizer.py` pattern from scratch.
+This tutorial builds the `examples/surface_plot/static_surface_visualizer.py` pattern from scratch.
 
 ## 1. Create a Field and Geometry
 
@@ -114,4 +114,4 @@ line_view = LinePlotViewSpec(
 
 Then pass `line_view` to `build_surface_app(line_view=line_view)`.
 
-See `examples/surface_cross_section_visualizer.py` for the full pattern.
+See `examples/surface_plot/surface_cross_section_visualizer.py` for the full pattern.

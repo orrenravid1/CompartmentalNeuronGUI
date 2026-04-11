@@ -1,0 +1,90 @@
+site_name: CompNeuroVis
+site_description: Visualization toolkit for computational neuroscience workflows.
+docs_dir: docs
+site_dir: site
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+plugins:
+  - search
+  - autorefs
+  - mkdocstrings:
+      handlers:
+        python:
+          paths:
+            - src
+          options:
+            docstring_style: google
+            filters:
+              - "!^_"
+            heading_level: 2
+            inherited_members: true
+            members_order: source
+            merge_init_into_class: true
+            parameter_headings: true
+            separate_signature: true
+            show_if_no_docstring: true
+            show_root_full_path: false
+            show_root_heading: true
+            show_root_members_full_path: false
+            show_signature_annotations: true
+            show_source: false
+            summary: true
+            unwrap_annotated: true
+
+hooks:
+  - scripts/mkdocs_hooks.py
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Tutorials:
+      - Static Surface: tutorials/build-a-static-surface.md
+      - NEURON Session: tutorials/build-a-neuron-session.md
+      - Jaxley Session: tutorials/build-a-jaxley-session.md
+      - Replay App: tutorials/build-a-replay-app.md
+  - Concepts:
+      - Field Model: concepts/field-model.md
+      - Geometry Types: concepts/geometry-types.md
+      - Session Update Model: concepts/session-update-model.md
+      - Controls, Actions, and State: concepts/controls-actions-state.md
+      - View and Layout Model: concepts/view-layout-model.md
+  - Architecture:
+      - Core Model: architecture/core-model.md
+      - Session Protocol: architecture/session-protocol.md
+      - VisPy Frontend: architecture/vispy-frontend.md
+      - PR Readiness Attestation: architecture/pr-readiness-attestation.md
+      - Refactor Tracker: architecture/refactor-tracker.md
+  - API Reference:
+      - Overview: api/index.md
+      - Public API: api/public-api.md
+      - Builders: api/builders.md
+      - Backend Sessions: api/backends.md
+  - Examples & Reference:
+      - Example Index: reference/example-index.md
+      - API Index: reference/api-index.md
+      - Repo Map: reference/repo-map.md
+      - Skill Index: reference/skill-index.md

@@ -6,6 +6,8 @@ from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeo
 
 
 class JaxleySceneBuilder:
+    """Build default morphology geometry and Scene objects for Jaxley sessions."""
+
     DISPLAY_FIELD_ID = "segment_display"
     HISTORY_FIELD_ID = "segment_history"
     TRACE_FIELD_ID = HISTORY_FIELD_ID
@@ -61,6 +63,8 @@ class JaxleySceneBuilder:
         xyzr: list[np.ndarray] | tuple[np.ndarray, ...] | None = None,
         cell_names: list[str] | tuple[str, ...] | None = None,
     ) -> MorphologyGeometry:
+        """Convert Jaxley morphology/network data into MorphologyGeometry."""
+
         ordered = nodes.sort_values("global_comp_index").reset_index(drop=True)
         if ordered.empty:
             raise ValueError("JaxleySceneBuilder requires at least one compartment")
@@ -178,6 +182,8 @@ class JaxleySceneBuilder:
         control_ids: tuple[str, ...] | None = None,
         action_ids: tuple[str, ...] | None = None,
     ) -> Scene:
+        """Build the default morphology-plus-trace Scene for a Jaxley session."""
+
         display_field_id = display_field_id or JaxleySceneBuilder.DISPLAY_FIELD_ID
         history_field_id = history_field_id or JaxleySceneBuilder.HISTORY_FIELD_ID
         history_unit = display_unit if history_unit is None else history_unit

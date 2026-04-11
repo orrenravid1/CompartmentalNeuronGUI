@@ -24,6 +24,7 @@ Run this sequence:
    - `pytest`
    - `python -m compileall src examples tests`
    - `python scripts/generate_indexes.py --check`
+   - `python -m mkdocs build --strict`
    - for human contributors without agent support, `python scripts/pr_readiness.py check` is the one-command local quality gate
 11. When the implementation commit is complete and the working tree is clean, run `python scripts/pr_readiness.py seal`.
 12. Human contributors should usually prefer `python scripts/pr_readiness.py seal --commit`, which creates the standalone final attestation commit automatically.

@@ -1,60 +1,125 @@
 # CompNeuroVis
 
-CompNeuroVis is a PyQt6/VisPy visualization toolkit for compartmental neuroscience workflows. The current architecture is centered on:
+CompNeuroVis is a desktop visualization toolkit for computational neuroscience. It is meant for the common lab problem of getting arrays, traces, and compartment morphologies on screen quickly without building a custom GUI from scratch.
 
-- `Field`: dense labeled data with named axes and coordinates
-- `Scene`: static fields, geometries, views, controls, and layout
-- `Session`: optional live or replay backend that emits typed updates
-- `PipeTransport`: local process transport for Python/VisPy workflows
-- `VispyFrontend`: the current frontend implementation
+Use it to:
 
-Conceptually, the architecture is composed along three independent axes:
+- render a 2-D field as an interactive 3-D surface
+- link a surface view to a line-plot slice and controls
+- view live NEURON or Jaxley compartment activity on morphology and traces
+- replay precomputed frames through the same frontend and layout system
 
-- backend/runtime, such as NEURON, Jaxley, or replay
-- features, such as traces, morphology, surfaces, controls, and actions
-- layout, such as plot-only, mixed 3D + plot, and future workbench arrangements
+If you just want to see something working with no simulator backend, start with the static surface example after install:
 
-These axes are meant to stay orthogonal. A NEURON-backed app is not automatically a morphology app. For example, a signaling-cascade viewer can be a NEURON-backed live app with controls and traces but no morphology.
+```bash
+pip install -e .
+python examples/surface_plot/static_surface_visualizer.py
+```
+
+The current frontend is a local PyQt6/VisPy desktop app, so examples should be run in a normal GUI session.
 
 ## Install
+
+Base install:
 
 ```bash
 pip install -e .
 ```
 
-If you plan to contribute or run the PR-readiness checks locally, also install `pytest`:
+If you plan to contribute, build the docs site locally, or run the PR-readiness checks, also install the docs/test toolchain:
 
 ```bash
-pip install -e . pytest
+pip install -e . pytest mkdocs mkdocs-material "mkdocstrings[python]"
 ```
 
-Optional simulator backends are exposed as Poetry extras:
+Optional simulator backends:
 
 ```bash
 pip install -e .[neuron]
 ```
 
-## Quick Start
-
-Static surface:
-
 ```bash
-python examples/static_surface_visualizer.py
+pip install -e .[jaxley]
 ```
 
-Surface cross section:
+## Start Here
+
+Choose the example that matches what you want to do first:
+
+- First look, no simulator required:
 
 ```bash
-python examples/surface_cross_section_visualizer.py
+python examples/surface_plot/static_surface_visualizer.py
 ```
 
-Live NEURON morphology:
+Interactive 3-D sinc surface with appearance controls.
+
+- Surface plus linked cross-section plot:
+
+```bash
+python examples/surface_plot/surface_cross_section_visualizer.py
+```
+
+Static field with a moveable slice plane and matching line plot.
+
+- Live NEURON morphology viewer:
 
 ```bash
 python examples/neuron/visualizer_example.py
 ```
 
-On Windows, live session entrypoints use `multiprocessing` with `spawn`. `run_app(...)` ignores spawned child imports internally so a shared script can keep the same top-level launch pattern across Windows, Linux, and macOS. A manual `if __name__ == "__main__":` wrapper is optional, not a library requirement.
+Single-cell live session loaded from an SWC morphology. Requires `pip install -e .[neuron]`.
+
+- Live Jaxley multicell example:
+
+```bash
+python examples/jaxley/multicell_example.py
+```
+
+Three procedurally built cells with synaptic connectivity. Requires `pip install -e .[jaxley]`.
+
+- Replay a precomputed animation:
+
+```bash
+python examples/surface_plot/animated_surface_replay.py
+```
+
+Precomputed frames played through the same frontend model as live sessions.
+
+On Windows, live session entrypoints use `multiprocessing` with `spawn`. `run_app(...)` handles the spawned-child import case internally so shared scripts can keep the same top-level launch pattern across Windows, Linux, and macOS.
+
+## Learn the Toolkit
+
+If you want to adapt an example rather than just run it:
+
+- [Build a static surface](docs/tutorials/build-a-static-surface.md)
+- [Build a NEURON session](docs/tutorials/build-a-neuron-session.md)
+- [Build a Jaxley session](docs/tutorials/build-a-jaxley-session.md)
+- [Build a replay app](docs/tutorials/build-a-replay-app.md)
+- [Browse all runnable examples](docs/reference/example-index.md)
+
+## Local Docs Site
+
+Serve the docs site locally:
+
+```bash
+mkdocs serve
+```
+
+Build the docs site in strict mode:
+
+```bash
+mkdocs build --strict
+```
+
+## Mental Model
+
+You do not need the full architecture to run an example, but the core model is small:
+
+- `Field`: labeled numeric data with named axes and coordinates
+- `Scene`: the fields, geometries, views, controls, and layout shown in the app
+- `Session`: an optional live or replay backend that emits updates over time
+- `run_app(...)`: launches the current VisPy frontend for an `AppSpec`
 
 ## Public API
 
@@ -87,7 +152,7 @@ python scripts/generate_indexes.py
 
 Human contributors can use the same PR-readiness checks without an agent:
 
-1. Install contributor dependencies with `pip install -e . pytest`.
+1. Install contributor dependencies with `pip install -e . pytest mkdocs mkdocs-material "mkdocstrings[python]"`.
 2. Run `python scripts/pr_readiness.py check` while iterating locally. This runs the repo quality gate, including `pytest`, compile checks, architecture invariants, and generated index validation.
 3. Commit your implementation changes normally.
 4. As the last commit before you push or open the PR, run `python scripts/pr_readiness.py seal --commit`.

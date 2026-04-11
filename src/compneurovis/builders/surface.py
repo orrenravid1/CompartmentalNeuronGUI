@@ -15,6 +15,8 @@ def grid_field(
     y_dim: str = "y",
     unit: str | None = None,
 ) -> tuple[Field, GridGeometry]:
+    """Create a Field/GridGeometry pair from a 2-D array and coordinate vectors."""
+
     field = Field(
         id=field_id,
         values=np.asarray(values, dtype=np.float32),
@@ -45,6 +47,8 @@ def build_surface_app(
     line_view: LinePlotViewSpec | None = None,
     controls: dict[str, ControlSpec] | None = None,
 ) -> AppSpec:
+    """Build a static surface app from field data, optional geometry, and views."""
+
     if surface_view is None:
         surface_view = SurfaceViewSpec(
             id="surface",

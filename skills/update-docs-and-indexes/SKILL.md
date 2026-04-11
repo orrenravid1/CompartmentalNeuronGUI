@@ -16,6 +16,7 @@ Update documentation in this order:
 5. Regenerate the reference docs with `python scripts/generate_indexes.py`.
 6. Validate with:
    - `python scripts/generate_indexes.py --check`
+   - `python -m mkdocs build --strict`
    - targeted tests or `pytest` if docs describe runnable behavior
 
 Keep docs concise, cross-reference canonical pages instead of duplicating long explanations, and prefer stable package entrypoints over low-level file internals.

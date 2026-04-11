@@ -52,6 +52,8 @@ class SessionInteractionContext:
 
 
 class JaxleySession(BufferedSession, ABC):
+    """Base class for live Jaxley-backed CompNeuroVis sessions."""
+
     HISTORY_CAPTURE_ON_DEMAND = HistoryCaptureMode.ON_DEMAND
     HISTORY_CAPTURE_FULL = HistoryCaptureMode.FULL
 
@@ -97,15 +99,21 @@ class JaxleySession(BufferedSession, ABC):
 
     @abstractmethod
     def build_cells(self) -> Iterable["jx.Cell"] | "jx.Cell":
+        """Return one Jaxley cell or an iterable of cells for the session."""
+
         pass
 
     def build_network(self, cells: list["jx.Cell"]):
+        """Build the Jaxley network from the returned cells."""
+
         import jax  # noqa: F401
         import jaxley as jx
 
         return jx.Network(cells)
 
     def setup_model(self, network, cells):
+        """Configure channels, stimuli, recordings, or other runtime setup."""
+
         del network, cells
         return None
 
@@ -185,6 +193,8 @@ class JaxleySession(BufferedSession, ABC):
         return True
 
     def build_scene(self, *, geometry, display_values: np.ndarray, time_value: float) -> Scene:
+        """Build the initial Scene from sampled values and morphology geometry."""
+
         controls = self.control_specs()
         actions = self.action_specs()
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
@@ -216,6 +226,8 @@ class JaxleySession(BufferedSession, ABC):
         return scene
 
     def initialize(self):
+        """Initialize the Jaxley model, sample it once, and return the first Scene."""
+
         import jax  # noqa: F401
         import jaxley as jx
         from jaxley.integrate import build_init_and_step_fn
@@ -422,6 +434,8 @@ class JaxleySession(BufferedSession, ABC):
         self._external_inds = {key: np.asarray(value) for key, value in self.network.external_inds.copy().items()}
 
     def advance(self) -> None:
+        """Advance the simulation and emit incremental frontend updates."""
+
         samples: list[np.ndarray] = []
         times: list[float] = []
         for _ in range(self.steps_per_update()):

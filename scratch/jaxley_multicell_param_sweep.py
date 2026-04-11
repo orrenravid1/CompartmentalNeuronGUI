@@ -6,7 +6,7 @@ The sweep uses a single early pulse so the run time stays practical while still
 testing whether cell1 can drive cell2 and cell3 through the synapses.
 
 Run:
-    python experiments/jaxley_multicell_param_sweep.py
+    python scratch/jaxley_multicell_param_sweep.py
 """
 
 from __future__ import annotations

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -18,6 +19,7 @@ DEFAULT_VERIFICATION_COMMANDS: tuple[tuple[str, ...], ...] = (
     ("pytest",),
     ("python", "-m", "compileall", "src", "examples", "tests"),
     ("python", "scripts/generate_indexes.py", "--check"),
+    ("python", "-m", "mkdocs", "build", "--strict"),
 )
 
 
@@ -95,6 +97,14 @@ def serialize_commands(commands: Sequence[Sequence[str]]) -> list[list[str]]:
     return [list(command) for command in commands]
 
 
+def mkdocs_command_env(command: Sequence[str]) -> dict[str, str] | None:
+    if len(command) >= 3 and command[0] == sys.executable and command[1] == "-m" and command[2] == "mkdocs":
+        return os.environ | {"NO_MKDOCS_2_WARNING": "true"}
+    if command and command[0] in {"mkdocs", "mkdocs.exe"}:
+        return os.environ | {"NO_MKDOCS_2_WARNING": "true"}
+    return None
+
+
 def parse_trailers(message: str) -> dict[str, str]:
     trailers: dict[str, str] = {}
     for line in message.splitlines():
@@ -121,7 +131,7 @@ def run_verification_commands(root: Path, commands: Sequence[Sequence[str]]) -> 
     for command in commands:
         actual = normalize_command(command)
         started = time.perf_counter()
-        completed = subprocess.run(actual, cwd=root)
+        completed = subprocess.run(actual, cwd=root, env=mkdocs_command_env(actual))
         duration = round(time.perf_counter() - started, 3)
         if completed.returncode != 0:
             rendered = " ".join(command)

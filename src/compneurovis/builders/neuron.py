@@ -10,6 +10,8 @@ def build_neuron_app(
     title: str | None = None,
     interaction_target=None,
 ) -> AppSpec:
+    """Build a live app backed by a NeuronSession subclass or session factory."""
+
     if isinstance(session, Session):
         raise TypeError(
             "build_neuron_app() requires a Session subclass or top-level zero-argument factory. "
