@@ -2,7 +2,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from compneurovis.core import AppSpec, ControlSpec, Field, GridGeometry, LayoutSpec, LinePlotViewSpec, Scene, SurfaceViewSpec
+from compneurovis.core import (
+    AppSpec,
+    ControlSpec,
+    Field,
+    GridGeometry,
+    LayoutSpec,
+    LinePlotViewSpec,
+    Scene,
+    SurfaceViewSpec,
+    View3DHostSpec,
+)
 
 
 def grid_field(
@@ -46,8 +56,13 @@ def build_surface_app(
     surface_view: SurfaceViewSpec | None = None,
     line_view: LinePlotViewSpec | None = None,
     controls: dict[str, ControlSpec] | None = None,
+    view_3d_host: View3DHostSpec | None = None,
 ) -> AppSpec:
-    """Build a static surface app from field data, optional geometry, and views."""
+    """Build a static surface app from field data, optional geometry, and views.
+
+    Pass ``view_3d_host`` to override host-level camera settings such as the
+    initial turntable distance for the surface viewport.
+    """
 
     if surface_view is None:
         surface_view = SurfaceViewSpec(
@@ -58,6 +73,8 @@ def build_surface_app(
         )
     views = {surface_view.id: surface_view}
     layout = LayoutSpec(title=title, view_3d_ids=(surface_view.id,))
+    if view_3d_host is not None:
+        layout.view_3d_hosts = (view_3d_host,)
     if line_view is not None:
         views[line_view.id] = line_view
         layout.line_plot_view_id = line_view.id

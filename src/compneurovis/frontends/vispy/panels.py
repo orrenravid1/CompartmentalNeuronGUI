@@ -14,6 +14,7 @@ from vispy.scene.cameras import TurntableCamera
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
+from compneurovis.core.scene import View3DHostSpec
 from compneurovis.core.state import StateBinding
 from compneurovis.core.views import LinePlotViewSpec, MorphologyViewSpec, SurfaceViewSpec
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer, SurfaceRenderer
@@ -31,15 +32,24 @@ class SurfaceSceneData:
 
 
 class Viewport3DPanel(QtWidgets.QWidget):
-    def __init__(self, on_entity_selected=None, parent=None):
+    def __init__(
+        self,
+        *,
+        host_spec: View3DHostSpec | None = None,
+        on_entity_selected=None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.canvas = scene.SceneCanvas(keys="interactive", bgcolor="white", show=False)
         self.view = self.canvas.central_widget.add_view()
+        distance = 200.0 if host_spec is None else host_spec.camera_distance
+        elevation = 30.0 if host_spec is None else host_spec.camera_elevation
+        azimuth = 30.0 if host_spec is None else host_spec.camera_azimuth
         self.view.camera = TurntableCamera(
             fov=60,
-            distance=200,
-            elevation=30,
-            azimuth=30,
+            distance=distance,
+            elevation=elevation,
+            azimuth=azimuth,
             translate_speed=100,
             up="+z",
         )
@@ -244,11 +254,11 @@ class Viewport3DPanel(QtWidgets.QWidget):
 
 
 class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
-    def __init__(self, *, host_id: str, view_id: str, title: str | None = None, on_entity_selected=None, parent=None):
-        super().__init__(title or view_id, parent)
-        self.host_id = host_id
-        self.view_ids = (view_id,)
-        self.viewport = Viewport3DPanel(on_entity_selected=on_entity_selected)
+    def __init__(self, *, host: View3DHostSpec, title: str | None = None, on_entity_selected=None, parent=None):
+        super().__init__(title or host.view_ids[0], parent)
+        self.host_id = host.id
+        self.view_ids = host.view_ids
+        self.viewport = Viewport3DPanel(host_spec=host, on_entity_selected=on_entity_selected)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 8, 4, 4)
         layout.addWidget(self.viewport)

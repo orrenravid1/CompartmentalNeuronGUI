@@ -16,3 +16,7 @@ summary: Field, geometry, view, control, and scene primitives.
 - `ViewSpec`
 - `ControlSpec`
 - declarative binding helpers such as `AttributeRef` and `SeriesSpec`
+
+`View3DHostSpec` owns 3-D host concerns such as initial camera distance and
+starting turntable orientation. Those settings belong here rather than on
+`SurfaceViewSpec` or `MorphologyViewSpec`, which describe rendered content.

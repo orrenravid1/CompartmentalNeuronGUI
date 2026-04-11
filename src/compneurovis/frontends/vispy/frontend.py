@@ -315,8 +315,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         view = self.scene.views.get(view_id) if self.scene is not None else None
         title = host.title or getattr(view, "title", None) or view_id
         return IndependentCanvas3DHostPanel(
-            host_id=host.id,
-            view_id=view_id,
+            host=host,
             title=title,
             on_entity_selected=self._on_entity_selected,
         )

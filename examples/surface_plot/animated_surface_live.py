@@ -18,7 +18,7 @@ Run: python examples/surface_plot/animated_surface_live.py
 
 import numpy as np
 
-from compneurovis import ActionSpec, ControlSpec, SurfaceViewSpec, build_surface_app, grid_field, run_app
+from compneurovis import ActionSpec, ControlSpec, SurfaceViewSpec, View3DHostSpec, build_surface_app, grid_field, run_app
 from compneurovis.core import AppSpec
 from compneurovis.session import BufferedSession, SceneReady, FieldReplace, InvokeAction, Reset, SetControl
 
@@ -56,6 +56,7 @@ scene = build_surface_app(
     # send_to_session=True so the session receives SetControl when the slider moves.
     controls={"speed": ControlSpec("speed", "float", "Speed", 1.0, min=0.1, max=4.0, steps=78, send_to_session=True)},
     title="animated sinc wave — live",
+    view_3d_host=View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=120.0),
 ).scene
 
 scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=("Space",))

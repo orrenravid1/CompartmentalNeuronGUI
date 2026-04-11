@@ -20,6 +20,7 @@ Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, 
 - which 3D views it owns
 - which host kind should mount them
 - optional host-level titling
+- optional initial camera settings such as turntable distance, azimuth, and elevation
 
 If `view_3d_hosts` is omitted, the layout derives one independent host per `view_3d_id`. If the resolved 3D host list is empty, the 3D splitter is hidden and the right panel fills the window.
 
@@ -66,6 +67,10 @@ This is the intended extension point for future alternatives such as:
 - other host-level composition patterns
 
 without changing `ViewSpec`, backend sessions, or the typed refresh model.
+
+The current independent-canvas host uses a `TurntableCamera`, so host-level
+camera settings are the right place to tune starting framing for surface and
+morphology examples without changing the semantics of the underlying view.
 
 Three trigger sources:
 

@@ -13,7 +13,7 @@ Run: python examples/surface_plot/static_surface_visualizer.py
 
 import numpy as np
 
-from compneurovis import ControlSpec, StateBinding, SurfaceViewSpec, build_surface_app, grid_field, run_app
+from compneurovis import ControlSpec, StateBinding, SurfaceViewSpec, View3DHostSpec, build_surface_app, grid_field, run_app
 
 
 COLOR_OPTIONS = ("black", "white", "gray", "red", "green", "blue", "orange", "purple")
@@ -75,6 +75,7 @@ app = build_surface_app(
     title="interactive sinc surface",
     surface_view=surface_view,
     controls=controls,
+    view_3d_host=View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=120.0),
 )
 
 run_app(app)

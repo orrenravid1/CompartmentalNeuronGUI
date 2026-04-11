@@ -74,7 +74,7 @@ Any `ViewSpec` property that accepts a `StateBinding` will resolve to the curren
 ## 4. Assemble and Run
 
 ```python
-from compneurovis import build_surface_app, run_app
+from compneurovis import View3DHostSpec, build_surface_app, run_app
 
 app = build_surface_app(
     field=field,
@@ -82,12 +82,19 @@ app = build_surface_app(
     title="sinc surface",
     surface_view=surface_view,
     controls=controls,
+    view_3d_host=View3DHostSpec(
+        id="surface-host",
+        view_ids=("surface",),
+        camera_distance=120.0,
+    ),
 )
 
 run_app(app)
 ```
 
 `build_surface_app()` builds the `Scene` and `AppSpec` for you. There is no `Session` — the field values are static.
+Use `view_3d_host` when you want to tune host-level camera settings such as the
+initial distance without changing what the `SurfaceViewSpec` renders.
 
 ## Adding a Line Plot Slice
 

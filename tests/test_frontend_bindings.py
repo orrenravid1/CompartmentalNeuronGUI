@@ -177,6 +177,49 @@ def test_surface_visual_reuses_same_surface_object_for_same_shape_updates():
     app.quit()
 
 
+def test_viewport_3d_panel_applies_host_camera_settings():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    host = View3DHostSpec(
+        id="surface-host",
+        view_ids=("surface-view",),
+        camera_distance=90.0,
+        camera_elevation=20.0,
+        camera_azimuth=15.0,
+    )
+
+    panel = Viewport3DPanel(host_spec=host)
+
+    assert panel.view.camera.distance == 90.0
+    assert panel.view.camera.elevation == 20.0
+    assert panel.view.camera.azimuth == 15.0
+    app.quit()
+
+
+def test_build_surface_app_accepts_custom_3d_host():
+    x = np.linspace(-1.0, 1.0, 8, dtype=np.float32)
+    y = np.linspace(-1.0, 1.0, 6, dtype=np.float32)
+    values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
+    field, geometry = grid_field(field_id="surface", values=values, x_coords=x, y_coords=y)
+    surface_view = SurfaceViewSpec(id="surface-view", field_id=field.id, geometry_id=geometry.id)
+    host = View3DHostSpec(
+        id="surface-host",
+        view_ids=("surface-view",),
+        camera_distance=85.0,
+        camera_elevation=25.0,
+        camera_azimuth=5.0,
+    )
+
+    app_spec = build_surface_app(
+        field=field,
+        geometry=geometry,
+        surface_view=surface_view,
+        view_3d_host=host,
+    )
+
+    assert app_spec.scene is not None
+    assert app_spec.scene.layout.view_3d_hosts == (host,)
+
+
 def test_morphology_renderer_uses_fixed_clim_without_dynamic_recaling():
     renderer = MorphologyRenderer.__new__(MorphologyRenderer)
     renderer.collection = Mock()

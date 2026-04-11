@@ -86,6 +86,11 @@ That is separate from `ViewSpec` on purpose.
 
 `ViewSpec` should describe the rendered content. `View3DHostSpec` should describe hosting strategy.
 
+That includes host-level camera policy such as the initial turntable distance,
+azimuth, and elevation. If a surface or morphology example should start closer
+or from a different angle, that belongs on `View3DHostSpec`, not on the view
+spec that describes the rendered data.
+
 Today the built-in host is:
 
 - one independent canvas per 3-D view

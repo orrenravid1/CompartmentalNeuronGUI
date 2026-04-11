@@ -15,6 +15,9 @@ class View3DHostSpec:
     view_ids: tuple[str, ...]
     kind: str = "independent_canvas"
     title: str | None = None
+    camera_distance: float | None = 200.0
+    camera_elevation: float = 30.0
+    camera_azimuth: float = 30.0
 
     def normalized(self) -> "View3DHostSpec | None":
         view_ids = tuple(dict.fromkeys(view_id for view_id in self.view_ids if view_id))
@@ -26,6 +29,9 @@ class View3DHostSpec:
             view_ids=view_ids,
             kind=self.kind,
             title=self.title,
+            camera_distance=self.camera_distance,
+            camera_elevation=self.camera_elevation,
+            camera_azimuth=self.camera_azimuth,
         )
 
 
@@ -64,6 +70,9 @@ class LayoutSpec:
                         view_ids=filtered_view_ids,
                         kind=normalized.kind,
                         title=normalized.title,
+                        camera_distance=normalized.camera_distance,
+                        camera_elevation=normalized.camera_elevation,
+                        camera_azimuth=normalized.camera_azimuth,
                     )
                 )
             return tuple(resolved_hosts)

@@ -14,7 +14,7 @@ Run: python examples/surface_plot/surface_cross_section_visualizer.py
 
 import numpy as np
 
-from compneurovis import ControlSpec, LinePlotViewSpec, SurfaceViewSpec, build_surface_app, grid_field, run_app
+from compneurovis import ControlSpec, LinePlotViewSpec, SurfaceViewSpec, View3DHostSpec, build_surface_app, grid_field, run_app
 
 
 def build_demo_surface():
@@ -91,6 +91,7 @@ app = build_surface_app(
     surface_view=surface_view,
     line_view=line_view,
     controls=controls,
+    view_3d_host=View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=110.0),
 )
 
 

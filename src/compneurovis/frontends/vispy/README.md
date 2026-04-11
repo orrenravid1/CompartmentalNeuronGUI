@@ -18,6 +18,8 @@ The line-plot panel supports both single-trace views and multi-series fields, an
 3D layout is now routed through explicit host specs:
 
 - `View3DHostSpec` describes how one or more 3D views are mounted
+- `View3DHostSpec` also carries host-level starting camera settings such as
+  distance, azimuth, and elevation
 - `IndependentCanvas3DHostPanel` is the current built-in host implementation
 
 That keeps the current one-view-one-canvas behavior intact while leaving room for future shared-canvas or shared-scene hosts.
