@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,6 +41,12 @@ SKILL_TRUST_LABELS = {
     "maintainer-only": "Maintainer Only",
     "proposal-only": "Proposal Only",
 }
+EXAMPLE_GROUPS = (
+    ("Live Simulation Backends", ("NEURON", "Jaxley")),
+    ("Field and Surface Workflows", ("Static / Interactive", "Live", "Replay")),
+    ("Debug and Architecture Probes", ("Debug",)),
+)
+TITLE_SPLIT_PATTERN = re.compile(r"\s[—–-]\s", re.UNICODE)
 
 
 @dataclass(frozen=True)
@@ -49,6 +57,15 @@ class SkillEntry:
     surface: str
     stage: str
     trust: str
+    path: Path
+
+
+@dataclass(frozen=True)
+class ExampleEntry:
+    title: str
+    summary: str
+    group: str
+    subgroup: str
     path: Path
 
 
@@ -90,6 +107,96 @@ def public_api_names() -> list[str]:
         return list(getattr(module, "__all__", []))
     finally:
         sys.path.pop(0)
+
+
+def humanize_identifier(value: str) -> str:
+    words = value.replace("_", " ").split()
+    normalized: list[str] = []
+    for word in words:
+        if word.lower() == "3d":
+            normalized.append("3D")
+        elif word.isupper():
+            normalized.append(word)
+        else:
+            normalized.append(word.capitalize())
+    return " ".join(normalized)
+
+
+def parse_example_docstring(path: Path) -> str:
+    module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return ast.get_docstring(module) or ""
+
+
+def first_docstring_paragraph(docstring: str) -> str:
+    lines: list[str] = []
+    for raw_line in docstring.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            if lines:
+                break
+            continue
+        lines.append(stripped)
+    return " ".join(lines)
+
+
+def split_title_summary(first_line: str) -> tuple[str, str]:
+    line = " ".join(first_line.split())
+    if not line:
+        return "", ""
+    match = TITLE_SPLIT_PATTERN.search(line)
+    if match is None:
+        return line.rstrip("."), ""
+    title = line[: match.start()].strip()
+    summary = line[match.end() :].strip().rstrip(".")
+    return title, summary
+
+
+def infer_example_group(path: Path) -> tuple[str, str]:
+    folder = path.parent.name
+    stem = path.stem
+    if folder == "neuron":
+        return "Live Simulation Backends", "NEURON"
+    if folder == "jaxley":
+        return "Live Simulation Backends", "Jaxley"
+    if folder == "surface_plot":
+        if "replay" in stem:
+            return "Field and Surface Workflows", "Replay"
+        if "live" in stem:
+            return "Field and Surface Workflows", "Live"
+        return "Field and Surface Workflows", "Static / Interactive"
+    return "Debug and Architecture Probes", "Debug"
+
+
+def default_example_summary(path: Path) -> str:
+    folder = path.parent.name
+    if folder == "debug":
+        return "Debug-oriented example for probing layout, session, or rendering behavior"
+    if folder in {"neuron", "jaxley"}:
+        return "Runnable live session example"
+    return "Runnable field or surface visualization example"
+
+
+def example_entries() -> list[ExampleEntry]:
+    entries: list[ExampleEntry] = []
+    for example in sorted(EXAMPLES.rglob("*.py")):
+        docstring = parse_example_docstring(example)
+        lead_paragraph = first_docstring_paragraph(docstring)
+        title, summary = split_title_summary(lead_paragraph)
+        if not title:
+            title = humanize_identifier(example.stem)
+        if not summary:
+            summary = default_example_summary(example)
+        group, subgroup = infer_example_group(example)
+        entries.append(
+            ExampleEntry(
+                title=title,
+                summary=summary,
+                group=group,
+                subgroup=subgroup,
+                path=example,
+            )
+        )
+    return entries
 
 
 def skill_entries() -> list[SkillEntry]:
@@ -179,17 +286,33 @@ def build_api_index() -> str:
 
 
 def build_example_index() -> str:
+    entries = example_entries()
     lines = [
         "---",
         "title: Example Index",
-        "summary: Generated list of runnable examples grouped by directory.",
+        "summary: Generated catalog of runnable examples grouped by backend and workflow.",
         "---",
         "",
         "# Example Index",
         "",
+        "This generated index groups runnable examples by backend and workflow and",
+        "extracts a short summary from each example when available.",
+        "",
     ]
-    for example in sorted(EXAMPLES.rglob("*.py")):
-        lines.append(f"- `{relative(example)}`")
+    for group, subgroups in EXAMPLE_GROUPS:
+        lines.extend([f"## {group}", ""])
+        grouped_entries = [entry for entry in entries if entry.group == group]
+        for subgroup in subgroups:
+            subgroup_entries = [entry for entry in grouped_entries if entry.subgroup == subgroup]
+            if not subgroup_entries:
+                continue
+            lines.extend([f"### {subgroup}", ""])
+            for entry in subgroup_entries:
+                lines.append(
+                    f"- **{entry.title}**: {entry.summary}. "
+                    f"`python {relative(entry.path)}` (`{relative(entry.path)}`)"
+                )
+            lines.append("")
     return "\n".join(lines) + "\n"
 
 

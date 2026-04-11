@@ -232,6 +232,18 @@ def test_generated_skill_index_is_grouped_by_taxonomy():
         assert heading in text, f"skill index should include {heading}"
 
 
+def test_generated_example_index_is_grouped_by_backend_and_workflow():
+    text = (ROOT / "docs" / "reference" / "example-index.md").read_text(encoding="utf-8")
+    for heading in (
+        "## Live Simulation Backends",
+        "## Field and Surface Workflows",
+        "## Debug and Architecture Probes",
+        "### NEURON",
+        "### Jaxley",
+    ):
+        assert heading in text, f"example index should include {heading}"
+
+
 def test_docs_use_python_module_invocation_for_mkdocs_commands():
     violations: list[str] = []
     for path in markdown_files():
