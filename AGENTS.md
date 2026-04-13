@@ -151,6 +151,14 @@ the canonical source plus all regenerated outputs together.
 
 ## Documentation Index
 
+When recording new work, use the right file:
+
+- **New feature idea, in-progress design, or deferred item** → `docs/architecture/design/backlog.md` with a `Phase:` tag
+- **Active priority or phase milestone shift** → `docs/architecture/design/roadmap.md`
+- **Settled architectural lesson or decision** → `docs/architecture/design/decisions.md` (requires deliberate review)
+
+Files:
+
 - Architecture overview: `docs/architecture/core-model.md`
 - Roadmap (phases, next steps, transition targets): `docs/architecture/design/roadmap.md`
 - Design decisions (settled doctrine and lessons): `docs/architecture/design/decisions.md`

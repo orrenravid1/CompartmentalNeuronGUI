@@ -243,6 +243,13 @@ class NeuronSession(BufferedSession, ABC):
             append_dim="time",
         )
         self._ui_state = {}
+        if self.geometry is not None and self.geometry.entity_ids:
+            initial_entity_id = self.geometry.entity_ids[0]
+            self._ui_state["selected_entity_id"] = initial_entity_id
+            self.emit(StatePatch({
+                "selected_entity_id": initial_entity_id,
+                "selected_entity_label": self.geometry.label_for(initial_entity_id),
+            }))
         return scene
 
     def _prepare_recorders(self):

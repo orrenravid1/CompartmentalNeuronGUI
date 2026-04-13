@@ -320,36 +320,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.controls_panel = ControlsPanel(self._on_control_changed, self._on_action_invoked)
         self.controls_host = ControlsHostPanel(self.controls_panel)
 
-        self._viewport_splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
-        self._viewport_splitter.setChildrenCollapsible(False)
-        self._viewport_splitter.setOpaqueResize(False)
-
-        self._plot_splitter = QtWidgets.QSplitter(Qt.Orientation.Vertical)
-        self._plot_splitter.setChildrenCollapsible(False)
-        self._plot_splitter.setOpaqueResize(False)
-
-        self._right_splitter = QtWidgets.QSplitter(Qt.Orientation.Vertical)
-        self._right_splitter.setChildrenCollapsible(False)
-        self._right_splitter.setOpaqueResize(False)
-        self._right_splitter.addWidget(self._plot_splitter)
-        self._right_splitter.addWidget(self.controls_host)
-        self._right_splitter.setStretchFactor(0, 3)
-        self._right_splitter.setStretchFactor(1, 2)
-
-        self._horizontal_splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
-        self._horizontal_splitter.setChildrenCollapsible(False)
-        self._horizontal_splitter.setOpaqueResize(False)
-        self._horizontal_splitter.addWidget(self._viewport_splitter)
-        self._horizontal_splitter.addWidget(self._right_splitter)
-        self._horizontal_splitter.setStretchFactor(0, 2)
-        self._horizontal_splitter.setStretchFactor(1, 1)
+        self._layout_splitter: QtWidgets.QSplitter | None = None
 
         self._loading_label = QtWidgets.QLabel("Loading visualization...")
         self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._stack = QtWidgets.QStackedWidget(self)
         self._stack.addWidget(self._loading_label)
-        self._stack.addWidget(self._horizontal_splitter)
 
         self.setCentralWidget(self._stack)
         self.resize(1280, 720)
@@ -383,7 +360,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._stack.setCurrentWidget(self._loading_label)
 
     def _show_content_state(self) -> None:
-        self._stack.setCurrentWidget(self._horizontal_splitter)
+        if self._layout_splitter is not None:
+            self._stack.setCurrentWidget(self._layout_splitter)
 
     def _set_scene(self, scene: Scene) -> None:
         self.scene = scene
@@ -393,15 +371,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         for control in scene.controls.values():
             self.state.setdefault(control.resolved_state_key(), control.default)
 
-        self._rebuild_view_hosts()
-        self._rebuild_line_plots()
-
-        morphology_view = self._first_morphology_view()
-        if morphology_view is not None:
-            geometry = scene.geometries[morphology_view.geometry_id]
-            if isinstance(geometry, MorphologyGeometry) and geometry.entity_ids:
-                self.state.setdefault("selected_entity_id", geometry.entity_ids[0])
-                self.state.setdefault("selected_entity_label", geometry.label_for(geometry.entity_ids[0]))
+        self._rebuild_panels()
 
         self._update_panel_visibility()
         self._apply_refresh_targets(self.refresh_planner.full_refresh_targets())
@@ -428,49 +398,100 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             on_entity_selected=self._on_entity_selected,
         )
 
-    def _rebuild_view_hosts(self) -> None:
-        while self._viewport_splitter.count():
-            widget = self._viewport_splitter.widget(0)
-            widget.setParent(None)
-            widget.deleteLater()
+    def _rebuild_panels(self) -> None:
         self.viewports.clear()
         self.view_hosts.clear()
         self._view_to_host_id.clear()
-        if self.scene is None:
-            return
-        for host in self.scene.layout.view_3d_hosts:
-            panel = self._create_view_host(host)
-            self._viewport_splitter.addWidget(panel)
-            self.view_hosts[host.id] = panel
-            for view_id in host.view_ids:
-                self.viewports[view_id] = panel.viewport
-                self._view_to_host_id[view_id] = host.id
-
-    def _rebuild_line_plots(self) -> None:
-        while self._plot_splitter.count():
-            widget = self._plot_splitter.widget(0)
-            widget.setParent(None)
-            widget.deleteLater()
         self.line_plot_host_panels.clear()
         self.line_plot_panels.clear()
-        if self.scene is None:
-            return
-        for view_id in self.scene.layout.resolved_line_plot_view_ids():
-            view = self.scene.views.get(view_id)
-            if not isinstance(view, LinePlotViewSpec):
-                continue
-            host = LinePlotHostPanel(view_id=view_id, title=view.title or view_id)
-            self._plot_splitter.addWidget(host)
-            self.line_plot_host_panels[view_id] = host
-            self.line_plot_panels[view_id] = host.line_plot_panel
 
-    def _first_morphology_view(self):
+        if self._layout_splitter is not None:
+            idx = self._stack.indexOf(self._layout_splitter)
+            if idx >= 0:
+                self._stack.removeWidget(self._layout_splitter)
+            self._layout_splitter.deleteLater()
+            self._layout_splitter = None
+
+        outer = QtWidgets.QSplitter(Qt.Orientation.Vertical)
+        outer.setChildrenCollapsible(False)
+        outer.setOpaqueResize(False)
+        self._layout_splitter = outer
+
+        controls_placed = False
+        for row_cells in self._resolved_panel_grid():
+            if len(row_cells) == 1:
+                cell = row_cells[0]
+                if cell == "controls":
+                    outer.addWidget(self.controls_host)
+                    controls_placed = True
+                else:
+                    widget = self._make_panel_for_cell(cell)
+                    if widget is not None:
+                        outer.addWidget(widget)
+            else:
+                row = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
+                row.setChildrenCollapsible(False)
+                row.setOpaqueResize(False)
+                for cell in row_cells:
+                    if cell == "controls":
+                        row.addWidget(self.controls_host)
+                        controls_placed = True
+                    else:
+                        widget = self._make_panel_for_cell(cell)
+                        if widget is not None:
+                            row.addWidget(widget)
+                outer.addWidget(row)
+
+        if not controls_placed:
+            controls, actions = self._resolved_controls_and_actions()
+            if controls or actions:
+                outer.addWidget(self.controls_host)
+
+        self._stack.addWidget(outer)
+
+    def _resolved_panel_grid(self) -> tuple[tuple[str, ...], ...]:
+        if self.scene is None:
+            return ()
+        grid = self.scene.layout.panel_grid
+        if grid:
+            return grid
+        return self._auto_panel_grid()
+
+    def _auto_panel_grid(self) -> tuple[tuple[str, ...], ...]:
+        if self.scene is None:
+            return ()
+        layout = self.scene.layout
+        view_ids = list(layout.resolved_3d_view_ids()) + list(layout.resolved_line_plot_view_ids())
+        controls, actions = self._resolved_controls_and_actions()
+        has_controls = bool(controls or actions)
+        if not view_ids and not has_controls:
+            return ()
+        rows: list[tuple[str, ...]] = []
+        if view_ids:
+            rows.append(tuple(view_ids))
+        if has_controls:
+            rows.append(("controls",))
+        return tuple(rows)
+
+    def _make_panel_for_cell(self, cell_id: str) -> QtWidgets.QWidget | None:
         if self.scene is None:
             return None
-        for view_id in self._view_3d_ids():
-            view = self.scene.views.get(view_id)
-            if isinstance(view, MorphologyViewSpec):
-                return view
+        view = self.scene.views.get(cell_id)
+        if isinstance(view, LinePlotViewSpec):
+            host = LinePlotHostPanel(view_id=cell_id, title=view.title or cell_id)
+            self.line_plot_host_panels[cell_id] = host
+            self.line_plot_panels[cell_id] = host.line_plot_panel
+            return host
+        if isinstance(view, (MorphologyViewSpec, SurfaceViewSpec)):
+            host_spec = next(
+                (spec for spec in self.scene.layout.view_3d_hosts if cell_id in spec.view_ids),
+                View3DHostSpec(id=cell_id, view_ids=(cell_id,), kind="independent_canvas"),
+            )
+            panel = self._create_view_host(host_spec)
+            self.view_hosts[host_spec.id] = panel
+            self.viewports[cell_id] = panel.viewport
+            self._view_to_host_id[cell_id] = host_spec.id
+            return panel
         return None
 
     def _morphology_view(self, view_id: str):
@@ -505,44 +526,33 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         return controls, actions
 
     def _update_panel_visibility(self) -> None:
-        has_3d = bool(self.view_hosts)
-        has_line_plots = bool(self.line_plot_panels)
         controls, actions = self._resolved_controls_and_actions()
-        has_controls = bool(controls or actions)
-        has_right_panel = has_line_plots or has_controls
-        self._viewport_splitter.setVisible(has_3d)
-        self._right_splitter.setVisible(has_right_panel)
-        self._plot_splitter.setVisible(has_line_plots)
-        self.controls_host.setVisible(has_controls)
-        self._apply_default_splitter_sizes(has_3d=has_3d, has_line_plots=has_line_plots, has_controls=has_controls)
+        self.controls_host.setVisible(bool(controls or actions))
+        self._apply_panel_sizes()
 
-    def _apply_default_splitter_sizes(self, *, has_3d: bool, has_line_plots: bool, has_controls: bool) -> None:
+    def _apply_panel_sizes(self) -> None:
+        if self._layout_splitter is None:
+            return
         width = max(self.width(), 1)
         height = max(self.height(), 1)
-        if has_line_plots and has_controls:
-            plot_height = max(1, int(height * 0.6))
-            control_height = max(1, int(height * 0.4))
-            self._right_splitter.setSizes([plot_height, control_height])
-            if self._plot_splitter.count():
-                self._plot_splitter.setSizes(
-                    [max(1, int(plot_height / self._plot_splitter.count()))] * self._plot_splitter.count()
-                )
-        elif has_line_plots:
-            self._right_splitter.setSizes([height, 0])
-            if self._plot_splitter.count():
-                self._plot_splitter.setSizes([max(1, int(height / self._plot_splitter.count()))] * self._plot_splitter.count())
-        elif has_controls:
-            self._right_splitter.setSizes([0, height])
+        n_rows = self._layout_splitter.count()
+        if n_rows == 0:
+            return
+        last_is_controls = self._layout_splitter.widget(n_rows - 1) is self.controls_host
+        if last_is_controls and n_rows > 1:
+            ctrl_h = max(1, int(height * 0.35))
+            view_h = max(1, int((height - ctrl_h) / (n_rows - 1)))
+            sizes = [view_h] * (n_rows - 1) + [ctrl_h]
         else:
-            self._right_splitter.setSizes([0, 0])
-        if has_3d and (has_line_plots or has_controls):
-            self._horizontal_splitter.setSizes([max(1, int(width * 0.67)), max(1, int(width * 0.33))])
-            if self._viewport_splitter.count():
-                self._viewport_splitter.setSizes([max(1, int(width * 0.67 / self._viewport_splitter.count()))] * self._viewport_splitter.count())
-        elif has_3d:
-            self._horizontal_splitter.setSizes([width, 0])
-        else:
-            self._horizontal_splitter.setSizes([0, width])
+            row_h = max(1, int(height / n_rows))
+            sizes = [row_h] * n_rows
+        self._layout_splitter.setSizes(sizes)
+        for i in range(n_rows):
+            row_widget = self._layout_splitter.widget(i)
+            if isinstance(row_widget, QtWidgets.QSplitter):
+                n_cols = row_widget.count()
+                if n_cols:
+                    row_widget.setSizes([max(1, int(width / n_cols))] * n_cols)
 
     def _refresh_controls(self) -> None:
         if self.scene is None:

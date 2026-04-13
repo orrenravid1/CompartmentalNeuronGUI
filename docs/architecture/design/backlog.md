@@ -86,6 +86,41 @@ Current layout is intentionally simple and should be treated as transitional. Fu
 - multiple plot panels
 - persistent saved layouts
 
+#### Implemented: `panel_grid` on `LayoutSpec`
+
+`panel_grid: tuple[tuple[str, ...], ...]` is live on `LayoutSpec`. Each inner tuple is a row; each string is a view ID or the sentinel `"controls"`. Empty tuple falls through to `_auto_panel_grid()` which derives a default single-row layout from `view_3d_ids` + `line_plot_view_ids` (backward compatible).
+
+Example in use (`kenngott_marder_vis_refactor.py`):
+```python
+panel_grid=(
+    (VOLTAGE_VIEW_ID, GATE_VIEW_ID, CURRENT_VIEW_ID),  # all 3 side-by-side
+    ("controls",),
+)
+```
+
+Frontend builds nested `QSplitter`s from the grid: vertical outer over rows, horizontal per row. All named splitters removed; `panel_grid` is the single layout authority. Panel dispatch is fully generic — any view ID resolves to its panel type via `_make_panel_for_cell`.
+
+**Known limitation — row-major only.** The flat rows-of-cells model cannot express column-spanning layouts. For example, morphology spanning full height on the left with trace and controls stacked on the right:
+
+```
+[morphology] | [trace   ]
+             | [controls]
+```
+
+This requires nesting a vertical splitter inside a horizontal one — a topology the flat grid can't represent.
+
+**Next step: `SplitSpec` tree.** Full flexibility requires a recursive split-tree spec, e.g.:
+
+```python
+# future direction — not yet implemented
+panel_layout=HSplit(
+    "morphology",
+    VSplit("trace", "controls"),
+)
+```
+
+`panel_grid` stays as the current interface; `SplitSpec` would be an additive replacement. Existing examples are all backward-compatible via `_auto_panel_grid()`.
+
 ---
 
 ### Default NeuronSession Layout Always Includes a Trace Plot
@@ -208,6 +243,56 @@ Deferral reason: current solo-owner workflow is sufficient. Revisit once externa
 Phase: indefinite
 
 The current docs site should stay on `MkDocs + Material + mkdocstrings` until there is a clear stable replacement path. `Zensical` is worth revisiting later because it can consume `mkdocs.yml`, which lowers migration cost if it matures. Migration should be reconsidered only once Zensical is stable enough to preserve strict local builds, predictable local authoring, and the current generated API-doc workflow without repo-specific workarounds.
+
+---
+
+## Skills / Developer Tooling
+
+### `audit-code-smells`
+
+Phase: infrastructure
+
+Skill for detecting architectural drift patterns specific to this codebase. Intended as a QoL check agents and contributors can run before or after a change to catch design violations that compile and test clean but violate the intended model.
+
+Checks to include:
+- **Import layer violations** — `core` importing from `frontends` or `backends`; `session` importing from `frontends`; `backends` importing from `frontends`
+- **`isinstance` dispatch chains on `ViewSpec`/`Geometry` types outside the intended frontend panel dispatch** — branching on view/geometry type in `core` or `session` is a smell; it should live only in `_make_panel_for_cell` or equivalent dispatch sites
+- **Hardcoded field/view IDs as string literals outside `builders/` and `backends/`** — e.g. `"voltage"`, `"trace"`, `"history"` in `frontends/` or `session/`
+- **Frontend `setdefault` initializing state from scene data** — state derived from scene content should arrive via session `StatePatch`, not be computed by the frontend in `_set_scene`
+- **Session `_ui_state` holding rendering/selection keys** — anything in `_ui_state` that represents display intent rather than behavioral state is a smell; those keys should flow through `StatePatch` and live in the frontend
+
+---
+
+### `audit-layer-boundaries`
+
+Phase: infrastructure
+
+Mechanical import-structure check across the 4 layers: `core` → `session` → `builders`/`backends` → `frontends`. More binary than `audit-code-smells` — either the import exists or it doesn't.
+
+Checks to include:
+- No `core` module imports from `session`, `builders`, `backends`, or `frontends`
+- No `session` module imports from `builders`, `backends`, or `frontends`
+- No `backends` or `builders` module imports from `frontends`
+- Flag any cross-layer import that isn't a declared public re-export in `__init__.py`
+
+Complements `audit-code-smells`; where smells are pattern-based, this is purely structural.
+
+---
+
+### `plan-refactor`
+
+Phase: infrastructure
+
+QoL skill for planning multi-file refactors before executing them. Given a target change, the skill identifies all touch points and produces an ordered plan.
+
+Steps to include:
+1. Identify the target: what type, name, field, or contract is changing
+2. Map touch points across: `src/`, `examples/`, `tests/`, `docs/`, `skills/`, generated indexes, `AGENTS.md`
+3. Classify each touch as: must change, likely needs update, verify only
+4. Order steps to minimize broken intermediate states (e.g. update callers before removing the old interface)
+5. Flag downstream skills or invariant checks that need to run after the change
+
+Primary use case: renames, protocol contract changes, layout model changes, and any change that spans more than 3 files.
 
 ---
 

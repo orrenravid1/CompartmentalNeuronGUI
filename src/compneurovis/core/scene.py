@@ -46,6 +46,7 @@ class LayoutSpec:
     view_3d_ids: tuple[str, ...] = ()
     view_3d_hosts: tuple[View3DHostSpec, ...] = ()
     line_plot_view_ids: tuple[str, ...] = ()
+    panel_grid: tuple[tuple[str, ...], ...] = ()
     control_ids: tuple[str, ...] = ()
     action_ids: tuple[str, ...] = ()
 
