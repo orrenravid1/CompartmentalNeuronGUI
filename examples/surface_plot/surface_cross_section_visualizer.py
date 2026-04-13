@@ -91,7 +91,7 @@ app = build_surface_app(
     surface_view=surface_view,
     line_view=line_view,
     controls=controls,
-    view_3d_host=View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=110.0),
+    view_3d_host=View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=30.0),
 )
 
 
