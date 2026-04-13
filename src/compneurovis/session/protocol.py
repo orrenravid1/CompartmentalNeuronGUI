@@ -76,6 +76,7 @@ class FieldAppend(SessionUpdate):
 @dataclass(frozen=True, slots=True)
 class ScenePatch(SessionUpdate):
     view_updates: dict[str, dict[str, Any]] = field(default_factory=dict)
+    operator_updates: dict[str, dict[str, Any]] = field(default_factory=dict)
     control_updates: dict[str, dict[str, Any]] = field(default_factory=dict)
     metadata_updates: dict[str, Any] = field(default_factory=dict)
 

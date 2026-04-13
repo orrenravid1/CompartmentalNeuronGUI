@@ -15,11 +15,16 @@ The frontend uses explicit refresh targets and long-lived renderer objects so st
 
 The line-plot panel supports both single-trace views and multi-series fields, and the window collapses cleanly to a 2D-first layout when a scene has no 3D view.
 
+Grid operators such as `GridSliceOperatorSpec` are rendered as host-level
+overlays and can also feed other panels such as the line plot without turning
+that operator into implicit `SurfaceViewSpec` state.
+
 3D layout is now routed through explicit host specs:
 
 - `View3DHostSpec` describes how one or more 3D views are mounted
 - `View3DHostSpec` also carries host-level starting camera settings such as
   distance, azimuth, and elevation
+- `View3DHostSpec.operator_ids` selects which operator overlays the host should project
 - `IndependentCanvas3DHostPanel` is the current built-in host implementation
 
 That keeps the current one-view-one-canvas behavior intact while leaving room for future shared-canvas or shared-scene hosts.

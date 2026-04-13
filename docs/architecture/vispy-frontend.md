@@ -35,11 +35,19 @@ CONTROLS                     -> ControlsPanel
 MORPHOLOGY(view_id)          -> one Viewport3DPanel (morphology path)
 SURFACE_VISUAL(view_id)      -> one Viewport3DPanel (surface mesh + colormap)
 SURFACE_AXES(view_id)        -> one Viewport3DPanel (axes overlay)
-SURFACE_SLICE(view_id)       -> one Viewport3DPanel (slice plane overlay)
+OPERATOR_OVERLAY(view_id)    -> one Viewport3DPanel (hosted grid-operator overlays)
 LINE_PLOT                    -> LinePlotPanel
 ```
 
 3D refresh targets are explicitly bound to a `view_id`, so the frontend can refresh multiple morphology and surface panels independently in the same window even when the hosting layer changes.
+
+For grid operators, the current pattern is:
+
+- operator semantics live on `Scene.operators`
+- `LinePlotViewSpec` can reference an operator id to render derived output
+- `View3DHostSpec.operator_ids` controls which overlays a 3-D host should project
+
+That keeps overlays and linked plots decoupled from `SurfaceViewSpec`.
 
 ## 3D Hosting Layer
 

@@ -13,11 +13,13 @@ summary: Generated list of names exported by compneurovis.__init__.
 - `Field`
 - `Geometry`
 - `GridGeometry`
+- `GridSliceOperatorSpec`
 - `HistoryCaptureMode`
 - `LayoutSpec`
 - `LinePlotViewSpec`
 - `MorphologyGeometry`
 - `MorphologyViewSpec`
+- `OperatorSpec`
 - `ReplaySession`
 - `SeriesSpec`
 - `StateBinding`

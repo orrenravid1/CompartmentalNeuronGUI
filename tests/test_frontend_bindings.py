@@ -9,7 +9,7 @@ import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 import pytest
 
-from compneurovis import ActionSpec, AppSpec, ControlSpec, Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding, SurfaceViewSpec, View3DHostSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
+from compneurovis import ActionSpec, AppSpec, ControlSpec, Field, GridSliceOperatorSpec, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding, SurfaceViewSpec, View3DHostSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
 from compneurovis.backends.neuron import NeuronSession
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
@@ -69,18 +69,17 @@ def build_surface_cross_section_app():
         "slice_axis": ControlSpec("slice_axis", "enum", "Slice axis", "x", options=("x", "y")),
         "slice_position": ControlSpec("slice_position", "float", "Slice position", 0.0, min=0.0, max=1.0, steps=20),
     }
-    surface_view = SurfaceViewSpec(
-        id="surface-view",
+    operator = GridSliceOperatorSpec(
+        id="surface-slice",
         field_id=field.id,
         geometry_id=geometry.id,
-        slice_axis_state_key="slice_axis",
-        slice_position_state_key="slice_position",
+        axis_state_key="slice_axis",
+        position_state_key="slice_position",
     )
+    surface_view = SurfaceViewSpec(id="surface-view", field_id=field.id, geometry_id=geometry.id)
     line_view = LinePlotViewSpec(
         id="surface-line",
-        field_id=field.id,
-        orthogonal_slice_state_key="slice_axis",
-        orthogonal_position_state_key="slice_position",
+        operator_id=operator.id,
     )
     return build_surface_app(
         field=field,
@@ -88,7 +87,9 @@ def build_surface_cross_section_app():
         title="surface test",
         surface_view=surface_view,
         line_view=line_view,
+        operators={operator.id: operator},
         controls=controls,
+        view_3d_host=View3DHostSpec(id="surface-host", view_ids=("surface-view",), operator_ids=(operator.id,)),
     )
 
 
@@ -97,11 +98,11 @@ def test_refresh_planner_targets_slice_state_to_overlay_and_line_plot():
     planner = RefreshPlanner(app_spec.scene)
 
     assert planner.targets_for_state_change("slice_position") == {
-        RefreshTarget.surface_slice("surface-view"),
+        RefreshTarget.operator_overlay("surface-view"),
         RefreshTarget.LINE_PLOT,
     }
     assert planner.targets_for_state_change("slice_axis") == {
-        RefreshTarget.surface_slice("surface-view"),
+        RefreshTarget.operator_overlay("surface-view"),
         RefreshTarget.LINE_PLOT,
     }
 
@@ -112,7 +113,7 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
     window.timer.stop()
     window.viewport.refresh_surface_visual = Mock()
     window.viewport.refresh_surface_axes = Mock()
-    window.viewport.refresh_surface_slice = Mock()
+    window.viewport.refresh_operator_overlays = Mock()
     window.viewport.commit = Mock()
     window.line_plot.refresh = Mock()
 
@@ -120,7 +121,7 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
 
     window.viewport.refresh_surface_visual.assert_not_called()
     window.viewport.refresh_surface_axes.assert_not_called()
-    window.viewport.refresh_surface_slice.assert_called_once()
+    window.viewport.refresh_operator_overlays.assert_called_once()
     window.viewport.commit.assert_called_once()
     window.line_plot.refresh.assert_called_once()
 
@@ -133,11 +134,14 @@ def test_surface_slice_overlay_moves_with_control_changes():
     window = VispyFrontendWindow(build_surface_cross_section_app())
     window.timer.stop()
 
-    initial_pos = np.array(window.viewport.renderer_surface.slice_overlay._line._pos, copy=True)
+    overlay = window.viewport.renderer_surface._slice_overlays["surface-slice"]
+    initial_pos = np.array(overlay._line._pos, copy=True)
     window._on_control_changed(window.scene.controls["slice_position"], 1.0)
-    moved_pos = np.array(window.viewport.renderer_surface.slice_overlay._line._pos, copy=True)
+    overlay = window.viewport.renderer_surface._slice_overlays["surface-slice"]
+    moved_pos = np.array(overlay._line._pos, copy=True)
     window._on_control_changed(window.scene.controls["slice_axis"], "y")
-    axis_switched_pos = np.array(window.viewport.renderer_surface.slice_overlay._line._pos, copy=True)
+    overlay = window.viewport.renderer_surface._slice_overlays["surface-slice"]
+    axis_switched_pos = np.array(overlay._line._pos, copy=True)
 
     assert not np.allclose(initial_pos, moved_pos)
     assert not np.allclose(moved_pos, axis_switched_pos)
@@ -158,6 +162,8 @@ def test_surface_visual_reuses_same_surface_object_for_same_shape_updates():
         "surface-view:color_map": "bwr",
         "surface-view:color_limits": None,
         "surface-view:color_by": "height",
+        "surface-view:surface_color": (0.5, 0.6, 0.8, 1.0),
+        "surface-view:surface_shading": "unlit",
         "surface-view:surface_alpha": 1.0,
         "surface-view:background_color": "white",
     }

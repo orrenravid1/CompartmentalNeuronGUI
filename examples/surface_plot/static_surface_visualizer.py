@@ -17,6 +17,8 @@ from compneurovis import ControlSpec, StateBinding, SurfaceViewSpec, View3DHostS
 
 
 COLOR_OPTIONS = ("black", "white", "gray", "red", "green", "blue", "orange", "purple")
+COLOR_MODES = ("height", "uniform")
+SHADING_MODES = ("unlit", "lit")
 
 # Build a 2-D sinc surface. grid_field() expects values with shape (len(y), len(x)).
 x = np.linspace(-3.0, 3.0, 120, dtype=np.float32)
@@ -36,6 +38,9 @@ field, geometry = grid_field(
 
 # Controls define UI widgets. Their ids become state keys that StateBinding references below.
 controls = {
+    "color_by": ControlSpec("color_by", "enum", "Coloring", "height", options=COLOR_MODES),
+    "surface_color": ControlSpec("surface_color", "enum", "Surface color", "blue", options=COLOR_OPTIONS),
+    "surface_shading": ControlSpec("surface_shading", "enum", "Shading", "unlit", options=SHADING_MODES),
     "axis_color": ControlSpec("axis_color", "enum", "Axis color", "black", options=COLOR_OPTIONS),
     "text_color": ControlSpec("text_color", "enum", "Text color", "black", options=COLOR_OPTIONS),
     "background_color": ControlSpec("background_color", "enum", "Background", "white", options=COLOR_OPTIONS),
@@ -48,13 +53,16 @@ controls = {
 }
 
 # StateBinding("key") defers value resolution to the frontend state dict at render time.
-# Literal values (e.g. color_map="fire") are fixed; StateBinding values update live when controls change.
+# Literal values (e.g. color_map="bwr") are fixed; StateBinding values update live when controls change.
 surface_view = SurfaceViewSpec(
     id="surface",
     title="interactive sinc surface",
     field_id=field.id,
     geometry_id=geometry.id,
-    color_map="fire",
+    color_map="bwr",
+    color_by=StateBinding("color_by"),
+    surface_color=StateBinding("surface_color"),
+    surface_shading=StateBinding("surface_shading"),
     render_axes=True,
     axes_in_middle=True,
     tick_count=StateBinding("tick_count"),

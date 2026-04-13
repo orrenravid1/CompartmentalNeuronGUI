@@ -6,6 +6,7 @@ from typing import Any
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry
+from compneurovis.core.operators import OperatorSpec
 from compneurovis.core.views import ViewSpec
 
 
@@ -13,6 +14,7 @@ from compneurovis.core.views import ViewSpec
 class View3DHostSpec:
     id: str
     view_ids: tuple[str, ...]
+    operator_ids: tuple[str, ...] = ()
     kind: str = "independent_canvas"
     title: str | None = None
     camera_distance: float | None = 200.0
@@ -21,12 +23,14 @@ class View3DHostSpec:
 
     def normalized(self) -> "View3DHostSpec | None":
         view_ids = tuple(dict.fromkeys(view_id for view_id in self.view_ids if view_id))
+        operator_ids = tuple(dict.fromkeys(operator_id for operator_id in self.operator_ids if operator_id))
         if not view_ids:
             return None
         host_id = self.id or view_ids[0]
         return View3DHostSpec(
             id=host_id,
             view_ids=view_ids,
+            operator_ids=operator_ids,
             kind=self.kind,
             title=self.title,
             camera_distance=self.camera_distance,
@@ -68,6 +72,7 @@ class LayoutSpec:
                     View3DHostSpec(
                         id=normalized.id,
                         view_ids=filtered_view_ids,
+                        operator_ids=normalized.operator_ids,
                         kind=normalized.kind,
                         title=normalized.title,
                         camera_distance=normalized.camera_distance,
@@ -100,6 +105,7 @@ class Scene:
     fields: dict[str, Field]
     geometries: dict[str, Geometry]
     views: dict[str, ViewSpec]
+    operators: dict[str, OperatorSpec] = field(default_factory=dict)
     controls: dict[str, ControlSpec] = field(default_factory=dict)
     actions: dict[str, ActionSpec] = field(default_factory=dict)
     layout: LayoutSpec = field(default_factory=LayoutSpec)
@@ -109,6 +115,7 @@ class Scene:
         self.fields = dict(self.fields)
         self.geometries = dict(self.geometries)
         self.views = dict(self.views)
+        self.operators = dict(self.operators)
         self.controls = dict(self.controls)
         self.actions = dict(self.actions)
         self.metadata = dict(self.metadata)
@@ -120,6 +127,9 @@ class Scene:
 
     def replace_view(self, view_id: str, updates: dict[str, Any]) -> None:
         self.views[view_id] = replace(self.views[view_id], **updates)
+
+    def replace_operator(self, operator_id: str, updates: dict[str, Any]) -> None:
+        self.operators[operator_id] = replace(self.operators[operator_id], **updates)
 
     def replace_control(self, control_id: str, updates: dict[str, Any]) -> None:
         self.controls[control_id] = replace(self.controls[control_id], **updates)

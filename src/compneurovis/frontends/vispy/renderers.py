@@ -156,15 +156,21 @@ class SurfaceSliceOverlay:
     def __init__(self, view):
         self.view = view
         self._line = None
+        self._fill = None
 
     def clear(self):
         if self._line is not None:
             self._line.parent = None
             self._line = None
+        if self._fill is not None:
+            self._fill.parent = None
+            self._fill = None
 
-    def set_slice(self, *, axis, value, color, alpha, width, x, y, z):
+    def set_slice(self, *, axis, value, color, alpha, fill_alpha, width, x, y, z):
         rgba = list(Color(color).rgba)
         rgba[3] = min(1.0, max(0.0, float(alpha)))
+        fill_rgba = list(Color(color).rgba)
+        fill_rgba[3] = min(1.0, max(0.0, float(fill_alpha)))
         xmin, xmax = float(np.min(x)), float(np.max(x))
         ymin, ymax = float(np.min(y)), float(np.max(y))
         zmin, zmax = float(np.min(z)), float(np.max(z))
@@ -181,6 +187,15 @@ class SurfaceSliceOverlay:
                 ],
                 dtype=np.float32,
             )
+            fill_vertices = np.array(
+                [
+                    [xmin, value, zmin],
+                    [xmax, value, zmin],
+                    [xmax, value, zmax],
+                    [xmin, value, zmax],
+                ],
+                dtype=np.float32,
+            )
         else:
             value = min(max(float(value), xmin), xmax)
             corners = np.array(
@@ -193,20 +208,47 @@ class SurfaceSliceOverlay:
                 ],
                 dtype=np.float32,
             )
+            fill_vertices = np.array(
+                [
+                    [value, ymin, zmin],
+                    [value, ymax, zmin],
+                    [value, ymax, zmax],
+                    [value, ymin, zmax],
+                ],
+                dtype=np.float32,
+            )
 
-        if self._line is not None:
-            self._line.parent = None
-            self._line = None
+        fill_faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.uint32)
 
-        self._line = scene.visuals.Line(
-            pos=corners,
-            color=tuple(rgba),
-            width=float(width),
-            method="gl",
-            parent=self.view.scene,
-        )
-        self._line.set_gl_state(depth_test=False, blend=True)
-        self._line.order = 1000
+        if fill_rgba[3] > 0.0:
+            if self._fill is None:
+                self._fill = scene.visuals.Mesh(
+                    vertices=fill_vertices,
+                    faces=fill_faces,
+                    color=tuple(fill_rgba),
+                    shading=None,
+                    parent=self.view.scene,
+                )
+                self._fill.set_gl_state(depth_test=False, blend=True, cull_face=False)
+                self._fill.order = 999
+            else:
+                self._fill.set_data(vertices=fill_vertices, faces=fill_faces, color=tuple(fill_rgba))
+        elif self._fill is not None:
+            self._fill.parent = None
+            self._fill = None
+
+        if self._line is None:
+            self._line = scene.visuals.Line(
+                pos=corners,
+                color=tuple(rgba),
+                width=float(width),
+                method="gl",
+                parent=self.view.scene,
+            )
+            self._line.set_gl_state(depth_test=False, blend=True)
+            self._line.order = 1000
+        else:
+            self._line.set_data(pos=corners, color=tuple(rgba), width=float(width))
 
 
 class MorphologyRenderer:
@@ -328,16 +370,46 @@ class SurfaceRenderer:
         self.view = view
         self.surface = None
         self.axes = SurfaceAxesOverlay(view)
-        self.slice_overlay = SurfaceSliceOverlay(view)
+        self._slice_overlays: dict[str, SurfaceSliceOverlay] = {}
         self._grid_shape = None
+        self._last_z = None
 
     def clear(self) -> None:
         if self.surface is not None:
             self.surface.parent = None
             self.surface = None
         self.axes.clear()
-        self.slice_overlay.clear()
+        self.clear_operator_overlays()
         self._grid_shape = None
+        self._last_z = None
+
+    def clear_operator_overlays(self) -> None:
+        for overlay in self._slice_overlays.values():
+            overlay.clear()
+        self._slice_overlays.clear()
+
+    def set_slice_operator_overlays(self, overlays, *, x, y, z) -> None:
+        overlay_ids = {overlay["operator_id"] for overlay in overlays}
+        stale_ids = set(self._slice_overlays) - overlay_ids
+        for operator_id in stale_ids:
+            self._slice_overlays[operator_id].clear()
+            del self._slice_overlays[operator_id]
+        for overlay in overlays:
+            slice_overlay = self._slice_overlays.get(overlay["operator_id"])
+            if slice_overlay is None:
+                slice_overlay = SurfaceSliceOverlay(self.view)
+                self._slice_overlays[overlay["operator_id"]] = slice_overlay
+            slice_overlay.set_slice(
+                axis=overlay["axis"],
+                value=overlay["value"],
+                color=overlay["color"],
+                alpha=overlay["alpha"],
+                fill_alpha=overlay["fill_alpha"],
+                width=overlay["width"],
+                x=x,
+                y=y,
+                z=z,
+            )
 
     def _colormap_samples(self, name: str, n: int = 256) -> np.ndarray:
         name = str(name).lower()
@@ -380,16 +452,59 @@ class SurfaceRenderer:
         idx = np.clip((norm * (len(lut) - 1)).astype(np.int32), 0, len(lut) - 1)
         return lut[idx]
 
-    def update_surface(self, x, y, z, *, color_map, color_limits, colors, color_by, surface_alpha, coords_changed=True):
+    def _surface_rgba(self, color, surface_alpha: float) -> tuple[float, float, float, float]:
+        rgba = list(Color(color).rgba)
+        rgba[3] = float(surface_alpha)
+        return tuple(rgba)
+
+    def _resolve_shading(self, shading):
+        if shading is None:
+            return None
+        name = str(shading).strip().lower()
+        if name in {"", "none", "unlit"}:
+            return None
+        if name in {"lit", "smooth"}:
+            return "smooth"
+        if name == "flat":
+            return "flat"
+        return name
+
+    def _clear_surface_vertex_colors(self) -> None:
+        if self.surface is None:
+            return
+        mesh_data = self.surface.mesh_data
+        mesh_data._vertex_colors = None
+        mesh_data._vertex_colors_indexed_by_faces = None
+        mesh_data._vertex_colors_indexed_by_edges = None
+
+    def update_surface(
+        self,
+        x,
+        y,
+        z,
+        *,
+        color_map,
+        color_limits,
+        colors,
+        color_by,
+        surface_color,
+        surface_shading,
+        surface_alpha,
+        coords_changed=True,
+    ):
         x = np.asarray(x, dtype=np.float32)
         y = np.asarray(y, dtype=np.float32)
         z = np.asarray(z, dtype=np.float32)
-        if colors is None and color_by == "height":
+        self._last_z = z
+        color_by_name = str(color_by).strip().lower()
+        if colors is None and color_by_name == "height":
             colors = self._map_height_to_colors(z, color_map, color_limits)
         if colors is not None:
             colors = np.asarray(colors, dtype=np.float32).copy()
             if colors.shape[-1] == 4:
                 colors[..., 3] = float(surface_alpha)
+        surface_rgba = self._surface_rgba(surface_color, surface_alpha)
+        resolved_shading = self._resolve_shading(surface_shading)
         grid_shape = (tuple(x.shape), tuple(y.shape), tuple(z.shape))
         recreate_surface = self.surface is None or self._grid_shape != grid_shape
         if recreate_surface:
@@ -399,23 +514,55 @@ class SurfaceRenderer:
                 x=x,
                 y=y,
                 z=z,
-                color=(0.5, 0.6, 0.8, surface_alpha),
-                shading=None,
+                color=surface_rgba,
+                shading=resolved_shading,
                 parent=self.view.scene,
             )
             self.surface.set_gl_state("translucent", depth_test=True, cull_face=False)
             self._grid_shape = grid_shape
-        elif coords_changed:
+        else:
+            self.surface.shading = resolved_shading
+        if coords_changed:
             # Grid shape is the same but x/y coordinates changed — full data upload.
             if colors is not None:
                 self.surface.set_data(x=x, y=y, z=z, colors=colors)
             else:
-                self.surface.set_data(x=x, y=y, z=z, color=(0.5, 0.6, 0.8, surface_alpha))
+                self.surface.set_data(x=x, y=y, z=z, color=surface_rgba)
         else:
             # Only z (and colors) changed — skip x/y GPU upload.
             if colors is not None:
                 self.surface.set_data(z=z, colors=colors)
             else:
-                self.surface.set_data(z=z, color=(0.5, 0.6, 0.8, surface_alpha))
+                self.surface.set_data(z=z, color=surface_rgba)
         if recreate_surface:
             self.view.camera.set_range()
+
+    def update_surface_style(
+        self,
+        z,
+        *,
+        color_map,
+        color_limits,
+        colors,
+        color_by,
+        surface_color,
+        surface_shading,
+        surface_alpha,
+    ) -> None:
+        if self.surface is None:
+            return
+        z = np.asarray(z, dtype=np.float32)
+        self._last_z = z
+        color_by_name = str(color_by).strip().lower()
+        surface_rgba = self._surface_rgba(surface_color, surface_alpha)
+        self.surface.shading = self._resolve_shading(surface_shading)
+        if colors is None and color_by_name == "height":
+            colors = self._map_height_to_colors(z, color_map, color_limits)
+        if colors is not None:
+            colors = np.asarray(colors, dtype=np.float32).copy()
+            if colors.shape[-1] == 4:
+                colors[..., 3] = float(surface_alpha)
+            self.surface.set_data(colors=colors)
+        else:
+            self._clear_surface_vertex_colors()
+            self.surface.color = surface_rgba

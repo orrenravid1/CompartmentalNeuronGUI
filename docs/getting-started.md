@@ -60,6 +60,7 @@ python examples/surface_plot/surface_cross_section_visualizer.py
 ```
 
 Use this if you want a 3-D surface linked to a line plot through shared controls.
+It uses a reusable `GridSliceOperatorSpec` so the slice logic is not owned by the surface view itself.
 
 ### Live NEURON Morphology Viewer
 

@@ -24,6 +24,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/core/controls.py`
 - `src/compneurovis/core/field.py`
 - `src/compneurovis/core/geometry.py`
+- `src/compneurovis/core/operators.py`
 - `src/compneurovis/core/scene.py`
 - `src/compneurovis/core/state.py`
 - `src/compneurovis/core/views.py`

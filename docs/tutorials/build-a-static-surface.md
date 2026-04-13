@@ -98,27 +98,39 @@ initial distance without changing what the `SurfaceViewSpec` renders.
 
 ## Adding a Line Plot Slice
 
-To add a cross-section plot driven by a slider, add `slice_position_state_key` to the `SurfaceViewSpec` and a `LinePlotViewSpec` that references the same field:
+To add a cross-section plot driven by a slider, define a `GridSliceOperatorSpec`
+and let both the 3-D host and the line plot consume that operator:
 
 ```python
-from compneurovis import LinePlotViewSpec
+from compneurovis import GridSliceOperatorSpec, LinePlotViewSpec
 
+controls["slice_axis"] = ControlSpec("slice_axis", "enum", "Slice axis", "x", options=("x", "y"))
 controls["slice_pos"] = ControlSpec("slice_pos", "float", "Slice Y", 0.0, min=-3.0, max=3.0, steps=120)
 
-surface_view = SurfaceViewSpec(
-    ...,
-    slice_position_state_key="slice_pos",
-    slice_axis_state_key=None,   # fixed to x-axis slice
+slice_operator = GridSliceOperatorSpec(
+    id="surface-slice",
+    field_id=field.id,
+    geometry_id=geometry.id,
+    axis_state_key="slice_axis",
+    position_state_key="slice_pos",
 )
 
 line_view = LinePlotViewSpec(
     id="line",
-    field_id=field.id,
-    x_dim="x",
-    orthogonal_position_state_key="slice_pos",
+    operator_id=slice_operator.id,
 )
 ```
 
-Then pass `line_view` to `build_surface_app(line_view=line_view)`.
+Then pass both `line_view` and `operators={slice_operator.id: slice_operator}`
+to `build_surface_app(...)`, and attach the operator to the 3-D host through
+`View3DHostSpec.operator_ids`, for example:
+
+```python
+view_3d_host = View3DHostSpec(
+    id="surface-host",
+    view_ids=("surface",),
+    operator_ids=(slice_operator.id,),
+)
+```
 
 See `examples/surface_plot/surface_cross_section_visualizer.py` for the full pattern.

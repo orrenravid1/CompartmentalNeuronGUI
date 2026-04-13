@@ -14,6 +14,7 @@ from vispy.scene.cameras import TurntableCamera
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
+from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
 from compneurovis.core.scene import View3DHostSpec
 from compneurovis.core.state import StateBinding
 from compneurovis.core.views import LinePlotViewSpec, MorphologyViewSpec, SurfaceViewSpec
@@ -180,8 +181,33 @@ class Viewport3DPanel(QtWidgets.QWidget):
             color_limits=resolved_state[f"{surface_view.id}:color_limits"],
             colors=None,
             color_by=resolved_state[f"{surface_view.id}:color_by"],
+            surface_color=resolved_state[f"{surface_view.id}:surface_color"],
+            surface_shading=resolved_state[f"{surface_view.id}:surface_shading"],
             surface_alpha=resolved_state[f"{surface_view.id}:surface_alpha"],
             coords_changed=coords_changed,
+        )
+
+    def refresh_surface_style(
+        self,
+        *,
+        surface_view: SurfaceViewSpec | None,
+        resolved_state: dict[str, Any],
+    ) -> None:
+        if surface_view is None or self._surface_scene is None:
+            return
+
+        self._set_mode("surface")
+        self.canvas.native.setVisible(True)
+        self.canvas.bgcolor = resolved_state[f"{surface_view.id}:background_color"]
+        self.renderer_surface.update_surface_style(
+            self._surface_scene.z,
+            color_map=resolved_state[f"{surface_view.id}:color_map"],
+            color_limits=resolved_state[f"{surface_view.id}:color_limits"],
+            colors=None,
+            color_by=resolved_state[f"{surface_view.id}:color_by"],
+            surface_color=resolved_state[f"{surface_view.id}:surface_color"],
+            surface_shading=resolved_state[f"{surface_view.id}:surface_shading"],
+            surface_alpha=resolved_state[f"{surface_view.id}:surface_alpha"],
         )
 
     def refresh_surface_axes(
@@ -215,35 +241,31 @@ class Viewport3DPanel(QtWidgets.QWidget):
             z=self._surface_scene.z,
         )
 
-    def refresh_surface_slice(
+    def refresh_operator_overlays(
         self,
         *,
         surface_view: SurfaceViewSpec | None,
-        resolved_state: dict[str, Any],
+        operators: list[GridSliceOperatorSpec],
+        resolved_operator_states: dict[str, dict[str, Any]],
     ) -> None:
-        if surface_view is None or self._surface_scene is None:
-            self.renderer_surface.slice_overlay.clear()
+        if surface_view is None or self._surface_scene is None or not operators:
+            self.renderer_surface.clear_operator_overlays()
             return
 
-        axis_key = surface_view.slice_axis_state_key
-        pos_key = surface_view.slice_position_state_key
-        if not axis_key or not pos_key:
-            self.renderer_surface.slice_overlay.clear()
+        overlays = []
+        for operator in operators:
+            overlay = overlay_from_grid_slice_operator(
+                self._surface_scene,
+                operator,
+                resolved_operator_states.get(operator.id, {}),
+            )
+            if overlay is not None:
+                overlays.append(overlay)
+        if not overlays:
+            self.renderer_surface.clear_operator_overlays()
             return
-
-        axis = resolved_state.get(axis_key, self._surface_scene.x_dim)
-        if axis not in self._surface_scene.coords:
-            axis = self._surface_scene.x_dim
-        normalized = float(resolved_state.get(pos_key, 0.0))
-        coords = self._surface_scene.coords[axis]
-        idx = max(0, min(len(coords) - 1, int(round(normalized * (len(coords) - 1)))))
-        value = float(coords[idx])
-        self.renderer_surface.slice_overlay.set_slice(
-            axis="x" if axis == self._surface_scene.x_dim else "y",
-            value=value,
-            color=resolved_state[f"{surface_view.id}:slice_color"],
-            alpha=resolved_state[f"{surface_view.id}:slice_alpha"],
-            width=resolved_state[f"{surface_view.id}:slice_width"],
+        self.renderer_surface.set_slice_operator_overlays(
+            overlays,
             x=self._surface_scene.x_grid,
             y=self._surface_scene.y_grid,
             z=self._surface_scene.z,
@@ -302,6 +324,20 @@ class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
             resolved_state=resolved_state,
         )
 
+    def refresh_surface_style(
+        self,
+        *,
+        view_id: str,
+        surface_view: SurfaceViewSpec | None,
+        resolved_state: dict[str, Any],
+    ) -> None:
+        if view_id != self.view_ids[0]:
+            return
+        self.viewport.refresh_surface_style(
+            surface_view=surface_view,
+            resolved_state=resolved_state,
+        )
+
     def refresh_surface_axes(
         self,
         *,
@@ -316,18 +352,20 @@ class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
             resolved_state=resolved_state,
         )
 
-    def refresh_surface_slice(
+    def refresh_operator_overlays(
         self,
         *,
         view_id: str,
         surface_view: SurfaceViewSpec | None,
-        resolved_state: dict[str, Any],
+        operators: list[GridSliceOperatorSpec],
+        resolved_operator_states: dict[str, dict[str, Any]],
     ) -> None:
         if view_id != self.view_ids[0]:
             return
-        self.viewport.refresh_surface_slice(
+        self.viewport.refresh_operator_overlays(
             surface_view=surface_view,
-            resolved_state=resolved_state,
+            operators=operators,
+            resolved_operator_states=resolved_operator_states,
         )
 
     def commit(self) -> None:
@@ -342,7 +380,15 @@ class LinePlotPanel(pg.PlotWidget):
         self._series_items: dict[str, pg.PlotDataItem] = {}
         self._legend_signature: tuple[str, ...] | None = None
 
-    def refresh(self, view: LinePlotViewSpec | None, field: Field | None, state: dict[str, Any], geometry_lookup: dict[str, MorphologyGeometry]) -> None:
+    def refresh(
+        self,
+        view: LinePlotViewSpec | None,
+        field: Field | None,
+        state: dict[str, Any],
+        geometry_lookup: dict[str, MorphologyGeometry],
+        operator_lookup: dict[str, OperatorSpec] | None = None,
+    ) -> None:
+        operator_lookup = {} if operator_lookup is None else operator_lookup
         if view is None or field is None:
             self._clear_series()
             self._plot_item.setData([], [])
@@ -354,9 +400,13 @@ class LinePlotPanel(pg.PlotWidget):
         if background is not None:
             self.setBackground(background)
 
-        if view.orthogonal_slice_state_key:
+        if view.operator_id is not None:
             self._clear_series()
-            line = line_from_orthogonal_slice(field, view, state)
+            operator = operator_lookup.get(view.operator_id)
+            if not isinstance(operator, GridSliceOperatorSpec):
+                self._plot_item.setData([], [])
+                return
+            line = line_from_grid_slice_operator(field, operator, state)
             if line is None:
                 self._plot_item.setData([], [])
                 return
@@ -786,20 +836,68 @@ def surface_scene_from_field(field: Field, geometry: GridGeometry | None) -> Sur
     )
 
 
-def line_from_orthogonal_slice(field: Field, view: LinePlotViewSpec, state: dict[str, Any]):
+def resolve_grid_slice_position(
+    coords: dict[str, np.ndarray],
+    *,
+    axis_state_key: str | None,
+    position_state_key: str | None,
+    state: dict[str, Any],
+    default_axis: str,
+):
+    if not axis_state_key or not position_state_key:
+        return None
+    axis = state.get(axis_state_key, default_axis)
+    if axis not in coords:
+        axis = default_axis if default_axis in coords else next(iter(coords))
+    normalized = min(1.0, max(0.0, float(state.get(position_state_key, 0.0))))
+    axis_coords = np.asarray(coords[axis], dtype=np.float32)
+    idx = max(0, min(len(axis_coords) - 1, int(round(normalized * (len(axis_coords) - 1)))))
+    return axis, idx, float(axis_coords[idx])
+
+
+def overlay_from_grid_slice_operator(
+    surface_scene: SurfaceSceneData,
+    operator: GridSliceOperatorSpec,
+    resolved_state: dict[str, Any],
+):
+    resolved = resolve_grid_slice_position(
+        surface_scene.coords,
+        axis_state_key=operator.axis_state_key,
+        position_state_key=operator.position_state_key,
+        state=resolved_state,
+        default_axis=surface_scene.x_dim,
+    )
+    if resolved is None:
+        return None
+    axis, _idx, value = resolved
+    return {
+        "operator_id": operator.id,
+        "axis": "x" if axis == surface_scene.x_dim else "y",
+        "value": value,
+        "color": resolved_state[f"{operator.id}:color"],
+        "alpha": resolved_state[f"{operator.id}:alpha"],
+        "fill_alpha": resolved_state[f"{operator.id}:fill_alpha"],
+        "width": resolved_state[f"{operator.id}:width"],
+    }
+
+
+def line_from_grid_slice_operator(field: Field, operator: GridSliceOperatorSpec, state: dict[str, Any]):
     if field.values.ndim != 2:
-        raise ValueError("orthogonal slice line plots require a 2D field")
-    slice_dim = state.get(view.orthogonal_slice_state_key)
-    if slice_dim not in field.dims:
-        slice_dim = field.dims[0]
+        raise ValueError("grid slice operators require a 2D field")
+    resolved = resolve_grid_slice_position(
+        {dim: field.coord(dim) for dim in field.dims},
+        axis_state_key=operator.axis_state_key,
+        position_state_key=operator.position_state_key,
+        state=state,
+        default_axis=field.dims[-1],
+    )
+    if resolved is None:
+        return None
+    slice_dim, idx, slice_value = resolved
     other_dims = [dim for dim in field.dims if dim != slice_dim]
     if len(other_dims) != 1:
-        raise ValueError("orthogonal slice line plots require exactly one non-sliced dimension")
+        raise ValueError("grid slice operators require exactly one non-sliced dimension")
     x_dim = other_dims[0]
-    pos = float(state.get(view.orthogonal_position_state_key, 0.0))
-    coords = field.coord(slice_dim)
-    idx = max(0, min(len(coords) - 1, int(round(pos * (len(coords) - 1)))))
-    slice_value = float(coords[idx])
     sliced = field.select({slice_dim: idx})
     return (
         np.asarray(sliced.coord(x_dim), dtype=np.float32),

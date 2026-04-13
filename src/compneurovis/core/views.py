@@ -31,9 +31,11 @@ class MorphologyViewSpec(ViewSpec):
 class SurfaceViewSpec(ViewSpec):
     field_id: str = ""
     geometry_id: str | None = None
-    color_map: str = "bwr"
-    color_limits: tuple[float, float] | None = None
-    color_by: str = "height"
+    color_map: ValueOrBinding = "bwr"
+    color_limits: ValueOrBinding = None
+    color_by: ValueOrBinding = "height"
+    surface_color: ValueOrBinding = (0.5, 0.6, 0.8, 1.0)
+    surface_shading: ValueOrBinding = "unlit"
     surface_alpha: ValueOrBinding = 1.0
     background_color: ValueOrBinding = "white"
     render_axes: ValueOrBinding = False
@@ -46,21 +48,15 @@ class SurfaceViewSpec(ViewSpec):
     text_color: ValueOrBinding = "black"
     axis_alpha: ValueOrBinding = 1.0
     axis_labels: tuple[str, str, str] | None = None
-    slice_axis_state_key: str | None = None
-    slice_position_state_key: str | None = None
-    slice_color: ValueOrBinding = "#111111"
-    slice_alpha: ValueOrBinding = 0.95
-    slice_width: ValueOrBinding = 3.0
 
 
 @dataclass(frozen=True, slots=True)
 class LinePlotViewSpec(ViewSpec):
     field_id: str = ""
+    operator_id: str | None = None
     x_dim: str | None = None
     series_dim: str | None = None
     selectors: dict[str, SelectorValue] = field(default_factory=dict)
-    orthogonal_slice_state_key: str | None = None
-    orthogonal_position_state_key: str | None = None
     x_label: str = "x"
     y_label: str = "y"
     x_unit: str = ""

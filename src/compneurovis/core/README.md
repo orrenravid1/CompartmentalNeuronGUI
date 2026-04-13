@@ -10,6 +10,8 @@ summary: Field, geometry, view, control, and scene primitives.
 - `Field`
 - `MorphologyGeometry`
 - `GridGeometry`
+- `OperatorSpec`
+- `GridSliceOperatorSpec`
 - `Scene`
 - `LayoutSpec`
 - `View3DHostSpec`
@@ -20,3 +22,7 @@ summary: Field, geometry, view, control, and scene primitives.
 `View3DHostSpec` owns 3-D host concerns such as initial camera distance and
 starting turntable orientation. Those settings belong here rather than on
 `SurfaceViewSpec` or `MorphologyViewSpec`, which describe rendered content.
+
+Operator specs live alongside fields, geometry, and views so derived workflows
+such as grid slices can stay reusable across multiple consumers instead of
+being baked into one specific view type.

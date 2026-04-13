@@ -5,10 +5,11 @@ summary: Mental model for ViewSpec, StateBinding, 3-D hosts, and how scenes comp
 
 # View and Layout Model
 
-CompNeuroVis separates four things that are easy to blur together:
+CompNeuroVis separates five things that are easy to blur together:
 
 - data
 - geometry
+- operators
 - views
 - layout
 
@@ -20,6 +21,7 @@ Use this rule first:
 
 - `Field` answers "what are the values?"
 - `Geometry` answers "where do those values live?"
+- `OperatorSpec` answers "what derived operation should run over existing data?"
 - `ViewSpec` answers "how should those values be rendered?"
 - `LayoutSpec` answers "which views are visible, and how are panels arranged?"
 
@@ -61,9 +63,22 @@ Valid patterns include:
 
 - one morphology geometry shown in two different 3-D views
 - one 2-D field shown as both a surface and a line slice
+- one `GridSliceOperatorSpec` driving both a 3-D overlay and a 2-D plot
 - one live field used for current display while another field retains history
 
 This is important because "same data, different view" is a normal scientific workflow, not a special case.
+
+Sometimes there is a reusable derived operation between "same data" and
+"different view." That is where an operator belongs.
+
+Example:
+
+- `GridSliceOperatorSpec` describes how to cut a normalized slice through a 2-D field
+- a 3-D host may project that slice as an overlay on top of a surface view
+- a `LinePlotViewSpec` may render the operator output as a 1-D curve
+
+That operator is not part of the surface view itself. It is a reusable
+transformation over the same underlying field and geometry.
 
 If you need another perspective on the same data, add another view. Do not duplicate the geometry or invent a second data model unless the underlying data is actually different.
 
@@ -142,6 +157,7 @@ When adding or reviewing a visualization change:
 
 - add a new `Field` when the data itself is new
 - add a new `Geometry` only when the spatial embedding is truly different
+- add a new `OperatorSpec` when the derived operation is new but the underlying data is not
 - add a new `ViewSpec` when the rendering intent is new
 - change `LayoutSpec` when panel composition changes
 - change `View3DHostSpec` when 3-D hosting strategy changes

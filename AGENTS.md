@@ -23,6 +23,7 @@ Primary exports live in `src/compneurovis/__init__.py`.
 Key names:
 
 - Core types: `Field`, `Scene`, `LayoutSpec`, `MorphologyGeometry`, `GridGeometry`
+- Operator types: `OperatorSpec`, `GridSliceOperatorSpec`
 - View types: `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
 - Backend/session: `NeuronSession`, `JaxleySession`, `ReplaySession`
 - Backend scene builders: `NeuronSceneBuilder`, `JaxleySceneBuilder`
@@ -33,6 +34,7 @@ Key names:
 ## Extension Points
 
 - Add new data-bearing features by introducing new `Field` instances and `ViewSpec` consumers.
+- Add new reusable derived workflows by introducing new `OperatorSpec` instances and frontend consumers.
 - Add new live backends by subclassing `Session` or `BufferedSession`.
 - Add new transports under `src/compneurovis/session` without changing the core scene model.
 - Add new frontend renderers under `src/compneurovis/frontends`.

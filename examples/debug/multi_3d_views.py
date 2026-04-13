@@ -58,6 +58,9 @@ def build_demo_app() -> AppSpec:
                 title="Surface",
                 field_id=surface_field.id,
                 geometry_id=surface_geometry.id,
+                color_by="uniform",
+                surface_color="#6b8fd6",
+                surface_shading="lit",
             ),
         },
         layout=LayoutSpec(
