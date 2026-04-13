@@ -210,7 +210,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
             surface_alpha=resolved_state[f"{surface_view.id}:surface_alpha"],
         )
 
-    def refresh_surface_axes(
+    def refresh_surface_axes_geometry(
         self,
         *,
         surface_view: SurfaceViewSpec | None,
@@ -225,20 +225,42 @@ class Viewport3DPanel(QtWidgets.QWidget):
             self._surface_scene.y_dim,
             self._surface_scene.field_id,
         )
-        self.renderer_surface.axes.set_axes(
+        self.renderer_surface.axes.set_axes_geometry(
             render_axes=resolved_state[f"{surface_view.id}:render_axes"],
             axes_in_middle=resolved_state[f"{surface_view.id}:axes_in_middle"],
             tick_count=resolved_state[f"{surface_view.id}:tick_count"],
             tick_length_scale=resolved_state[f"{surface_view.id}:tick_length_scale"],
+            axis_labels=axis_labels,
+            x=self._surface_scene.x_grid,
+            y=self._surface_scene.y_grid,
+            z=self._surface_scene.z,
+        )
+        self.renderer_surface.axes.set_axes_style(
+            render_axes=resolved_state[f"{surface_view.id}:render_axes"],
             tick_label_size=resolved_state[f"{surface_view.id}:tick_label_size"],
             axis_label_size=resolved_state[f"{surface_view.id}:axis_label_size"],
             axis_color=resolved_state[f"{surface_view.id}:axis_color"],
             text_color=resolved_state[f"{surface_view.id}:text_color"],
             axis_alpha=resolved_state[f"{surface_view.id}:axis_alpha"],
-            axis_labels=axis_labels,
-            x=self._surface_scene.x_grid,
-            y=self._surface_scene.y_grid,
-            z=self._surface_scene.z,
+        )
+
+    def refresh_surface_axes_style(
+        self,
+        *,
+        surface_view: SurfaceViewSpec | None,
+        resolved_state: dict[str, Any],
+    ) -> None:
+        if surface_view is None or self._surface_scene is None:
+            self.renderer_surface.axes.clear()
+            return
+
+        self.renderer_surface.axes.set_axes_style(
+            render_axes=resolved_state[f"{surface_view.id}:render_axes"],
+            tick_label_size=resolved_state[f"{surface_view.id}:tick_label_size"],
+            axis_label_size=resolved_state[f"{surface_view.id}:axis_label_size"],
+            axis_color=resolved_state[f"{surface_view.id}:axis_color"],
+            text_color=resolved_state[f"{surface_view.id}:text_color"],
+            axis_alpha=resolved_state[f"{surface_view.id}:axis_alpha"],
         )
 
     def refresh_operator_overlays(
@@ -338,7 +360,7 @@ class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
             resolved_state=resolved_state,
         )
 
-    def refresh_surface_axes(
+    def refresh_surface_axes_geometry(
         self,
         *,
         view_id: str,
@@ -347,7 +369,21 @@ class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
     ) -> None:
         if view_id != self.view_ids[0]:
             return
-        self.viewport.refresh_surface_axes(
+        self.viewport.refresh_surface_axes_geometry(
+            surface_view=surface_view,
+            resolved_state=resolved_state,
+        )
+
+    def refresh_surface_axes_style(
+        self,
+        *,
+        view_id: str,
+        surface_view: SurfaceViewSpec | None,
+        resolved_state: dict[str, Any],
+    ) -> None:
+        if view_id != self.view_ids[0]:
+            return
+        self.viewport.refresh_surface_axes_style(
             surface_view=surface_view,
             resolved_state=resolved_state,
         )
@@ -373,12 +409,22 @@ class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
 
 
 class LinePlotPanel(pg.PlotWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent=parent, title="Plot")
+    def __init__(self, parent=None, *, show_internal_title: bool = True):
+        super().__init__(parent=parent, title="Plot" if show_internal_title else "")
+        self._show_internal_title = show_internal_title
+        self._resolved_title = ""
         self.setBackground("w")
         self._plot_item = self.plot([], [], pen="k")
         self._series_items: dict[str, pg.PlotDataItem] = {}
         self._legend_signature: tuple[str, ...] | None = None
+
+    @property
+    def resolved_title(self) -> str:
+        return self._resolved_title
+
+    def _set_resolved_title(self, title: str) -> None:
+        self._resolved_title = str(title)
+        self.setTitle(self._resolved_title if self._show_internal_title else "")
 
     def refresh(
         self,
@@ -392,7 +438,7 @@ class LinePlotPanel(pg.PlotWidget):
         if view is None or field is None:
             self._clear_series()
             self._plot_item.setData([], [])
-            self.setTitle("")
+            self._set_resolved_title("")
             self._reset_view_ranges()
             return
 
@@ -415,7 +461,7 @@ class LinePlotPanel(pg.PlotWidget):
             self.setLabel("bottom", x_dim, view.x_unit)
             self.setLabel("left", view.y_label, view.y_unit)
             title = view.title or field.id
-            self.setTitle(f"{title} at {slice_dim} = {slice_value:.3f}")
+            self._set_resolved_title(f"{title} at {slice_dim} = {slice_value:.3f}")
             self._plot_item.setPen(pg.mkPen(resolve_binding(view.pen, state), width=2))
             self._plot_item.setData(x, y)
             self._apply_view_ranges(view, x)
@@ -462,7 +508,7 @@ class LinePlotPanel(pg.PlotWidget):
                 if entity_id in geometry.entity_ids:
                     title = f"{title}: {geometry.label_for(entity_id)}"
                     break
-        self.setTitle(title)
+        self._set_resolved_title(title)
         self._plot_item.setPen(pg.mkPen(resolve_binding(view.pen, state), width=2))
         self._plot_item.setData(x, y)
         self._apply_view_ranges(view, x)
@@ -518,7 +564,7 @@ class LinePlotPanel(pg.PlotWidget):
         x, values = self._trim_series_data(view, x, values)
         self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
         self.setLabel("left", view.y_label, view.y_unit)
-        self.setTitle(view.title or field.id)
+        self._set_resolved_title(view.title or field.id)
         self._ensure_legend(view.show_legend)
 
         stale = set(self._series_items.keys()) - set(series_labels)
@@ -685,6 +731,31 @@ class LinePlotPanel(pg.PlotWidget):
         return text
 
 
+class LinePlotHostPanel(QtWidgets.QGroupBox):
+    def __init__(self, *, view_id: str, title: str | None = None, parent=None):
+        super().__init__(title or view_id, parent)
+        self.view_id = view_id
+        self.line_plot_panel = LinePlotPanel(show_internal_title=False)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(4, 8, 4, 4)
+        layout.addWidget(self.line_plot_panel)
+
+    def refresh(
+        self,
+        view: LinePlotViewSpec | None,
+        field: Field | None,
+        state: dict[str, Any],
+        geometry_lookup: dict[str, MorphologyGeometry],
+        operator_lookup: dict[str, OperatorSpec] | None = None,
+    ) -> None:
+        self.line_plot_panel.refresh(view, field, state, geometry_lookup, operator_lookup)
+        if view is None:
+            self.setTitle("")
+            return
+        title = self.line_plot_panel.resolved_title or view.title or view.id
+        self.setTitle(title)
+
+
 class ControlsPanel(QtWidgets.QWidget):
     def __init__(self, on_value_changed, on_action_invoked=None, parent=None):
         super().__init__(parent)
@@ -797,6 +868,23 @@ class ControlsPanel(QtWidgets.QWidget):
             for key, value in action.payload.items()
         }
         self.on_action_invoked(action, payload)
+
+
+class ControlsHostPanel(QtWidgets.QGroupBox):
+    def __init__(self, controls_panel: ControlsPanel, *, title: str = "Controls", parent=None):
+        super().__init__(title, parent)
+        self.controls_panel = controls_panel
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(4, 8, 4, 4)
+        layout.addWidget(self.controls_panel)
+
+    def set_section_title(self, *, has_controls: bool, has_actions: bool) -> None:
+        if has_controls and has_actions:
+            self.setTitle("Controls & Actions")
+        elif has_actions:
+            self.setTitle("Actions")
+        else:
+            self.setTitle("Controls")
 
 
 def resolve_binding(value, state: dict[str, Any]):

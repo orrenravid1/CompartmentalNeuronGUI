@@ -1,6 +1,6 @@
 ---
 name: update-docs-and-indexes
-description: Update CompNeuroVis documentation, AGENTS metadata, package READMEs, and generated reference indexes after code or workflow changes. Use when implementation is finished or when documentation has drifted from the current architecture.
+description: Update CompNeuroVis documentation, AGENTS metadata, package READMEs, and generated reference indexes after code or workflow changes. Mandatory when touching authored docs, AGENTS metadata, package READMEs, or generated indexes, even if those edits are incidental to another change.
 kind: meta
 surface: docs
 stage: implement
@@ -10,6 +10,14 @@ trust: general
 # Update Docs and Indexes
 
 Read `AGENTS.md` first.
+
+Use this skill whenever you:
+
+- edit authored docs under `docs/`
+- edit `AGENTS.md`
+- edit a package-local `README.md`
+- regenerate or validate reference indexes
+- discover that code or terminology changes have made docs stale, even if you reached that point through another skill first
 
 Update documentation in this order:
 

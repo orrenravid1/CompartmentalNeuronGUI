@@ -11,40 +11,115 @@ from compneurovis.vispyutils.cappedcylindercollection import CappedCylinderColle
 
 
 class SurfaceAxesOverlay:
+    _TICK_ANCHORS = {
+        "x": ("center", "top"),
+        "y": ("right", "center"),
+        "z": ("left", "center"),
+    }
+
+    _AXIS_LABEL_ANCHORS = {
+        "x": ("center", "top"),
+        "y": ("right", "center"),
+        "z": ("left", "center"),
+    }
+
     def __init__(self, view):
         self.view = view
-        self._visuals = []
+        self._axis_lines = None
+        self._tick_lines = None
+        self._tick_labels: dict[str, scene.visuals.Text] = {}
+        self._axis_labels: dict[str, scene.visuals.Text] = {}
 
     def clear(self) -> None:
-        for vis in self._visuals:
+        visuals = [
+            self._axis_lines,
+            self._tick_lines,
+            *self._tick_labels.values(),
+            *self._axis_labels.values(),
+        ]
+        for vis in visuals:
+            if vis is None:
+                continue
             vis.parent = None
-        self._visuals.clear()
+        self._axis_lines = None
+        self._tick_lines = None
+        self._tick_labels.clear()
+        self._axis_labels.clear()
 
-    def _add_line(self, points, color, width=2):
-        line = scene.visuals.Line(
-            pos=np.asarray(points, dtype=np.float32),
-            color=color,
+    def _ensure_line_visual(self, *, attr_name: str, width: float):
+        visual = getattr(self, attr_name)
+        if visual is not None:
+            return visual
+        visual = scene.visuals.Line(
+            pos=np.zeros((2, 3), dtype=np.float32),
+            color=(0.0, 0.0, 0.0, 1.0),
             width=width,
+            connect="segments",
             method="gl",
             parent=self.view.scene,
         )
-        line.set_gl_state(depth_test=False, blend=True)
-        line.order = 1000
-        self._visuals.append(line)
+        visual.set_gl_state(depth_test=False, blend=True)
+        visual.order = 1000
+        setattr(self, attr_name, visual)
+        return visual
 
-    def _add_text(self, text, pos, color, font_size=10, anchor_x="center", anchor_y="center"):
-        label = scene.visuals.Text(
-            text=str(text),
-            pos=np.asarray(pos, dtype=np.float32),
-            color=color,
-            font_size=font_size,
+    def _ensure_tick_label_visual(self, axis_name: str):
+        visual = self._tick_labels.get(axis_name)
+        if visual is not None:
+            return visual
+        anchor_x, anchor_y = self._TICK_ANCHORS[axis_name]
+        visual = scene.visuals.Text(
+            text=[],
+            pos=np.zeros((1, 3), dtype=np.float32),
+            color="black",
+            font_size=10,
             anchor_x=anchor_x,
             anchor_y=anchor_y,
             parent=self.view.scene,
         )
-        label.set_gl_state(depth_test=False, blend=True)
-        label.order = 1000
-        self._visuals.append(label)
+        visual.set_gl_state(depth_test=False, blend=True)
+        visual.order = 1000
+        self._tick_labels[axis_name] = visual
+        return visual
+
+    def _ensure_axis_label_visual(self, axis_name: str):
+        visual = self._axis_labels.get(axis_name)
+        if visual is not None:
+            return visual
+        anchor_x, anchor_y = self._AXIS_LABEL_ANCHORS[axis_name]
+        visual = scene.visuals.Text(
+            text="",
+            pos=np.zeros((1, 3), dtype=np.float32),
+            color="black",
+            font_size=12,
+            anchor_x=anchor_x,
+            anchor_y=anchor_y,
+            parent=self.view.scene,
+        )
+        visual.set_gl_state(depth_test=False, blend=True)
+        visual.order = 1000
+        self._axis_labels[axis_name] = visual
+        return visual
+
+    def _set_visible(self, visible: bool) -> None:
+        visuals = [
+            self._axis_lines,
+            self._tick_lines,
+            *self._tick_labels.values(),
+            *self._axis_labels.values(),
+        ]
+        for visual in visuals:
+            if visual is not None:
+                visual.visible = visible
+
+    def _update_text_visual(self, visual, *, texts, positions) -> None:
+        if not texts:
+            visual.text = []
+            visual.visible = False
+            return
+        visual.text = texts
+        visual.pos = np.asarray(positions, dtype=np.float32)
+        visual.visible = True
 
     def _format_tick_value(self, value: float, lo: float, hi: float, tick_count: int) -> str:
         span = abs(float(hi) - float(lo))
@@ -71,29 +146,23 @@ class SurfaceAxesOverlay:
         rgba[3] = min(1.0, max(0.0, float(alpha)))
         return tuple(rgba)
 
-    def set_axes(
+    def set_axes_geometry(
         self,
         *,
         render_axes,
         axes_in_middle,
         tick_count,
         tick_length_scale,
-        tick_label_size,
-        axis_label_size,
-        axis_color,
-        text_color,
-        axis_alpha,
         axis_labels,
         x,
         y,
         z,
-    ):
-        self.clear()
+    ) -> None:
         if not render_axes:
+            self._set_visible(False)
             return
 
-        axis_color = self._with_alpha(axis_color, axis_alpha)
-        text_color = self._with_alpha(text_color, axis_alpha)
+        self._set_visible(True)
         tick_count = max(0, int(tick_count))
 
         xmin, xmax = float(np.min(x)), float(np.max(x))
@@ -107,9 +176,20 @@ class SurfaceAxesOverlay:
         axis_z = zmid if axes_in_middle else zmin
         axis_x = xmid if axes_in_middle else xmin
 
-        self._add_line([[xmin, axis_y, axis_z], [xmax, axis_y, axis_z]], axis_color)
-        self._add_line([[axis_x, ymin, axis_z], [axis_x, ymax, axis_z]], axis_color)
-        self._add_line([[axis_x, axis_y, zmin], [axis_x, axis_y, zmax]], axis_color)
+        axis_segments = np.asarray(
+            [
+                [xmin, axis_y, axis_z],
+                [xmax, axis_y, axis_z],
+                [axis_x, ymin, axis_z],
+                [axis_x, ymax, axis_z],
+                [axis_x, axis_y, zmin],
+                [axis_x, axis_y, zmax],
+            ],
+            dtype=np.float32,
+        )
+        axis_visual = self._ensure_line_visual(attr_name="_axis_lines", width=2.0)
+        axis_visual.set_data(pos=axis_segments, connect="segments")
+        axis_visual.visible = True
 
         xtick = 0.03 * max(ymax - ymin, 1e-6) * tick_length_scale
         ytick = 0.03 * max(xmax - xmin, 1e-6) * tick_length_scale
@@ -118,38 +198,108 @@ class SurfaceAxesOverlay:
         yoff = 0.07 * max(xmax - xmin, 1e-6)
         zoff = 0.07 * max(xmax - xmin, 1e-6)
 
+        tick_segments: list[list[float]] = []
+        x_tick_labels: list[str] = []
+        y_tick_labels: list[str] = []
+        z_tick_labels: list[str] = []
+        x_tick_positions: list[list[float]] = []
+        y_tick_positions: list[list[float]] = []
+        z_tick_positions: list[list[float]] = []
+
         if tick_count > 0:
             for xv in np.linspace(xmin, xmax, tick_count):
-                self._add_line([[xv, axis_y - xtick, axis_z], [xv, axis_y + xtick, axis_z]], axis_color, width=1)
-                self._add_text(
-                    self._format_tick_value(float(xv), xmin, xmax, tick_count),
-                    [xv, axis_y - xoff, axis_z],
-                    text_color,
-                    font_size=tick_label_size,
-                    anchor_y="top",
+                tick_segments.extend(
+                    [
+                        [xv, axis_y - xtick, axis_z],
+                        [xv, axis_y + xtick, axis_z],
+                    ]
                 )
+                x_tick_labels.append(self._format_tick_value(float(xv), xmin, xmax, tick_count))
+                x_tick_positions.append([xv, axis_y - xoff, axis_z])
             for yv in np.linspace(ymin, ymax, tick_count):
-                self._add_line([[axis_x - ytick, yv, axis_z], [axis_x + ytick, yv, axis_z]], axis_color, width=1)
-                self._add_text(
-                    self._format_tick_value(float(yv), ymin, ymax, tick_count),
-                    [axis_x - yoff, yv, axis_z],
-                    text_color,
-                    font_size=tick_label_size,
-                    anchor_x="right",
+                tick_segments.extend(
+                    [
+                        [axis_x - ytick, yv, axis_z],
+                        [axis_x + ytick, yv, axis_z],
+                    ]
                 )
+                y_tick_labels.append(self._format_tick_value(float(yv), ymin, ymax, tick_count))
+                y_tick_positions.append([axis_x - yoff, yv, axis_z])
             for zv in np.linspace(zmin, zmax, tick_count):
-                self._add_line([[axis_x - ztick, axis_y, zv], [axis_x + ztick, axis_y, zv]], axis_color, width=1)
-                self._add_text(
-                    self._format_tick_value(float(zv), zmin, zmax, tick_count),
-                    [axis_x + zoff, axis_y, zv],
-                    text_color,
-                    font_size=tick_label_size,
-                    anchor_x="left",
+                tick_segments.extend(
+                    [
+                        [axis_x - ztick, axis_y, zv],
+                        [axis_x + ztick, axis_y, zv],
+                    ]
                 )
+                z_tick_labels.append(self._format_tick_value(float(zv), zmin, zmax, tick_count))
+                z_tick_positions.append([axis_x + zoff, axis_y, zv])
 
-        self._add_text(axis_labels[0], [xmax, axis_y - xoff * 1.8, axis_z], text_color, font_size=axis_label_size, anchor_y="top")
-        self._add_text(axis_labels[1], [axis_x - yoff * 1.8, ymax, axis_z], text_color, font_size=axis_label_size, anchor_x="right")
-        self._add_text(axis_labels[2], [axis_x + zoff * 1.8, axis_y, zmax], text_color, font_size=axis_label_size, anchor_x="left")
+        tick_visual = self._ensure_line_visual(attr_name="_tick_lines", width=1.0)
+        if tick_segments:
+            tick_visual.set_data(pos=np.asarray(tick_segments, dtype=np.float32), connect="segments")
+            tick_visual.visible = True
+        else:
+            tick_visual.visible = False
+
+        self._update_text_visual(
+            self._ensure_tick_label_visual("x"),
+            texts=x_tick_labels,
+            positions=x_tick_positions,
+        )
+        self._update_text_visual(
+            self._ensure_tick_label_visual("y"),
+            texts=y_tick_labels,
+            positions=y_tick_positions,
+        )
+        self._update_text_visual(
+            self._ensure_tick_label_visual("z"),
+            texts=z_tick_labels,
+            positions=z_tick_positions,
+        )
+
+        label_specs = {
+            "x": (str(axis_labels[0]), [[xmax, axis_y - xoff * 1.8, axis_z]]),
+            "y": (str(axis_labels[1]), [[axis_x - yoff * 1.8, ymax, axis_z]]),
+            "z": (str(axis_labels[2]), [[axis_x + zoff * 1.8, axis_y, zmax]]),
+        }
+        for axis_name, (label_text, label_pos) in label_specs.items():
+            label_visual = self._ensure_axis_label_visual(axis_name)
+            if not label_text:
+                label_visual.text = ""
+                label_visual.visible = False
+                continue
+            label_visual.text = label_text
+            label_visual.pos = np.asarray(label_pos, dtype=np.float32)
+            label_visual.visible = True
+
+    def set_axes_style(
+        self,
+        *,
+        render_axes,
+        tick_label_size,
+        axis_label_size,
+        axis_color,
+        text_color,
+        axis_alpha,
+    ) -> None:
+        if not render_axes:
+            self._set_visible(False)
+            return
+
+        axis_rgba = self._with_alpha(axis_color, axis_alpha)
+        text_rgba = self._with_alpha(text_color, axis_alpha)
+
+        if self._axis_lines is not None:
+            self._axis_lines.set_data(color=axis_rgba, width=2.0)
+        if self._tick_lines is not None:
+            self._tick_lines.set_data(color=axis_rgba, width=1.0)
+        for visual in self._tick_labels.values():
+            visual.color = text_rgba
+            visual.font_size = tick_label_size
+        for visual in self._axis_labels.values():
+            visual.color = text_rgba
+            visual.font_size = axis_label_size
 
 
 class SurfaceSliceOverlay:

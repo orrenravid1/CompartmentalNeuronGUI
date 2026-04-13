@@ -11,8 +11,8 @@ from vispy import app as vispy_app, use
 
 use(app="pyqt6", gl="gl+")
 
-from compneurovis.core import AppSpec, GridSliceOperatorSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding, SurfaceViewSpec, View3DHostSpec
-from compneurovis.frontends.vispy.panels import ControlsPanel, IndependentCanvas3DHostPanel, LinePlotPanel, Viewport3DPanel
+from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding, SurfaceViewSpec, View3DHostSpec
+from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, IndependentCanvas3DHostPanel, LinePlotHostPanel, LinePlotPanel, Viewport3DPanel
 from compneurovis.session import ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
 from compneurovis.session.base import resolve_startup_scene_source
 
@@ -27,8 +27,8 @@ class RefreshTarget:
         return cls("controls")
 
     @classmethod
-    def line_plot(cls) -> "RefreshTarget":
-        return cls("line_plot")
+    def line_plot(cls, view_id: str) -> "RefreshTarget":
+        return cls("line_plot", view_id)
 
     @classmethod
     def morphology(cls, view_id: str) -> "RefreshTarget":
@@ -43,8 +43,12 @@ class RefreshTarget:
         return cls("surface_style", view_id)
 
     @classmethod
-    def surface_axes(cls, view_id: str) -> "RefreshTarget":
-        return cls("surface_axes", view_id)
+    def surface_axes_geometry(cls, view_id: str) -> "RefreshTarget":
+        return cls("surface_axes_geometry", view_id)
+
+    @classmethod
+    def surface_axes_style(cls, view_id: str) -> "RefreshTarget":
+        return cls("surface_axes_style", view_id)
 
     @classmethod
     def operator_overlay(cls, view_id: str) -> "RefreshTarget":
@@ -52,7 +56,6 @@ class RefreshTarget:
 
 
 RefreshTarget.CONTROLS = RefreshTarget.controls()
-RefreshTarget.LINE_PLOT = RefreshTarget.line_plot()
 
 
 class RefreshPlanner:
@@ -68,7 +71,7 @@ class RefreshPlanner:
             "background_color",
         }
     )
-    SURFACE_AXES_PROPS = frozenset(
+    SURFACE_AXES_GEOMETRY_PROPS = frozenset(
         {
             "field_id",
             "geometry_id",
@@ -76,12 +79,16 @@ class RefreshPlanner:
             "axes_in_middle",
             "tick_count",
             "tick_length_scale",
+            "axis_labels",
+        }
+    )
+    SURFACE_AXES_STYLE_PROPS = frozenset(
+        {
             "tick_label_size",
             "axis_label_size",
             "axis_color",
             "text_color",
             "axis_alpha",
-            "axis_labels",
         }
     )
     GRID_SLICE_COMPUTE_PROPS = frozenset({"field_id", "geometry_id", "axis_state_key", "position_state_key"})
@@ -91,6 +98,7 @@ class RefreshPlanner:
             "field_id",
             "operator_id",
             "x_dim",
+            "series_dim",
             "selectors",
             "x_label",
             "y_label",
@@ -99,6 +107,15 @@ class RefreshPlanner:
             "pen",
             "background_color",
             "title",
+            "show_legend",
+            "series_colors",
+            "series_palette",
+            "rolling_window",
+            "trim_to_rolling_window",
+            "y_min",
+            "y_max",
+            "x_major_tick_spacing",
+            "x_minor_tick_spacing",
         }
     )
 
@@ -150,10 +167,12 @@ class RefreshPlanner:
             operators[operator_id] = operator
         return operators
 
-    def line_view(self):
-        if self.scene.layout.line_plot_view_id is None:
-            return None
-        return self.scene.views.get(self.scene.layout.line_plot_view_id)
+    def line_views(self) -> dict[str, LinePlotViewSpec]:
+        return {
+            view_id: view
+            for view_id in self.scene.layout.resolved_line_plot_view_ids()
+            if isinstance((view := self.scene.views.get(view_id)), LinePlotViewSpec)
+        }
 
     def full_refresh_targets(self) -> set[RefreshTarget]:
         targets = {RefreshTarget.CONTROLS}
@@ -163,12 +182,12 @@ class RefreshPlanner:
             targets.update(
                 {
                     RefreshTarget.surface_visual(view_id),
-                    RefreshTarget.surface_axes(view_id),
+                    RefreshTarget.surface_axes_geometry(view_id),
                     RefreshTarget.operator_overlay(view_id),
                 }
             )
-        if self.line_view() is not None:
-            targets.add(RefreshTarget.LINE_PLOT)
+        for view_id in self.line_views():
+            targets.add(RefreshTarget.line_plot(view_id))
         return targets
 
     def targets_for_state_change(self, state_key: str) -> set[RefreshTarget]:
@@ -183,8 +202,18 @@ class RefreshPlanner:
                 targets.add(RefreshTarget.surface_visual(view_id))
             if any(binding_key(getattr(surface_view, prop)) == state_key for prop in self.SURFACE_STYLE_PROPS if hasattr(surface_view, prop)):
                 targets.add(RefreshTarget.surface_style(view_id))
-            if any(binding_key(getattr(surface_view, prop)) == state_key for prop in self.SURFACE_AXES_PROPS if hasattr(surface_view, prop)):
-                targets.add(RefreshTarget.surface_axes(view_id))
+            if any(
+                binding_key(getattr(surface_view, prop)) == state_key
+                for prop in self.SURFACE_AXES_GEOMETRY_PROPS
+                if hasattr(surface_view, prop)
+            ):
+                targets.add(RefreshTarget.surface_axes_geometry(view_id))
+            if any(
+                binding_key(getattr(surface_view, prop)) == state_key
+                for prop in self.SURFACE_AXES_STYLE_PROPS
+                if hasattr(surface_view, prop)
+            ):
+                targets.add(RefreshTarget.surface_axes_style(view_id))
             operators = self.grid_slice_operators_for_view(view_id)
             if any(
                 binding_key(getattr(operator, prop)) == state_key
@@ -195,16 +224,15 @@ class RefreshPlanner:
             if any(state_key in {operator.axis_state_key, operator.position_state_key} for operator in operators.values()):
                 targets.add(RefreshTarget.operator_overlay(view_id))
 
-        line_view = self.line_view()
-        if line_view is not None:
+        for view_id, line_view in self.line_views().items():
             if line_view.operator_id is not None:
                 operator = self.scene.operators.get(line_view.operator_id)
                 if isinstance(operator, GridSliceOperatorSpec) and state_key in {operator.axis_state_key, operator.position_state_key}:
-                    targets.add(RefreshTarget.LINE_PLOT)
+                    targets.add(RefreshTarget.line_plot(view_id))
             if any(binding_key(value) == state_key for value in line_view.selectors.values()):
-                targets.add(RefreshTarget.LINE_PLOT)
+                targets.add(RefreshTarget.line_plot(view_id))
             if any(binding_key(getattr(line_view, prop)) == state_key for prop in ("pen", "background_color")):
-                targets.add(RefreshTarget.LINE_PLOT)
+                targets.add(RefreshTarget.line_plot(view_id))
 
         return targets
 
@@ -222,18 +250,17 @@ class RefreshPlanner:
                 continue
             targets.add(RefreshTarget.surface_visual(view_id))
             if coords_changed or surface_view.color_limits is None:
-                targets.add(RefreshTarget.surface_axes(view_id))
+                targets.add(RefreshTarget.surface_axes_geometry(view_id))
             if self.grid_slice_operators_for_view(view_id):
                 targets.add(RefreshTarget.operator_overlay(view_id))
 
-        line_view = self.line_view()
-        if line_view is not None:
+        for view_id, line_view in self.line_views().items():
             if line_view.operator_id is not None:
                 operator = self.scene.operators.get(line_view.operator_id)
                 if isinstance(operator, GridSliceOperatorSpec) and operator.field_id == field_id:
-                    targets.add(RefreshTarget.LINE_PLOT)
+                    targets.add(RefreshTarget.line_plot(view_id))
             elif getattr(line_view, "field_id", None) == field_id:
-                targets.add(RefreshTarget.LINE_PLOT)
+                targets.add(RefreshTarget.line_plot(view_id))
         return targets
 
     def targets_for_view_patch(self, view_id: str, changed_props: set[str]) -> set[RefreshTarget]:
@@ -246,13 +273,15 @@ class RefreshPlanner:
                 targets.add(RefreshTarget.surface_visual(view_id))
             if changed_props & self.SURFACE_STYLE_PROPS:
                 targets.add(RefreshTarget.surface_style(view_id))
-            if changed_props & self.SURFACE_AXES_PROPS:
-                targets.add(RefreshTarget.surface_axes(view_id))
+            if changed_props & self.SURFACE_AXES_GEOMETRY_PROPS:
+                targets.add(RefreshTarget.surface_axes_geometry(view_id))
+            if changed_props & self.SURFACE_AXES_STYLE_PROPS:
+                targets.add(RefreshTarget.surface_axes_style(view_id))
             if changed_props & {"field_id", "geometry_id"}:
                 targets.add(RefreshTarget.operator_overlay(view_id))
             return targets
-        if view is not None and changed_props & self.LINE_PLOT_PROPS:
-            return {RefreshTarget.LINE_PLOT}
+        if isinstance(view, LinePlotViewSpec) and changed_props & self.LINE_PLOT_PROPS:
+            return {RefreshTarget.line_plot(view_id)}
         return set()
 
     def targets_for_operator_patch(self, operator_id: str, changed_props: set[str]) -> set[RefreshTarget]:
@@ -260,9 +289,9 @@ class RefreshPlanner:
         for view_id in self.surface_views():
             if operator_id in self.grid_slice_operators_for_view(view_id):
                 targets.add(RefreshTarget.operator_overlay(view_id))
-        line_view = self.line_view()
-        if line_view is not None and line_view.operator_id == operator_id and changed_props & self.GRID_SLICE_COMPUTE_PROPS:
-            targets.add(RefreshTarget.LINE_PLOT)
+        for view_id, line_view in self.line_views().items():
+            if line_view.operator_id == operator_id and changed_props & self.GRID_SLICE_COMPUTE_PROPS:
+                targets.add(RefreshTarget.line_plot(view_id))
         return targets
 
 
@@ -286,18 +315,24 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.viewports: dict[str, Viewport3DPanel] = {}
         self.view_hosts: dict[str, IndependentCanvas3DHostPanel] = {}
         self._view_to_host_id: dict[str, str] = {}
-        self.line_plot = LinePlotPanel()
-        self.controls = ControlsPanel(self._on_control_changed, self._on_action_invoked)
+        self.line_plot_host_panels: dict[str, LinePlotHostPanel] = {}
+        self.line_plot_panels: dict[str, LinePlotPanel] = {}
+        self.controls_panel = ControlsPanel(self._on_control_changed, self._on_action_invoked)
+        self.controls_host = ControlsHostPanel(self.controls_panel)
 
         self._viewport_splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
         self._viewport_splitter.setChildrenCollapsible(False)
         self._viewport_splitter.setOpaqueResize(False)
 
+        self._plot_splitter = QtWidgets.QSplitter(Qt.Orientation.Vertical)
+        self._plot_splitter.setChildrenCollapsible(False)
+        self._plot_splitter.setOpaqueResize(False)
+
         self._right_splitter = QtWidgets.QSplitter(Qt.Orientation.Vertical)
         self._right_splitter.setChildrenCollapsible(False)
         self._right_splitter.setOpaqueResize(False)
-        self._right_splitter.addWidget(self.line_plot)
-        self._right_splitter.addWidget(self.controls)
+        self._right_splitter.addWidget(self._plot_splitter)
+        self._right_splitter.addWidget(self.controls_host)
         self._right_splitter.setStretchFactor(0, 3)
         self._right_splitter.setStretchFactor(1, 2)
 
@@ -337,6 +372,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def viewport(self) -> Viewport3DPanel | None:
         return next(iter(self.viewports.values()), None)
 
+    def line_plot_panel(self, view_id: str) -> LinePlotPanel | None:
+        return self.line_plot_panels.get(view_id)
+
     def viewport_for(self, view_id: str) -> Viewport3DPanel | None:
         return self.viewports.get(view_id)
 
@@ -356,6 +394,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             self.state.setdefault(control.resolved_state_key(), control.default)
 
         self._rebuild_view_hosts()
+        self._rebuild_line_plots()
 
         morphology_view = self._first_morphology_view()
         if morphology_view is not None:
@@ -407,6 +446,24 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 self.viewports[view_id] = panel.viewport
                 self._view_to_host_id[view_id] = host.id
 
+    def _rebuild_line_plots(self) -> None:
+        while self._plot_splitter.count():
+            widget = self._plot_splitter.widget(0)
+            widget.setParent(None)
+            widget.deleteLater()
+        self.line_plot_host_panels.clear()
+        self.line_plot_panels.clear()
+        if self.scene is None:
+            return
+        for view_id in self.scene.layout.resolved_line_plot_view_ids():
+            view = self.scene.views.get(view_id)
+            if not isinstance(view, LinePlotViewSpec):
+                continue
+            host = LinePlotHostPanel(view_id=view_id, title=view.title or view_id)
+            self._plot_splitter.addWidget(host)
+            self.line_plot_host_panels[view_id] = host
+            self.line_plot_panels[view_id] = host.line_plot_panel
+
     def _first_morphology_view(self):
         if self.scene is None:
             return None
@@ -428,10 +485,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         view = self.scene.views.get(view_id)
         return view if isinstance(view, SurfaceViewSpec) else None
 
-    def _line_view(self):
-        if self.scene is None or self.scene.layout.line_plot_view_id is None:
+    def _line_view(self, view_id: str):
+        if self.scene is None:
             return None
-        return self.scene.views.get(self.scene.layout.line_plot_view_id)
+        view = self.scene.views.get(view_id)
+        return view if isinstance(view, LinePlotViewSpec) else None
 
     def _view_host(self, view_id: str):
         host_id = self._view_to_host_id.get(view_id)
@@ -439,28 +497,59 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             return None
         return self.view_hosts.get(host_id)
 
+    def _resolved_controls_and_actions(self) -> tuple[list[ControlSpec], list[ActionSpec]]:
+        if self.scene is None:
+            return [], []
+        controls = [self.scene.controls[control_id] for control_id in self.scene.layout.control_ids if control_id in self.scene.controls]
+        actions = [self.scene.actions[action_id] for action_id in self.scene.layout.action_ids if action_id in self.scene.actions]
+        return controls, actions
+
     def _update_panel_visibility(self) -> None:
         has_3d = bool(self.view_hosts)
+        has_line_plots = bool(self.line_plot_panels)
+        controls, actions = self._resolved_controls_and_actions()
+        has_controls = bool(controls or actions)
+        has_right_panel = has_line_plots or has_controls
         self._viewport_splitter.setVisible(has_3d)
-        self._apply_default_splitter_sizes(has_3d=has_3d)
+        self._right_splitter.setVisible(has_right_panel)
+        self._plot_splitter.setVisible(has_line_plots)
+        self.controls_host.setVisible(has_controls)
+        self._apply_default_splitter_sizes(has_3d=has_3d, has_line_plots=has_line_plots, has_controls=has_controls)
 
-    def _apply_default_splitter_sizes(self, *, has_3d: bool) -> None:
+    def _apply_default_splitter_sizes(self, *, has_3d: bool, has_line_plots: bool, has_controls: bool) -> None:
         width = max(self.width(), 1)
         height = max(self.height(), 1)
-        self._right_splitter.setSizes([max(1, int(height * 0.6)), max(1, int(height * 0.4))])
-        if has_3d:
+        if has_line_plots and has_controls:
+            plot_height = max(1, int(height * 0.6))
+            control_height = max(1, int(height * 0.4))
+            self._right_splitter.setSizes([plot_height, control_height])
+            if self._plot_splitter.count():
+                self._plot_splitter.setSizes(
+                    [max(1, int(plot_height / self._plot_splitter.count()))] * self._plot_splitter.count()
+                )
+        elif has_line_plots:
+            self._right_splitter.setSizes([height, 0])
+            if self._plot_splitter.count():
+                self._plot_splitter.setSizes([max(1, int(height / self._plot_splitter.count()))] * self._plot_splitter.count())
+        elif has_controls:
+            self._right_splitter.setSizes([0, height])
+        else:
+            self._right_splitter.setSizes([0, 0])
+        if has_3d and (has_line_plots or has_controls):
             self._horizontal_splitter.setSizes([max(1, int(width * 0.67)), max(1, int(width * 0.33))])
             if self._viewport_splitter.count():
                 self._viewport_splitter.setSizes([max(1, int(width * 0.67 / self._viewport_splitter.count()))] * self._viewport_splitter.count())
+        elif has_3d:
+            self._horizontal_splitter.setSizes([width, 0])
         else:
             self._horizontal_splitter.setSizes([0, width])
 
     def _refresh_controls(self) -> None:
         if self.scene is None:
             return
-        controls = [self.scene.controls[control_id] for control_id in self.scene.layout.control_ids if control_id in self.scene.controls]
-        actions = [self.scene.actions[action_id] for action_id in self.scene.layout.action_ids if action_id in self.scene.actions]
-        self.controls.set_controls(controls, actions, self.state)
+        controls, actions = self._resolved_controls_and_actions()
+        self.controls_host.set_section_title(has_controls=bool(controls), has_actions=bool(actions))
+        self.controls_panel.set_controls(controls, actions, self.state)
 
     def _resolved_morphology_state(self, view: MorphologyViewSpec) -> dict[str, Any]:
         return {
@@ -583,12 +672,23 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
         )
 
-    def _refresh_surface_axes(self, view_id: str) -> None:
+    def _refresh_surface_axes_geometry(self, view_id: str) -> None:
         host = self._view_host(view_id)
         if host is None:
             return
         surface_view = self._surface_view(view_id)
-        host.refresh_surface_axes(
+        host.refresh_surface_axes_geometry(
+            view_id=view_id,
+            surface_view=surface_view,
+            resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
+        )
+
+    def _refresh_surface_axes_style(self, view_id: str) -> None:
+        host = self._view_host(view_id)
+        if host is None:
+            return
+        surface_view = self._surface_view(view_id)
+        host.refresh_surface_axes_style(
             view_id=view_id,
             surface_view=surface_view,
             resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
@@ -618,10 +718,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             resolved_operator_states={operator.id: self._resolved_grid_slice_state(operator) for operator in operators},
         )
 
-    def _refresh_line_plot(self) -> None:
+    def _refresh_line_plot(self, view_id: str) -> None:
         if self.scene is None:
             return
-        line_view = self._line_view()
+        host = self.line_plot_host_panels.get(view_id)
+        if host is None:
+            return
+        line_view = self._line_view(view_id)
         geometry_lookup = {
             key: value
             for key, value in self.scene.geometries.items()
@@ -635,7 +738,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     line_field = self.scene.fields.get(operator.field_id)
             else:
                 line_field = self.scene.fields.get(line_view.field_id)
-        self.line_plot.refresh(line_view, line_field, self.state, geometry_lookup, self.scene.operators)
+        host.refresh(line_view, line_field, self.state, geometry_lookup, self.scene.operators)
 
     def _apply_refresh_targets(self, targets: set[RefreshTarget]) -> None:
         if not targets:
@@ -645,8 +748,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             self._refresh_controls()
 
         dirty_viewports: set[str] = set()
-        if RefreshTarget.LINE_PLOT in targets:
-            self._refresh_line_plot()
+        for target in sorted(
+            (target for target in targets if target.kind == "line_plot" and target.view_id is not None),
+            key=lambda target: target.view_id or "",
+        ):
+            self._refresh_line_plot(target.view_id)
         ordered_targets = sorted(
             (target for target in targets if target.kind not in {"controls", "line_plot"}),
             key=lambda target: (
@@ -654,8 +760,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     "morphology": 0,
                     "surface_visual": 1,
                     "surface_style": 2,
-                    "surface_axes": 3,
-                    "operator_overlay": 4,
+                    "surface_axes_geometry": 3,
+                    "surface_axes_style": 4,
+                    "operator_overlay": 5,
                 }.get(target.kind, 99),
                 target.view_id or "",
             ),
@@ -670,8 +777,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             elif target.kind == "surface_style" and target.view_id is not None:
                 self._refresh_surface_style(target.view_id)
                 dirty_viewports.add(target.view_id)
-            elif target.kind == "surface_axes" and target.view_id is not None:
-                self._refresh_surface_axes(target.view_id)
+            elif target.kind == "surface_axes_geometry" and target.view_id is not None:
+                self._refresh_surface_axes_geometry(target.view_id)
+                dirty_viewports.add(target.view_id)
+            elif target.kind == "surface_axes_style" and target.view_id is not None:
+                self._refresh_surface_axes_style(target.view_id)
                 dirty_viewports.add(target.view_id)
             elif target.kind == "operator_overlay" and target.view_id is not None:
                 self._refresh_operator_overlays(target.view_id)

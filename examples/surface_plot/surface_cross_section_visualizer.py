@@ -102,15 +102,15 @@ app = build_surface_app(
     geometry=geometry,
     title="surface cross-section viewer",
     surface_view=surface_view,
-    line_view=line_view,
+    line_views=(line_view,),
     operators={slice_operator.id: slice_operator},
     controls=controls,
-    view_3d_host=View3DHostSpec(
+    view_3d_hosts=(View3DHostSpec(
         id="surface-host",
         view_ids=("surface",),
         operator_ids=(slice_operator.id,),
         camera_distance=30.0,
-    ),
+    ),),
 )
 
 

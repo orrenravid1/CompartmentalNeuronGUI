@@ -42,9 +42,12 @@ scene = Scene(
             y_label="Signal",
         )
     },
-    layout=LayoutSpec(title="Replay demo", line_plot_view_id="trace-view"),
+    layout=LayoutSpec(title="Replay demo", line_plot_view_ids=("trace-view",)),
 )
 ```
+
+`line_plot_view_ids` is plural because replay scenes can drive more than one
+trace panel. The frontend creates one framed plot host per listed view id.
 
 ## 2. Prepare Frames
 

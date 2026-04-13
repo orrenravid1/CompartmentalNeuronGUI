@@ -14,7 +14,7 @@ from compneurovis.backends.neuron import NeuronSession
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
-from compneurovis.frontends.vispy.panels import LinePlotPanel, Viewport3DPanel
+from compneurovis.frontends.vispy.panels import ControlsHostPanel, LinePlotHostPanel, LinePlotPanel, Viewport3DPanel
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer
 from compneurovis.session import BufferedSession, Error, FieldAppend, Reset, StatePatch, resolve_interaction_target_source
 
@@ -56,7 +56,47 @@ def test_line_plot_panel_resolves_selected_entity_binding():
     x_data, y_data = panel._plot_item.getData()
     assert np.allclose(x_data, np.array([0.0, 1.0, 2.0], dtype=np.float32))
     assert np.allclose(y_data, np.array([10.0, 20.0, 30.0], dtype=np.float32))
-    assert "sec-b@0.9" in panel.plotItem.titleLabel.text
+    assert "sec-b@0.9" in panel.resolved_title
+    app.quit()
+
+
+def test_line_plot_host_uses_resolved_plot_title():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotHostPanel(view_id="trace", title="Trace")
+    field = Field(
+        id="voltage",
+        values=np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32),
+        dims=("segment", "time"),
+        coords={
+            "segment": np.array(["seg-a", "seg-b"]),
+            "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
+        },
+    )
+    geometry = MorphologyGeometry(
+        id="morphology",
+        positions=np.zeros((2, 3), dtype=np.float32),
+        orientations=np.repeat(np.eye(3, dtype=np.float32)[None, :, :], 2, axis=0),
+        radii=np.ones(2, dtype=np.float32),
+        lengths=np.ones(2, dtype=np.float32),
+        entity_ids=("seg-a", "seg-b"),
+        section_names=("sec-a", "sec-b"),
+        xlocs=np.array([0.1, 0.9], dtype=np.float32),
+        labels=("sec-a@0.1", "sec-b@0.9"),
+    )
+    view = LinePlotViewSpec(
+        id="trace",
+        field_id=field.id,
+        x_dim="time",
+        selectors={"segment": StateBinding("selected_entity_id")},
+        title="Voltage",
+        x_label="Time",
+        y_label="Voltage",
+    )
+
+    panel.refresh(view, field, {"selected_entity_id": "seg-b"}, {"morphology": geometry})
+
+    assert "sec-b@0.9" in panel.title()
+    assert panel.line_plot_panel.plotItem.titleLabel.text == ""
     app.quit()
 
 
@@ -86,10 +126,47 @@ def build_surface_cross_section_app():
         geometry=geometry,
         title="surface test",
         surface_view=surface_view,
-        line_view=line_view,
+        line_views=(line_view,),
         operators={operator.id: operator},
         controls=controls,
-        view_3d_host=View3DHostSpec(id="surface-host", view_ids=("surface-view",), operator_ids=(operator.id,)),
+        view_3d_hosts=(View3DHostSpec(id="surface-host", view_ids=("surface-view",), operator_ids=(operator.id,)),),
+    )
+
+
+def build_surface_axes_binding_app():
+    x = np.linspace(-1.0, 1.0, 8, dtype=np.float32)
+    y = np.linspace(-2.0, 2.0, 6, dtype=np.float32)
+    values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
+    field, geometry = grid_field(field_id="surface", values=values, x_coords=x, y_coords=y)
+    controls = {
+        "tick_count": ControlSpec("tick_count", "int", "Axis ticks", 7, min=0, max=12),
+        "tick_label_size": ControlSpec("tick_label_size", "float", "Tick text size", 12.0, min=6.0, max=24.0, steps=18),
+        "axis_label_size": ControlSpec("axis_label_size", "float", "Axis label size", 16.0, min=8.0, max=32.0, steps=24),
+        "axis_color": ControlSpec("axis_color", "enum", "Axis color", "black", options=("black", "red")),
+        "text_color": ControlSpec("text_color", "enum", "Text color", "black", options=("black", "blue")),
+        "axis_alpha": ControlSpec("axis_alpha", "float", "Axis alpha", 1.0, min=0.0, max=1.0, steps=10),
+    }
+    surface_view = SurfaceViewSpec(
+        id="surface-view",
+        field_id=field.id,
+        geometry_id=geometry.id,
+        render_axes=True,
+        axes_in_middle=True,
+        tick_count=StateBinding("tick_count"),
+        tick_label_size=StateBinding("tick_label_size"),
+        axis_label_size=StateBinding("axis_label_size"),
+        axis_color=StateBinding("axis_color"),
+        text_color=StateBinding("text_color"),
+        axis_alpha=StateBinding("axis_alpha"),
+        axis_labels=("x", "y", "height"),
+    )
+    return build_surface_app(
+        field=field,
+        geometry=geometry,
+        title="surface axes test",
+        surface_view=surface_view,
+        controls=controls,
+        view_3d_hosts=(View3DHostSpec(id="surface-host", view_ids=("surface-view",)),),
     )
 
 
@@ -99,11 +176,26 @@ def test_refresh_planner_targets_slice_state_to_overlay_and_line_plot():
 
     assert planner.targets_for_state_change("slice_position") == {
         RefreshTarget.operator_overlay("surface-view"),
-        RefreshTarget.LINE_PLOT,
+        RefreshTarget.line_plot("surface-line"),
     }
     assert planner.targets_for_state_change("slice_axis") == {
         RefreshTarget.operator_overlay("surface-view"),
-        RefreshTarget.LINE_PLOT,
+        RefreshTarget.line_plot("surface-line"),
+    }
+
+
+def test_refresh_planner_splits_surface_axis_geometry_and_style_targets():
+    app_spec = build_surface_axes_binding_app()
+    planner = RefreshPlanner(app_spec.scene)
+
+    assert planner.targets_for_state_change("tick_count") == {
+        RefreshTarget.surface_axes_geometry("surface-view"),
+    }
+    assert planner.targets_for_state_change("tick_label_size") == {
+        RefreshTarget.surface_axes_style("surface-view"),
+    }
+    assert planner.targets_for_state_change("axis_color") == {
+        RefreshTarget.surface_axes_style("surface-view"),
     }
 
 
@@ -112,18 +204,42 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
     window = VispyFrontendWindow(build_surface_cross_section_app())
     window.timer.stop()
     window.viewport.refresh_surface_visual = Mock()
-    window.viewport.refresh_surface_axes = Mock()
+    window.viewport.refresh_surface_axes_geometry = Mock()
+    window.viewport.refresh_surface_axes_style = Mock()
     window.viewport.refresh_operator_overlays = Mock()
     window.viewport.commit = Mock()
-    window.line_plot.refresh = Mock()
+    window.line_plot_panels["surface-line"].refresh = Mock()
 
     window._on_control_changed(window.scene.controls["slice_position"], 0.4)
 
     window.viewport.refresh_surface_visual.assert_not_called()
-    window.viewport.refresh_surface_axes.assert_not_called()
+    window.viewport.refresh_surface_axes_geometry.assert_not_called()
+    window.viewport.refresh_surface_axes_style.assert_not_called()
     window.viewport.refresh_operator_overlays.assert_called_once()
     window.viewport.commit.assert_called_once()
-    window.line_plot.refresh.assert_called_once()
+    window.line_plot_panels["surface-line"].refresh.assert_called_once()
+
+    window.close()
+    app.quit()
+
+
+def test_surface_axis_style_control_change_avoids_geometry_refresh():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    window = VispyFrontendWindow(build_surface_axes_binding_app())
+    window.timer.stop()
+    window.viewport.refresh_surface_visual = Mock()
+    window.viewport.refresh_surface_axes_geometry = Mock()
+    window.viewport.refresh_surface_axes_style = Mock()
+    window.viewport.refresh_operator_overlays = Mock()
+    window.viewport.commit = Mock()
+
+    window._on_control_changed(window.scene.controls["tick_label_size"], 18.0)
+
+    window.viewport.refresh_surface_visual.assert_not_called()
+    window.viewport.refresh_surface_axes_geometry.assert_not_called()
+    window.viewport.refresh_surface_axes_style.assert_called_once()
+    window.viewport.refresh_operator_overlays.assert_not_called()
+    window.viewport.commit.assert_called_once()
 
     window.close()
     app.quit()
@@ -183,6 +299,82 @@ def test_surface_visual_reuses_same_surface_object_for_same_shape_updates():
     app.quit()
 
 
+def test_surface_axes_overlay_reuses_visual_objects_for_style_refresh():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = Viewport3DPanel()
+    x = np.linspace(-1.0, 1.0, 8, dtype=np.float32)
+    y = np.linspace(-2.0, 2.0, 6, dtype=np.float32)
+    values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
+    field, geometry = grid_field(field_id="surface", values=values, x_coords=x, y_coords=y)
+    view = SurfaceViewSpec(
+        id="surface-view",
+        field_id=field.id,
+        geometry_id=geometry.id,
+        render_axes=True,
+        axes_in_middle=True,
+        tick_count=7,
+        tick_label_size=12.0,
+        axis_label_size=16.0,
+        axis_color="black",
+        text_color="black",
+        axis_alpha=1.0,
+        axis_labels=("x", "y", "height"),
+    )
+    state = {
+        "surface-view:color_map": "bwr",
+        "surface-view:color_limits": None,
+        "surface-view:color_by": "height",
+        "surface-view:surface_color": (0.5, 0.6, 0.8, 1.0),
+        "surface-view:surface_shading": "unlit",
+        "surface-view:surface_alpha": 1.0,
+        "surface-view:background_color": "white",
+        "surface-view:render_axes": True,
+        "surface-view:axes_in_middle": True,
+        "surface-view:tick_count": 7,
+        "surface-view:tick_length_scale": 1.0,
+        "surface-view:tick_label_size": 12.0,
+        "surface-view:axis_label_size": 16.0,
+        "surface-view:axis_color": "black",
+        "surface-view:text_color": "black",
+        "surface-view:axis_alpha": 1.0,
+    }
+
+    panel.refresh_surface_visual(surface_view=view, surface_field=field, grid_geometry=geometry, resolved_state=state)
+    panel.refresh_surface_axes_geometry(surface_view=view, resolved_state=state)
+    overlay = panel.renderer_surface.axes
+    visuals = {
+        "axis_lines": overlay._axis_lines,
+        "tick_lines": overlay._tick_lines,
+        "x_ticks": overlay._tick_labels["x"],
+        "y_ticks": overlay._tick_labels["y"],
+        "z_ticks": overlay._tick_labels["z"],
+        "x_label": overlay._axis_labels["x"],
+        "y_label": overlay._axis_labels["y"],
+        "z_label": overlay._axis_labels["z"],
+    }
+
+    style_state = dict(state)
+    style_state["surface-view:tick_label_size"] = 18.0
+    style_state["surface-view:axis_label_size"] = 22.0
+    style_state["surface-view:axis_color"] = "red"
+    style_state["surface-view:text_color"] = "blue"
+    style_state["surface-view:axis_alpha"] = 0.5
+    panel.refresh_surface_axes_style(surface_view=view, resolved_state=style_state)
+
+    assert overlay._axis_lines is visuals["axis_lines"]
+    assert overlay._tick_lines is visuals["tick_lines"]
+    assert overlay._tick_labels["x"] is visuals["x_ticks"]
+    assert overlay._tick_labels["y"] is visuals["y_ticks"]
+    assert overlay._tick_labels["z"] is visuals["z_ticks"]
+    assert overlay._axis_labels["x"] is visuals["x_label"]
+    assert overlay._axis_labels["y"] is visuals["y_label"]
+    assert overlay._axis_labels["z"] is visuals["z_label"]
+    assert overlay._tick_labels["x"].font_size == 18.0
+    assert overlay._axis_labels["x"].font_size == 22.0
+
+    app.quit()
+
+
 def test_viewport_3d_panel_applies_host_camera_settings():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     host = View3DHostSpec(
@@ -201,7 +393,7 @@ def test_viewport_3d_panel_applies_host_camera_settings():
     app.quit()
 
 
-def test_build_surface_app_accepts_custom_3d_host():
+def test_build_surface_app_accepts_custom_3d_hosts():
     x = np.linspace(-1.0, 1.0, 8, dtype=np.float32)
     y = np.linspace(-1.0, 1.0, 6, dtype=np.float32)
     values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
@@ -219,11 +411,33 @@ def test_build_surface_app_accepts_custom_3d_host():
         field=field,
         geometry=geometry,
         surface_view=surface_view,
-        view_3d_host=host,
+        view_3d_hosts=(host,),
     )
 
     assert app_spec.scene is not None
     assert app_spec.scene.layout.view_3d_hosts == (host,)
+
+
+def test_build_surface_app_accepts_multiple_line_views():
+    x = np.linspace(-1.0, 1.0, 8, dtype=np.float32)
+    y = np.linspace(-1.0, 1.0, 6, dtype=np.float32)
+    values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
+    field, geometry = grid_field(field_id="surface", values=values, x_coords=x, y_coords=y)
+    surface_view = SurfaceViewSpec(id="surface-view", field_id=field.id, geometry_id=geometry.id)
+    line_views = (
+        LinePlotViewSpec(id="surface-line-x", field_id=field.id, x_dim="x", selectors={"y": 0}),
+        LinePlotViewSpec(id="surface-line-y", field_id=field.id, x_dim="y", selectors={"x": 0}),
+    )
+
+    app_spec = build_surface_app(
+        field=field,
+        geometry=geometry,
+        surface_view=surface_view,
+        line_views=line_views,
+    )
+
+    assert app_spec.scene is not None
+    assert app_spec.scene.layout.line_plot_view_ids == ("surface-line-x", "surface-line-y")
 
 
 def test_morphology_renderer_uses_fixed_clim_without_dynamic_recaling():
@@ -333,7 +547,7 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
                 fields={"bootstrap": field},
                 geometries={},
                 views={"bootstrap-view": view},
-                layout=LayoutSpec(title="Bootstrap", line_plot_view_id="bootstrap-view"),
+                layout=LayoutSpec(title="Bootstrap", line_plot_view_ids=("bootstrap-view",)),
             )
 
         def initialize(self):
@@ -368,7 +582,7 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
     assert isinstance(window.transport, FakeTransport)
     assert window.transport.session is BootstrapSession
     assert window.scene is not None
-    assert window.scene.layout.line_plot_view_id == "bootstrap-view"
+    assert window.scene.layout.line_plot_view_ids == ("bootstrap-view",)
     assert window._stack.currentWidget() is window._horizontal_splitter
 
     window.close()
@@ -542,7 +756,7 @@ def test_frontend_applies_state_patch_and_refreshes_bound_plot():
         fields={"voltage": field},
         geometries={},
         views={"trace": view},
-        layout=LayoutSpec(title="State patch test", line_plot_view_id="trace"),
+        layout=LayoutSpec(title="State patch test", line_plot_view_ids=("trace",)),
     )
 
     class FakeTransport:
@@ -563,9 +777,87 @@ def test_frontend_applies_state_patch_and_refreshes_bound_plot():
     window._poll_transport()
 
     assert window.state["selected_trace_entity_ids"] == ["seg-b"]
-    assert "seg-b" in window.line_plot._series_items
+    assert "seg-b" in window.line_plot_panels["trace"]._series_items
     window.close()
     app.quit()
+
+
+def test_frontend_can_render_multiple_line_plot_panels():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    field = Field(
+        id="signals",
+        values=np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32),
+        dims=("series", "time"),
+        coords={
+            "series": np.array(["a", "b"]),
+            "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
+        },
+    )
+    views = {
+        "trace-a": LinePlotViewSpec(
+            id="trace-a",
+            field_id="signals",
+            x_dim="time",
+            selectors={"series": "a"},
+            title="Trace A",
+        ),
+        "trace-b": LinePlotViewSpec(
+            id="trace-b",
+            field_id="signals",
+            x_dim="time",
+            selectors={"series": "b"},
+            title="Trace B",
+        ),
+    }
+    scene = Scene(
+        fields={"signals": field},
+        geometries={},
+        views=views,
+        layout=LayoutSpec(title="Multi plot", line_plot_view_ids=("trace-a", "trace-b")),
+    )
+
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Multi plot"))
+    window.timer.stop()
+
+    assert tuple(window.line_plot_panels.keys()) == ("trace-a", "trace-b")
+    x_a, y_a = window.line_plot_panel("trace-a")._plot_item.getData()
+    x_b, y_b = window.line_plot_panel("trace-b")._plot_item.getData()
+    assert np.allclose(x_a, np.array([0.0, 1.0, 2.0], dtype=np.float32))
+    assert np.allclose(y_a, np.array([1.0, 2.0, 3.0], dtype=np.float32))
+    assert np.allclose(x_b, np.array([0.0, 1.0, 2.0], dtype=np.float32))
+    assert np.allclose(y_b, np.array([10.0, 20.0, 30.0], dtype=np.float32))
+
+    window.close()
+    app.quit()
+
+
+def test_refresh_planner_targets_only_matching_line_plot_view_for_field_replace():
+    scene = Scene(
+        fields={
+            "field-a": Field(
+                id="field-a",
+                values=np.array([1.0, 2.0, 3.0], dtype=np.float32),
+                dims=("time",),
+                coords={"time": np.array([0.0, 1.0, 2.0], dtype=np.float32)},
+            ),
+            "field-b": Field(
+                id="field-b",
+                values=np.array([10.0, 20.0, 30.0], dtype=np.float32),
+                dims=("time",),
+                coords={"time": np.array([0.0, 1.0, 2.0], dtype=np.float32)},
+            ),
+        },
+        geometries={},
+        views={
+            "trace-a": LinePlotViewSpec(id="trace-a", field_id="field-a", x_dim="time"),
+            "trace-b": LinePlotViewSpec(id="trace-b", field_id="field-b", x_dim="time"),
+        },
+        layout=LayoutSpec(title="Multi planner", line_plot_view_ids=("trace-a", "trace-b")),
+    )
+    planner = RefreshPlanner(scene)
+
+    assert planner.targets_for_field_replace("field-a") == {RefreshTarget.line_plot("trace-a")}
+    assert planner.targets_for_field_replace("field-b") == {RefreshTarget.line_plot("trace-b")}
 
 
 def test_line_plot_panel_uses_series_palette_for_multi_series_colors():
@@ -911,13 +1203,16 @@ def test_frontend_hides_viewport_when_document_has_no_3d_view():
                 series_dim="series",
             )
         },
-        layout=LayoutSpec(title="Cascade", main_3d_view_id=None, line_plot_view_id="cascade-plot"),
+        layout=LayoutSpec(title="Cascade", main_3d_view_id=None, line_plot_view_ids=("cascade-plot",)),
     )
     window = VispyFrontendWindow(AppSpec(scene=document, title="Cascade"))
     window.timer.stop()
 
     assert window.viewport is None
     assert window._viewport_splitter.isHidden()
+    assert not window._right_splitter.isHidden()
+    assert not window._plot_splitter.isHidden()
+    assert window.controls_host.isHidden()
     assert isinstance(window.centralWidget(), QtWidgets.QStackedWidget)
     assert window._stack.currentWidget() is window._horizontal_splitter
     assert window._horizontal_splitter.orientation() == QtCore.Qt.Orientation.Horizontal
@@ -936,10 +1231,22 @@ def test_frontend_uses_splitters_for_draggable_panel_resize():
     assert window._stack.currentWidget() is window._horizontal_splitter
     assert window._horizontal_splitter.widget(0) is window._viewport_splitter
     assert window._horizontal_splitter.widget(1) is window._right_splitter
-    assert window._right_splitter.widget(0) is window.line_plot
-    assert window._right_splitter.widget(1) is window.controls
+    assert window._right_splitter.widget(0) is window._plot_splitter
+    assert isinstance(window._right_splitter.widget(1), ControlsHostPanel)
+    assert window._right_splitter.widget(1) is window.controls_host
+    assert window.controls_host.controls_panel is window.controls_panel
+    assert isinstance(window._plot_splitter.widget(0), LinePlotHostPanel)
+    assert window._plot_splitter.widget(0).line_plot_panel is window.line_plot_panels["surface-line"]
+    assert not hasattr(window, "controls")
+    assert not hasattr(window, "control_host")
+    assert not hasattr(window, "line_plot")
+    assert not hasattr(window, "line_plots")
+    assert not hasattr(window, "line_plot_for")
+    assert not hasattr(window.controls_host, "controls")
+    assert not hasattr(window._plot_splitter.widget(0), "line_plot")
     assert not window._horizontal_splitter.opaqueResize()
     assert not window._right_splitter.opaqueResize()
+    assert not window._plot_splitter.opaqueResize()
 
     window.close()
     app.quit()
@@ -986,6 +1293,9 @@ def test_frontend_supports_multiple_3d_viewports():
     assert window._viewport_splitter.count() == 2
     assert window.viewport_for("morphology") is not None
     assert window.viewport_for("surface-view") is not None
+    assert not window._viewport_splitter.isHidden()
+    assert window._right_splitter.isHidden()
+    assert window.controls_host.isHidden()
 
     window.close()
     app.quit()
@@ -1082,13 +1392,45 @@ def test_controls_panel_renders_and_dispatches_document_actions():
     window.timer.stop()
     window.transport = Mock()
 
-    action_button = window.controls.widgets["mark_selected"]
+    action_button = window.controls_panel.widgets["mark_selected"]
     action_button.click()
 
     window.transport.send_command.assert_called_once()
     command = window.transport.send_command.call_args[0][0]
     assert command.action_id == "mark_selected"
     assert command.payload["entity_id"] == "seg-a"
+
+    window.close()
+    app.quit()
+
+
+def test_controls_host_title_reflects_controls_and_actions_presence():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    window = VispyFrontendWindow(build_surface_cross_section_app())
+    window.timer.stop()
+
+    assert window.controls_host.title() == "Controls"
+
+    actions_only_document = Scene(
+        fields={},
+        geometries={},
+        views={},
+        actions={"reset": ActionSpec(id="reset", label="Reset")},
+        layout=LayoutSpec(title="Actions only", action_ids=("reset",)),
+    )
+    window._set_scene(actions_only_document)
+    assert window.controls_host.title() == "Actions"
+
+    controls_and_actions_document = Scene(
+        fields={},
+        geometries={},
+        views={},
+        controls={"gain": ControlSpec(id="gain", kind="float", label="Gain", default=1.0)},
+        actions={"reset": ActionSpec(id="reset", label="Reset")},
+        layout=LayoutSpec(title="Controls and actions", control_ids=("gain",), action_ids=("reset",)),
+    )
+    window._set_scene(controls_and_actions_document)
+    assert window.controls_host.title() == "Controls & Actions"
 
     window.close()
     app.quit()
@@ -1479,7 +1821,7 @@ def test_frontend_applies_field_append_updates_incrementally():
                 selectors={"segment": StateBinding("selected_entity_id")},
             ),
         },
-        layout=LayoutSpec(title="Append test", main_3d_view_id="morphology", line_plot_view_id="trace"),
+        layout=LayoutSpec(title="Append test", main_3d_view_id="morphology", line_plot_view_ids=("trace",)),
     )
     window = VispyFrontendWindow(AppSpec(scene=document, title="Append test"))
     window.timer.stop()
@@ -1499,7 +1841,7 @@ def test_frontend_applies_field_append_updates_incrementally():
     updated = window.scene.fields["voltage"]
     assert updated.coord("time").tolist() == [1.0, 2.0]
     assert np.allclose(updated.values, np.array([[2.0, 3.0], [20.0, 30.0]], dtype=np.float32))
-    x_data, y_data = window.line_plot._plot_item.getData()
+    x_data, y_data = window.line_plot_panels["trace"]._plot_item.getData()
     assert np.allclose(x_data, np.array([1.0, 2.0], dtype=np.float32))
     assert np.allclose(y_data, np.array([2.0, 3.0], dtype=np.float32))
 
@@ -1547,7 +1889,7 @@ def test_frontend_batches_multiple_field_appends_into_one_refresh_pass():
                 selectors={"segment": StateBinding("selected_entity_id")},
             ),
         },
-        layout=LayoutSpec(title="Batch append test", main_3d_view_id="morphology", line_plot_view_id="trace"),
+        layout=LayoutSpec(title="Batch append test", main_3d_view_id="morphology", line_plot_view_ids=("trace",)),
     )
     window = VispyFrontendWindow(AppSpec(scene=document, title="Batch append test"))
     window.timer.stop()

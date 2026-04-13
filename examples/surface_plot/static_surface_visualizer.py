@@ -83,7 +83,7 @@ app = build_surface_app(
     title="interactive sinc surface",
     surface_view=surface_view,
     controls=controls,
-    view_3d_host=View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=30.0),
+    view_3d_hosts=(View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=30.0),),
 )
 
 run_app(app)

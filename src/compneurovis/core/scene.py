@@ -45,7 +45,7 @@ class LayoutSpec:
     main_3d_view_id: str | None = None
     view_3d_ids: tuple[str, ...] = ()
     view_3d_hosts: tuple[View3DHostSpec, ...] = ()
-    line_plot_view_id: str | None = None
+    line_plot_view_ids: tuple[str, ...] = ()
     control_ids: tuple[str, ...] = ()
     action_ids: tuple[str, ...] = ()
 
@@ -99,6 +99,13 @@ class LayoutSpec:
         self.view_3d_ids = resolved_view_ids
         self.main_3d_view_id = resolved_view_ids[0] if resolved_view_ids else None
 
+    def resolved_line_plot_view_ids(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(view_id for view_id in self.line_plot_view_ids if view_id))
+
+    def normalize_line_plots(self) -> None:
+        resolved_view_ids = self.resolved_line_plot_view_ids()
+        self.line_plot_view_ids = resolved_view_ids
+
 
 @dataclass(slots=True)
 class Scene:
@@ -120,6 +127,7 @@ class Scene:
         self.actions = dict(self.actions)
         self.metadata = dict(self.metadata)
         self.layout.normalize_3d_views()
+        self.layout.normalize_line_plots()
         if not self.layout.control_ids:
             self.layout.control_ids = tuple(self.controls.keys())
         if not self.layout.action_ids:

@@ -82,18 +82,18 @@ app = build_surface_app(
     title="sinc surface",
     surface_view=surface_view,
     controls=controls,
-    view_3d_host=View3DHostSpec(
+    view_3d_hosts=(View3DHostSpec(
         id="surface-host",
         view_ids=("surface",),
         camera_distance=120.0,
-    ),
+    ),),
 )
 
 run_app(app)
 ```
 
 `build_surface_app()` builds the `Scene` and `AppSpec` for you. There is no `Session` — the field values are static.
-Use `view_3d_host` when you want to tune host-level camera settings such as the
+Use `view_3d_hosts` when you want to tune host-level camera settings such as the
 initial distance without changing what the `SurfaceViewSpec` renders.
 
 ## Adding a Line Plot Slice
@@ -121,15 +121,28 @@ line_view = LinePlotViewSpec(
 )
 ```
 
-Then pass both `line_view` and `operators={slice_operator.id: slice_operator}`
+Then pass `line_views=(line_view,)` and `operators={slice_operator.id: slice_operator}`
 to `build_surface_app(...)`, and attach the operator to the 3-D host through
 `View3DHostSpec.operator_ids`, for example:
 
+`line_views` accepts any number of `LinePlotViewSpec`s. The frontend mounts one
+framed plot host per listed view, in the order you pass them.
+
 ```python
-view_3d_host = View3DHostSpec(
+surface_host = View3DHostSpec(
     id="surface-host",
     view_ids=("surface",),
     operator_ids=(slice_operator.id,),
+)
+
+app = build_surface_app(
+    field=field,
+    geometry=geometry,
+    surface_view=surface_view,
+    line_views=(line_view,),
+    operators={slice_operator.id: slice_operator},
+    controls=controls,
+    view_3d_hosts=(surface_host,),
 )
 ```
 

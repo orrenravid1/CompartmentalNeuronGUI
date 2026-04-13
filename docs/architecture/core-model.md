@@ -47,7 +47,7 @@ Scene(
 )
 ```
 
-`LayoutSpec` controls which views and controls are shown and in what order. `view_3d_ids` names the active 3D views in layout order. `view_3d_hosts` is the more generic hosting layer: it says how those views are mounted in the frontend. If the resolved 3D view list is empty, the frontend collapses to a plot-and-controls layout. `main_3d_view_id` remains as a compatibility alias for the first 3D view during the transition.
+`LayoutSpec` controls which views and controls are shown and in what order. `view_3d_ids` names the active 3D views in layout order. `line_plot_view_ids` does the same for line plots, so plots are an ordered plural panel set rather than a singleton sidecar. `view_3d_hosts` is the more generic hosting layer: it says how those views are mounted in the frontend. If the resolved 3D view list is empty, the frontend collapses to a plot-and-controls layout. `main_3d_view_id` remains as a compatibility alias for the first 3D view during the transition.
 
 The important architectural split is:
 

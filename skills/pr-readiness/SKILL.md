@@ -21,7 +21,7 @@ Run this sequence:
 6. Use `audit-skill-coverage` to determine whether the change introduces a new reusable workflow that warrants a new skill.
 7. If the change is a deliberate terminology or taxonomy rename, use `breaking-rename-sweep`.
 8. If a skill was created or renamed, use `register-skill`.
-9. Use `update-docs-and-indexes` when code paths, package boundaries, public API, or workflow docs changed.
+9. Use `update-docs-and-indexes` when code paths, package boundaries, public API, workflow docs, `AGENTS.md`, package READMEs, or generated indexes changed. This is still required when the docs edits were incidental to another change.
 10. Run the verification set that matches the impact:
    - targeted `pytest` modules first
    - `python scripts/check_architecture_invariants.py`

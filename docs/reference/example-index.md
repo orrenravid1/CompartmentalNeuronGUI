@@ -41,5 +41,6 @@ extracts a short summary from each example when available.
 
 - **Multi 3D Views**: Debug-oriented example for probing layout, session, or rendering behavior. `python examples/debug/multi_3d_views.py` (`examples/debug/multi_3d_views.py`)
 - **Session Error After Open**: Debug-oriented example for probing layout, session, or rendering behavior. `python examples/debug/session_error_after_open.py` (`examples/debug/session_error_after_open.py`)
+- **Two Line Plots**: debug-oriented example that renders two live line plots at once with no 3-D host. `python examples/debug/two_line_plots.py` (`examples/debug/two_line_plots.py`)
 - **Two Morphology Views**: Debug-oriented example for probing layout, session, or rendering behavior. `python examples/debug/two_morphology_views.py` (`examples/debug/two_morphology_views.py`)
 

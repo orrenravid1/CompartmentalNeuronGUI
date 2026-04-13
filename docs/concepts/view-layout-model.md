@@ -89,9 +89,12 @@ If you need another perspective on the same data, add another view. Do not dupli
 It decides things such as:
 
 - which 3-D views are active
-- whether a line plot is present
+- which line plots are active
 - whether controls are present
 - the order of panels
+
+`LayoutSpec.line_plot_view_ids` is plural on purpose. A scene may expose zero, one,
+or many line-plot panels, and their order is part of the layout contract.
 
 For 3-D panels there is one more layer:
 
@@ -116,6 +119,11 @@ But the architecture is intended to allow future alternatives such as:
 - multiple cameras over one shared scene
 
 without changing what a morphology or surface view means.
+
+The current VisPy frontend also wraps line plots and the controls region in host
+widgets for consistent framing. At that widget seam, the host layer and the
+inner rendering/control layer are named separately on purpose so callers cannot
+accidentally blur "visible panel chrome" with "inner plotting/control logic."
 
 ## StateBinding
 

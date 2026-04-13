@@ -241,7 +241,7 @@ class JaxleySceneBuilder:
             layout=LayoutSpec(
                 title=title,
                 view_3d_ids=("morphology",),
-                line_plot_view_id="trace",
+                line_plot_view_ids=("trace",),
                 control_ids=tuple(controls.keys()) if controls and control_ids is None else (() if control_ids is None else control_ids),
                 action_ids=tuple(actions.keys()) if actions and action_ids is None else (() if action_ids is None else action_ids),
             ),

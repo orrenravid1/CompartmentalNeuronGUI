@@ -30,3 +30,5 @@ Audit changes in this order:
 5. Report missing follow-up edits explicitly instead of assuming docs are still correct.
 
 When the change alters public concepts, package boundaries, or workflows, treat docs updates as required work, not optional cleanup.
+
+If the audit says authored docs, `AGENTS.md`, package READMEs, or generated indexes need touching, the required follow-through skill is `update-docs-and-indexes`.

@@ -56,14 +56,14 @@ def build_surface_app(
     geometry: GridGeometry | None = None,
     title: str = "Surface",
     surface_view: SurfaceViewSpec | None = None,
-    line_view: LinePlotViewSpec | None = None,
+    line_views: tuple[LinePlotViewSpec, ...] = (),
     operators: dict[str, OperatorSpec] | None = None,
     controls: dict[str, ControlSpec] | None = None,
-    view_3d_host: View3DHostSpec | None = None,
+    view_3d_hosts: tuple[View3DHostSpec, ...] = (),
 ) -> AppSpec:
     """Build a static surface app from field data, optional geometry, and views.
 
-    Pass ``view_3d_host`` to override host-level camera settings such as the
+    Pass ``view_3d_hosts`` to override host-level camera settings such as the
     initial turntable distance for the surface viewport.
     """
 
@@ -83,25 +83,30 @@ def build_surface_app(
         and operator.field_id == field.id
         and (geometry is None or operator.geometry_id in {None, geometry.id})
     )
-    if view_3d_host is not None:
-        if not view_3d_host.operator_ids and default_operator_ids:
-            view_3d_host = View3DHostSpec(
-                id=view_3d_host.id,
-                view_ids=view_3d_host.view_ids,
-                operator_ids=default_operator_ids,
-                kind=view_3d_host.kind,
-                title=view_3d_host.title,
-                camera_distance=view_3d_host.camera_distance,
-                camera_elevation=view_3d_host.camera_elevation,
-                camera_azimuth=view_3d_host.camera_azimuth,
-            )
-        layout.view_3d_hosts = (view_3d_host,)
+    if view_3d_hosts:
+        resolved_hosts: list[View3DHostSpec] = []
+        for host in view_3d_hosts:
+            if not host.operator_ids and default_operator_ids and surface_view.id in host.view_ids:
+                host = View3DHostSpec(
+                    id=host.id,
+                    view_ids=host.view_ids,
+                    operator_ids=default_operator_ids,
+                    kind=host.kind,
+                    title=host.title,
+                    camera_distance=host.camera_distance,
+                    camera_elevation=host.camera_elevation,
+                    camera_azimuth=host.camera_azimuth,
+                )
+            resolved_hosts.append(host)
+        layout.view_3d_hosts = tuple(resolved_hosts)
     else:
         if default_operator_ids:
             layout.view_3d_hosts = (View3DHostSpec(id=surface_view.id, view_ids=(surface_view.id,), operator_ids=default_operator_ids),)
-    if line_view is not None:
-        views[line_view.id] = line_view
-        layout.line_plot_view_id = line_view.id
+    resolved_line_views = tuple(view for view in line_views if view is not None)
+    if resolved_line_views:
+        for view in resolved_line_views:
+            views[view.id] = view
+        layout.line_plot_view_ids = tuple(view.id for view in resolved_line_views)
     operators = {} if operators is None else dict(operators)
     controls = {} if controls is None else dict(controls)
     layout.control_ids = tuple(controls.keys())

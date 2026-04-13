@@ -12,8 +12,8 @@ The frontend is `VispyFrontendWindow` (a `QMainWindow`) with three panel regions
 | Panel | Class | Responsibility |
 |---|---|---|
 | 3D host(s) | `IndependentCanvas3DHostPanel` -> `Viewport3DPanel` | A host mounts one or more 3D views using a concrete hosting strategy; the current built-in host uses one canvas per view |
-| Line plot | `LinePlotPanel` | Renders 1-D slices or multi-series traces via pyqtgraph |
-| Controls | `ControlsPanel` | Renders sliders, spinboxes, dropdowns; emits `SetControl` on change |
+| Line plot(s) | `LinePlotHostPanel` -> `LinePlotPanel` | A host provides the same framed chrome as 3-D panels while the inner plot renders 1-D slices or multi-series traces via pyqtgraph |
+| Controls | `ControlsHostPanel` -> `ControlsPanel` | A framed host owns the visible section chrome while the inner panel renders sliders, spinboxes, dropdowns, and action buttons |
 
 Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, so the main panes are draggable/resizable. `LayoutSpec.view_3d_hosts` is the primary 3D layout seam. Each `View3DHostSpec` declares:
 
@@ -24,22 +24,31 @@ Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, 
 
 If `view_3d_hosts` is omitted, the layout derives one independent host per `view_3d_id`. If the resolved 3D host list is empty, the 3D splitter is hidden and the right panel fills the window.
 
+The right-side controls host is only shown when the resolved layout actually contains controls or actions. Plot-only scenes do not keep an empty "Controls" frame around, and pure 3-D scenes hide the entire right pane when there are no plots or controls to show.
+
 Before the first `Scene` arrives, the frontend stays in an explicit loading state rather than briefly showing an empty fallback plot layout. That avoids a visible startup jump for worker-backed live apps.
+
+At the window seam, host widgets and inner widgets are named separately on purpose. `VispyFrontendWindow` exposes `view_hosts` / `viewports`, `line_plot_host_panels` / `line_plot_panels`, and `controls_host` / `controls_panel`. The older ambiguous singular conveniences were removed so tests and user code have to say which layer they mean.
 
 ## Refresh Planning
 
 The frontend never redraws everything on every update. `RefreshPlanner` maps incoming changes to a minimal set of `RefreshTarget`s:
 
 ```
-CONTROLS                     -> ControlsPanel
+CONTROLS                     -> one ControlsHostPanel / ControlsPanel pair
 MORPHOLOGY(view_id)          -> one Viewport3DPanel (morphology path)
 SURFACE_VISUAL(view_id)      -> one Viewport3DPanel (surface mesh + colormap)
-SURFACE_AXES(view_id)        -> one Viewport3DPanel (axes overlay)
+SURFACE_AXES_GEOMETRY(view_id) -> one Viewport3DPanel (axis/tick positions + labels)
+SURFACE_AXES_STYLE(view_id)    -> one Viewport3DPanel (axis/tick colors + font sizes)
 OPERATOR_OVERLAY(view_id)    -> one Viewport3DPanel (hosted grid-operator overlays)
-LINE_PLOT                    -> LinePlotPanel
+LINE_PLOT(view_id)           -> one LinePlotHostPanel / LinePlotPanel pair
 ```
 
-3D refresh targets are explicitly bound to a `view_id`, so the frontend can refresh multiple morphology and surface panels independently in the same window even when the hosting layer changes.
+Refresh targets are explicitly bound to a `view_id`, so the frontend can refresh multiple morphology, surface, and line-plot panels independently in the same window even when the hosting layer changes.
+
+The surface-axis overlay also keeps long-lived pooled visuals instead of recreating one VisPy text or line object per tick on every slider move. Geometry refresh updates the shared line/text data; style refresh reuses those same visuals and only changes colors or font sizes.
+
+Line plots and controls now follow the same host-wrapper pattern as 3-D views: the group-box host owns the visible frame/title, while the inner widget focuses on plotting or control rendering.
 
 For grid operators, the current pattern is:
 

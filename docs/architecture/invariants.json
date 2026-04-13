@@ -51,6 +51,71 @@
       "term": "bootstrap_scene",
       "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
       "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "line_plot_view_id=",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "line_plot_view_id:",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "view_3d_host=",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "view_3d_host =",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "view_3d_host:",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "`view_3d_host`",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "window.controls.",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "`window.controls`",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "window.control_host",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "window.line_plot.",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "`window.line_plot`",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "window.line_plots",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "line_plot_for(",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
     }
   ],
   "commands": [

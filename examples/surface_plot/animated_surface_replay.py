@@ -67,7 +67,7 @@ scene = build_surface_app(
     surface_view=surface_view,
     controls={},
     title="animated sinc wave — replay",
-    view_3d_host=View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=30.0),
+    view_3d_hosts=(View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=30.0),),
 ).scene
 
 # Add explicit playback controls so the example exposes buttons in the controls panel.

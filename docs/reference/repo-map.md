@@ -49,6 +49,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 ## Examples
 - `examples/debug/multi_3d_views.py`
 - `examples/debug/session_error_after_open.py`
+- `examples/debug/two_line_plots.py`
 - `examples/debug/two_morphology_views.py`
 - `examples/jaxley/multicell_example.py`
 - `examples/neuron/c_elegans_visualizer.py`

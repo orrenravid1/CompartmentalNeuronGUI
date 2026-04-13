@@ -33,7 +33,7 @@ Worker-side error routing only applies to code that runs inside the worker. If a
 - The frontend should invalidate only the affected targets.
 - Protocol and scene updates should follow the same rule: send only the information required by the affected targets, not broad bundled refreshes by default.
 - The cost model should be opt-in: if a backend or frontend wants broader updates, it should ask for them explicitly.
-- Current explicit targets: controls, morphology, surface visual, surface axes, surface slice overlay, line plot.
+- Current explicit targets: controls, morphology, surface visual, surface axes, surface slice overlay, and per-view line plots.
 
 **Why:**
 Real-scene profiling showed that slice changes should update only the derived line plot and slice overlay — not the surface mesh, axes, or unrelated panels. Surface rendering must distinguish geometry updates, color/data updates, axes updates, and overlay updates separately. Long-lived visuals and renderer-side caches are required for good performance; rebuilding them on every change was the original bottleneck.
@@ -66,6 +66,18 @@ Live simulation backends should not resend full trace history on every update. I
 
 **Why:**
 Compatibility aliases can hide incomplete architectural migrations by keeping tests green while docs, skills, or generated references remain semantically stale. Experience showed that letting aliases persist meant stale terminology lived undetected across multiple files and surfaces simultaneously. Automated enforcement is the only reliable fix once the codebase grows beyond what manual review can catch consistently.
+
+---
+
+## Explicit Frontend Host/Panel Naming
+
+**Decision:**
+- When a visible frontend region has both a host widget and an inner rendering/control widget, public seams should name both layers explicitly.
+- Avoid ambiguous singular convenience handles once multiple panels or wrapper hosts exist.
+- Prefer plural collections and explicit lookup helpers for repeated regions, for example `line_plot_host_panels`, `line_plot_panels`, and `line_plot_panel(view_id)`.
+
+**Why:**
+Once line plots and controls adopted the same framed host-wrapper pattern as 3-D views, old singular convenience names stopped saying whether callers meant the visible panel chrome or the inner widget that actually plots data or owns controls. Keeping both names hid that distinction and made multi-panel layouts harder to reason about. Explicit host/panel naming keeps tests, docs, and future host abstractions aligned.
 
 ---
 

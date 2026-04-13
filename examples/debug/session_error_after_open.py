@@ -47,7 +47,7 @@ class CrashAfterOpenSession(BufferedSession):
             views={"trace": view},
             layout=LayoutSpec(
                 title="Session Error Demo",
-                line_plot_view_id="trace",
+                line_plot_view_ids=("trace",),
             ),
         )
 
