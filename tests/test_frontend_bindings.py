@@ -1125,6 +1125,34 @@ def test_line_plot_panel_drops_nonfinite_prefix_for_sparse_selected_trace_histor
     app.quit()
 
 
+def test_multi_series_rolling_window_uses_visible_finite_history_for_x_range():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    field = Field(
+        id="segment_history",
+        values=np.array([[np.nan, np.nan, 30.0, 40.0]], dtype=np.float32),
+        dims=("segment", "time"),
+        coords={
+            "segment": np.array(["seg-b"]),
+            "time": np.array([0.0, 1.0, 2.0, 3.0], dtype=np.float32),
+        },
+    )
+    view = LinePlotViewSpec(
+        id="trace",
+        field_id=field.id,
+        x_dim="time",
+        series_dim="segment",
+        selectors={"segment": StateBinding("selected_trace_entity_ids")},
+        rolling_window=10.0,
+    )
+
+    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-b"]}, {})
+    view_range = panel.plotItem.getViewBox().viewRange()
+
+    assert np.allclose(view_range[0], [2.0, 3.0])
+    app.quit()
+
+
 def test_line_plot_panel_ignores_missing_selected_trace_labels_for_sparse_history():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = LinePlotPanel()
@@ -1178,6 +1206,40 @@ def test_line_plot_panel_applies_explicit_x_tick_spacing():
     assert [label for _, label in major] == ["0"]
     assert [value for value, _ in minor] == [1.0, 2.0, 3.0]
     assert all(label == "" for _, label in minor)
+    app.quit()
+
+
+def test_line_plot_panel_updates_manual_ticks_when_window_crosses_minor_spacing():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    view = LinePlotViewSpec(
+        id="trace-plot",
+        field_id="trace",
+        x_dim="time",
+        x_major_tick_spacing=5.0,
+        x_minor_tick_spacing=1.0,
+        rolling_window=2.9,
+    )
+    field_before = Field(
+        id="trace",
+        values=np.array([1.0, 2.0, 3.0], dtype=np.float32),
+        dims=("time",),
+        coords={"time": np.array([0.1, 1.1, 3.0], dtype=np.float32)},
+    )
+    field_after = Field(
+        id="trace",
+        values=np.array([1.0, 2.0, 3.0], dtype=np.float32),
+        dims=("time",),
+        coords={"time": np.array([1.1, 2.1, 4.0], dtype=np.float32)},
+    )
+
+    panel.refresh(view, field_before, {}, {})
+    panel.refresh(view, field_after, {}, {})
+    ticks = panel.plotItem.getAxis("bottom")._tickLevels
+
+    assert ticks is not None
+    minor = ticks[1]
+    assert [value for value, _ in minor] == [2.0, 3.0, 4.0]
     app.quit()
 
 

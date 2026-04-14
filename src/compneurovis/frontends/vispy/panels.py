@@ -420,11 +420,11 @@ class LinePlotPanel(pg.PlotWidget):
         # Per-refresh fast-path caches. Each gates one piece of work that does
         # not depend on the data tail. Cleared via _clear_render_caches() when
         # structure changes (view None, _clear_series, mode transitions).
-        self._cache_structural_signature: tuple | None = None
+        self._cache_structural_signature: tuple[Any, ...] | None = None
         self._cache_pens: dict[str, tuple[Any, Any]] = {}
         self._cache_y_range_applied: tuple[float | None, float | None] | None = None
         self._cache_x_range_applied: tuple[float, float] | None = None
-        self._cache_tick_signature: tuple | None = None
+        self._cache_tick_signature: tuple[Any, ...] | str | None = None
         self._cache_background: Any = None
 
     @property
@@ -631,6 +631,8 @@ class LinePlotPanel(pg.PlotWidget):
             del self._series_items[label]
             self._cache_pens.pop(label, None)
 
+        visible_xmin: float | None = None
+        visible_xmax: float | None = None
         for idx, label in enumerate(series_labels):
             if label in view.series_colors:
                 color = view.series_colors[label]
@@ -657,6 +659,11 @@ class LinePlotPanel(pg.PlotWidget):
 
             series_x, series_y = self._finite_line_data(x, values[idx])
             item.setData(series_x, series_y)
+            if len(series_x):
+                series_xmin = float(np.min(series_x))
+                series_xmax = float(np.max(series_x))
+                visible_xmin = series_xmin if visible_xmin is None else min(visible_xmin, series_xmin)
+                visible_xmax = series_xmax if visible_xmax is None else max(visible_xmax, series_xmax)
 
         if self.plotItem.legend is not None:
             legend_signature = tuple(series_labels)
@@ -667,7 +674,11 @@ class LinePlotPanel(pg.PlotWidget):
                 self._legend_signature = legend_signature
         else:
             self._legend_signature = None
-        self._apply_view_ranges(view, x)
+        if visible_xmin is None or visible_xmax is None:
+            range_x = np.asarray([], dtype=np.float32)
+        else:
+            range_x = np.asarray([visible_xmin, visible_xmax], dtype=np.float32)
+        self._apply_view_ranges(view, range_x)
 
     def _reset_view_ranges(self) -> None:
         vb = self.plotItem.getViewBox()
@@ -764,12 +775,12 @@ class LinePlotPanel(pg.PlotWidget):
             minor = view.x_minor_tick_spacing
             if minor is None and major is not None:
                 minor = major / 5.0
-            # Coarse signature: tick set only changes when the integer grid
-            # cells covered by [xmin, xmax] differ. Avoids rebuilding labels
-            # every frame as the rolling window slides within one tick span.
-            if major and major > 0:
-                grid_lo = math.floor((xmin - 1e-9) / major)
-                grid_hi = math.ceil((xmax + 1e-9) / major)
+            # Tick set changes only when the visible bounds cross the smallest
+            # spacing that can add or remove a visible tick.
+            signature_spacing = minor if minor is not None and minor > 0 else major
+            if signature_spacing and signature_spacing > 0:
+                grid_lo = math.floor((xmin - 1e-9) / signature_spacing)
+                grid_hi = math.ceil((xmax + 1e-9) / signature_spacing)
             else:
                 grid_lo, grid_hi = xmin, xmax
             sig = (major, minor, grid_lo, grid_hi)
