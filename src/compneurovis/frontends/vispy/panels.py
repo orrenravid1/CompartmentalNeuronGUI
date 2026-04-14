@@ -417,6 +417,15 @@ class LinePlotPanel(pg.PlotWidget):
         self._plot_item = self.plot([], [], pen="k")
         self._series_items: dict[str, pg.PlotDataItem] = {}
         self._legend_signature: tuple[str, ...] | None = None
+        # Per-refresh fast-path caches. Each gates one piece of work that does
+        # not depend on the data tail. Cleared via _clear_render_caches() when
+        # structure changes (view None, _clear_series, mode transitions).
+        self._cache_structural_signature: tuple | None = None
+        self._cache_pens: dict[str, tuple[Any, Any]] = {}
+        self._cache_y_range_applied: tuple[float | None, float | None] | None = None
+        self._cache_x_range_applied: tuple[float, float] | None = None
+        self._cache_tick_signature: tuple | None = None
+        self._cache_background: Any = None
 
     @property
     def resolved_title(self) -> str:
@@ -440,11 +449,13 @@ class LinePlotPanel(pg.PlotWidget):
             self._plot_item.setData([], [])
             self._set_resolved_title("")
             self._reset_view_ranges()
+            self._clear_render_caches()
             return
 
         background = resolve_binding(view.background_color, state)
-        if background is not None:
+        if background is not None and background != self._cache_background:
             self.setBackground(background)
+            self._cache_background = background
 
         if view.operator_id is not None:
             self._clear_series()
@@ -458,11 +469,23 @@ class LinePlotPanel(pg.PlotWidget):
                 return
             x, y, x_dim, slice_dim, slice_value = line
             x, y = self._trim_line_data(view, x, y)
-            self.setLabel("bottom", x_dim, view.x_unit)
-            self.setLabel("left", view.y_label, view.y_unit)
-            title = view.title or field.id
-            self._set_resolved_title(f"{title} at {slice_dim} = {slice_value:.3f}")
-            self._plot_item.setPen(pg.mkPen(resolve_binding(view.pen, state), width=2))
+            structural_sig = (
+                "operator", view.id, x_dim, view.x_unit, view.y_label, view.y_unit,
+                view.title, slice_dim, round(float(slice_value), 6),
+            )
+            if structural_sig != self._cache_structural_signature:
+                self.setLabel("bottom", x_dim, view.x_unit)
+                self.setLabel("left", view.y_label, view.y_unit)
+                title = view.title or field.id
+                self._set_resolved_title(f"{title} at {slice_dim} = {slice_value:.3f}")
+                self._cache_structural_signature = structural_sig
+                self._cache_pens.clear()
+            resolved_color = resolve_binding(view.pen, state)
+            cached_pen = self._cache_pens.get("__single__")
+            if cached_pen is None or cached_pen[0] != resolved_color:
+                pen = pg.mkPen(resolved_color, width=2)
+                self._cache_pens["__single__"] = (resolved_color, pen)
+                self._plot_item.setPen(pen)
             self._plot_item.setData(x, y)
             self._apply_view_ranges(view, x)
             return
@@ -499,17 +522,31 @@ class LinePlotPanel(pg.PlotWidget):
         x = np.asarray(sliced.coord(x_dim), dtype=np.float32)
         y = np.asarray(sliced.values, dtype=np.float32)
         x, y = self._trim_line_data(view, x, y)
-        self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
-        self.setLabel("left", view.y_label, view.y_unit)
         title = view.title or field.id
         entity_id = state.get("selected_entity_id")
+        entity_label: str | None = None
         if entity_id:
             for geometry in geometry_lookup.values():
                 if entity_id in geometry.entity_ids:
-                    title = f"{title}: {geometry.label_for(entity_id)}"
+                    entity_label = geometry.label_for(entity_id)
+                    title = f"{title}: {entity_label}"
                     break
-        self._set_resolved_title(title)
-        self._plot_item.setPen(pg.mkPen(resolve_binding(view.pen, state), width=2))
+        structural_sig = (
+            "single", view.id, view.x_label or x_dim, view.x_unit,
+            view.y_label, view.y_unit, title,
+        )
+        if structural_sig != self._cache_structural_signature:
+            self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
+            self.setLabel("left", view.y_label, view.y_unit)
+            self._set_resolved_title(title)
+            self._cache_structural_signature = structural_sig
+            self._cache_pens.clear()
+        resolved_color = resolve_binding(view.pen, state)
+        cached_pen = self._cache_pens.get("__single__")
+        if cached_pen is None or cached_pen[0] != resolved_color:
+            pen = pg.mkPen(resolved_color, width=2)
+            self._cache_pens["__single__"] = (resolved_color, pen)
+            self._plot_item.setPen(pen)
         self._plot_item.setData(x, y)
         self._apply_view_ranges(view, x)
 
@@ -544,6 +581,15 @@ class LinePlotPanel(pg.PlotWidget):
         if self.plotItem.legend is not None:
             self.plotItem.legend.clear()
         self._legend_signature = None
+        self._clear_render_caches()
+
+    def _clear_render_caches(self) -> None:
+        self._cache_structural_signature = None
+        self._cache_pens.clear()
+        self._cache_y_range_applied = None
+        self._cache_x_range_applied = None
+        self._cache_tick_signature = None
+        self._cache_background = None
 
     def _refresh_series(self, view: LinePlotViewSpec, field: Field, x_dim: str, state: dict[str, Any]) -> None:
         series_dim = view.series_dim
@@ -555,24 +601,37 @@ class LinePlotPanel(pg.PlotWidget):
             )
 
         axis_map = {dim: idx for idx, dim in enumerate(field.dims)}
-        values = np.asarray(field.values, dtype=np.float32)
+        values = field.values
+        if values.dtype != np.float32:
+            values = np.asarray(values, dtype=np.float32)
         if field.dims != (series_dim, x_dim):
             values = np.transpose(values, axes=(axis_map[series_dim], axis_map[x_dim]))
 
-        x = np.asarray(field.coord(x_dim), dtype=np.float32)
+        x_coord = field.coord(x_dim)
+        x = x_coord if x_coord.dtype == np.float32 else np.asarray(x_coord, dtype=np.float32)
         series_labels = [str(label) for label in field.coord(series_dim)]
         x, values = self._trim_series_data(view, x, values)
-        self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
-        self.setLabel("left", view.y_label, view.y_unit)
-        self._set_resolved_title(view.title or field.id)
-        self._ensure_legend(view.show_legend)
+
+        title = view.title or field.id
+        structural_sig = (
+            "series", view.id, view.x_label or x_dim, view.x_unit,
+            view.y_label, view.y_unit, title, view.show_legend,
+            tuple(series_labels),
+        )
+        if structural_sig != self._cache_structural_signature:
+            self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
+            self.setLabel("left", view.y_label, view.y_unit)
+            self._set_resolved_title(title)
+            self._ensure_legend(view.show_legend)
+            self._cache_structural_signature = structural_sig
+            self._cache_pens.clear()
 
         stale = set(self._series_items.keys()) - set(series_labels)
         for label in stale:
             self.removeItem(self._series_items[label])
             del self._series_items[label]
+            self._cache_pens.pop(label, None)
 
-        range_x_segments: list[np.ndarray] = []
         for idx, label in enumerate(series_labels):
             if label in view.series_colors:
                 color = view.series_colors[label]
@@ -580,17 +639,26 @@ class LinePlotPanel(pg.PlotWidget):
                 color = view.series_palette[idx % len(view.series_palette)]
             else:
                 color = view.pen
-            pen = pg.mkPen(resolve_binding(color, state), width=2)
+            resolved_color = resolve_binding(color, state)
+            cached = self._cache_pens.get(label)
+            if cached is None or cached[0] != resolved_color:
+                pen = pg.mkPen(resolved_color, width=2)
+                self._cache_pens[label] = (resolved_color, pen)
+                pen_changed = True
+            else:
+                pen = cached[1]
+                pen_changed = False
+
             item = self._series_items.get(label)
             if item is None:
                 item = self.plot([], [], pen=pen)
                 self._series_items[label] = item
-            else:
+            elif pen_changed:
                 item.setPen(pen)
+
             series_x, series_y = self._finite_line_data(x, values[idx])
             item.setData(series_x, series_y)
-            if len(series_x):
-                range_x_segments.append(series_x)
+
         if self.plotItem.legend is not None:
             legend_signature = tuple(series_labels)
             if legend_signature != self._legend_signature:
@@ -600,14 +668,16 @@ class LinePlotPanel(pg.PlotWidget):
                 self._legend_signature = legend_signature
         else:
             self._legend_signature = None
-        range_x = np.concatenate(range_x_segments) if range_x_segments else np.asarray([], dtype=np.float32)
-        self._apply_view_ranges(view, range_x)
+        self._apply_view_ranges(view, x)
 
     def _reset_view_ranges(self) -> None:
         vb = self.plotItem.getViewBox()
         vb.enableAutoRange(x=True, y=True)
         vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
         self._reset_tick_spacing()
+        self._cache_x_range_applied = None
+        self._cache_y_range_applied = None
+        self._cache_tick_signature = None
 
     def _apply_view_ranges(self, view: LinePlotViewSpec, x: np.ndarray) -> None:
         vb = self.plotItem.getViewBox()
@@ -617,15 +687,18 @@ class LinePlotPanel(pg.PlotWidget):
         data_xmax = 0.0
 
         if view.y_min is not None or view.y_max is not None:
-            y_min = view.y_min
-            y_max = view.y_max
-            vb.enableAutoRange(y=False)
-            vb.setLimits(yMin=y_min, yMax=y_max)
-            if y_min is not None and y_max is not None:
-                vb.setYRange(float(y_min), float(y_max), padding=0)
+            y_target = (view.y_min, view.y_max)
+            if y_target != self._cache_y_range_applied:
+                vb.enableAutoRange(y=False)
+                vb.setLimits(yMin=view.y_min, yMax=view.y_max)
+                if view.y_min is not None and view.y_max is not None:
+                    vb.setYRange(float(view.y_min), float(view.y_max), padding=0)
+                self._cache_y_range_applied = y_target
         else:
-            vb.enableAutoRange(y=True)
-            vb.setLimits(yMin=None, yMax=None)
+            if self._cache_y_range_applied is not None:
+                vb.enableAutoRange(y=True)
+                vb.setLimits(yMin=None, yMax=None)
+                self._cache_y_range_applied = None
 
         if len(x):
             data_xmin = float(np.min(x))
@@ -634,17 +707,22 @@ class LinePlotPanel(pg.PlotWidget):
         if view.rolling_window is not None and len(x):
             xmax = data_xmax
             xmin = max(data_xmin, xmax - float(view.rolling_window))
-            vb.enableAutoRange(x=False)
             if xmax <= xmin:
-                vb.setXRange(xmin, xmin + max(float(view.rolling_window), 1e-6), padding=0)
+                applied = (xmin, xmin + max(float(view.rolling_window), 1e-6))
             else:
-                vb.setXRange(xmin, xmax, padding=0)
+                applied = (xmin, xmax)
+            if applied != self._cache_x_range_applied:
+                vb.enableAutoRange(x=False)
+                vb.setXRange(applied[0], applied[1], padding=0)
+                self._cache_x_range_applied = applied
         else:
             if len(x):
                 xmin = data_xmin
                 xmax = data_xmax
-            vb.enableAutoRange(x=True)
-            vb.setLimits(xMin=None, xMax=None)
+            if self._cache_x_range_applied is not None:
+                vb.enableAutoRange(x=True)
+                vb.setLimits(xMin=None, xMax=None)
+                self._cache_x_range_applied = None
 
         self._apply_tick_spacing(view, xmin, xmax)
 
@@ -687,9 +765,22 @@ class LinePlotPanel(pg.PlotWidget):
             minor = view.x_minor_tick_spacing
             if minor is None and major is not None:
                 minor = major / 5.0
-            axis.setTicks(self._manual_tick_levels(xmin, xmax, major, minor))
+            # Coarse signature: tick set only changes when the integer grid
+            # cells covered by [xmin, xmax] differ. Avoids rebuilding labels
+            # every frame as the rolling window slides within one tick span.
+            if major and major > 0:
+                grid_lo = math.floor((xmin - 1e-9) / major)
+                grid_hi = math.ceil((xmax + 1e-9) / major)
+            else:
+                grid_lo, grid_hi = xmin, xmax
+            sig = (major, minor, grid_lo, grid_hi)
+            if sig != self._cache_tick_signature:
+                axis.setTicks(self._manual_tick_levels(xmin, xmax, major, minor))
+                self._cache_tick_signature = sig
         else:
-            self._reset_tick_spacing()
+            if self._cache_tick_signature != "auto":
+                self._reset_tick_spacing()
+                self._cache_tick_signature = "auto"
 
     def _reset_tick_spacing(self) -> None:
         axis = self.plotItem.getAxis("bottom")
