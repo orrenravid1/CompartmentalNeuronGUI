@@ -9,14 +9,45 @@ import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 import pytest
 
-from compneurovis import ActionSpec, AppSpec, ControlSpec, Field, GridSliceOperatorSpec, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding, SurfaceViewSpec, View3DHostSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
+from compneurovis import ActionSpec, AppSpec, ControlSpec, Field, GridSliceOperatorSpec, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
 from compneurovis.backends.neuron import NeuronSession
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
-from compneurovis.frontends.vispy.panels import ControlsHostPanel, LinePlotHostPanel, LinePlotPanel, Viewport3DPanel
+from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, LinePlotHostPanel, LinePlotPanel, Viewport3DPanel
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer
 from compneurovis.session import BufferedSession, Error, FieldAppend, FieldReplace, Reset, StatePatch, resolve_interaction_target_source
+
+
+def view_3d_panel(panel_id: str, view_id: str, **kwargs) -> PanelSpec:
+    return PanelSpec(id=panel_id, kind="view_3d", view_ids=(view_id,), **kwargs)
+
+
+def line_plot_panel_spec(panel_id: str, view_id: str, **kwargs) -> PanelSpec:
+    return PanelSpec(id=panel_id, kind="line_plot", view_ids=(view_id,), **kwargs)
+
+
+def controls_panel_spec(panel_id: str = "controls-panel", **kwargs) -> PanelSpec:
+    return PanelSpec(id=panel_id, kind="controls", **kwargs)
+
+
+def make_layout(title: str, *, panels: tuple[PanelSpec, ...]) -> LayoutSpec:
+    main_row = tuple(panel.id for panel in panels if panel.kind != "controls")
+    rows: list[tuple[str, ...]] = []
+    if main_row:
+        rows.append(main_row)
+    rows.extend((panel.id,) for panel in panels if panel.kind == "controls")
+    return LayoutSpec(title=title, panels=panels, panel_grid=tuple(rows))
+
+
+def resolved_controls_host(window: VispyFrontendWindow, panel_id: str = "controls-panel") -> ControlsHostPanel:
+    return window.controls_host_panels[panel_id]
+
+
+def resolved_controls_panel(window: VispyFrontendWindow, panel_id: str = "controls-panel") -> ControlsPanel:
+    panel = window.controls_panel(panel_id)
+    assert panel is not None
+    return panel
 
 
 def test_line_plot_panel_resolves_selected_entity_binding():
@@ -62,7 +93,7 @@ def test_line_plot_panel_resolves_selected_entity_binding():
 
 def test_line_plot_host_uses_resolved_plot_title():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    panel = LinePlotHostPanel(view_id="trace", title="Trace")
+    panel = LinePlotHostPanel(panel_id="trace-panel", view_id="trace", title="Trace")
     field = Field(
         id="voltage",
         values=np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32),
@@ -129,7 +160,12 @@ def build_surface_cross_section_app():
         line_views=(line_view,),
         operators={operator.id: operator},
         controls=controls,
-        view_3d_hosts=(View3DHostSpec(id="surface-host", view_ids=("surface-view",), operator_ids=(operator.id,)),),
+        panels=(
+            view_3d_panel("surface-host", "surface-view", operator_ids=(operator.id,)),
+            line_plot_panel_spec("surface-line-panel", "surface-line"),
+            controls_panel_spec(),
+        ),
+        panel_grid=(("surface-host", "surface-line-panel"), ("controls-panel",)),
     )
 
 
@@ -166,7 +202,11 @@ def build_surface_axes_binding_app():
         title="surface axes test",
         surface_view=surface_view,
         controls=controls,
-        view_3d_hosts=(View3DHostSpec(id="surface-host", view_ids=("surface-view",)),),
+        panels=(
+            view_3d_panel("surface-host", "surface-view"),
+            controls_panel_spec(),
+        ),
+        panel_grid=(("surface-host",), ("controls-panel",)),
     )
 
 
@@ -208,7 +248,7 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
     window.viewport.refresh_surface_axes_style = Mock()
     window.viewport.refresh_operator_overlays = Mock()
     window.viewport.commit = Mock()
-    window.line_plot_panels["surface-line"].refresh = Mock()
+    window.line_plot_panel("surface-line").refresh = Mock()
 
     window._on_control_changed(window.scene.controls["slice_position"], 0.4)
 
@@ -217,7 +257,7 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
     window.viewport.refresh_surface_axes_style.assert_not_called()
     window.viewport.refresh_operator_overlays.assert_called_once()
     window.viewport.commit.assert_called_once()
-    window.line_plot_panels["surface-line"].refresh.assert_called_once()
+    window.line_plot_panel("surface-line").refresh.assert_called_once()
 
     window.close()
     app.quit()
@@ -377,9 +417,9 @@ def test_surface_axes_overlay_reuses_visual_objects_for_style_refresh():
 
 def test_viewport_3d_panel_applies_host_camera_settings():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    host = View3DHostSpec(
-        id="surface-host",
-        view_ids=("surface-view",),
+    host = view_3d_panel(
+        "surface-host",
+        "surface-view",
         camera_distance=90.0,
         camera_elevation=20.0,
         camera_azimuth=15.0,
@@ -399,9 +439,9 @@ def test_build_surface_app_accepts_custom_3d_hosts():
     values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
     field, geometry = grid_field(field_id="surface", values=values, x_coords=x, y_coords=y)
     surface_view = SurfaceViewSpec(id="surface-view", field_id=field.id, geometry_id=geometry.id)
-    host = View3DHostSpec(
-        id="surface-host",
-        view_ids=("surface-view",),
+    host = view_3d_panel(
+        "surface-host",
+        "surface-view",
         camera_distance=85.0,
         camera_elevation=25.0,
         camera_azimuth=5.0,
@@ -411,11 +451,12 @@ def test_build_surface_app_accepts_custom_3d_hosts():
         field=field,
         geometry=geometry,
         surface_view=surface_view,
-        view_3d_hosts=(host,),
+        panels=(host,),
+        panel_grid=(("surface-host",),),
     )
 
     assert app_spec.scene is not None
-    assert app_spec.scene.layout.view_3d_hosts == (host,)
+    assert app_spec.scene.layout.panels == (host,)
 
 
 def test_build_surface_app_accepts_multiple_line_views():
@@ -437,7 +478,11 @@ def test_build_surface_app_accepts_multiple_line_views():
     )
 
     assert app_spec.scene is not None
-    assert app_spec.scene.layout.line_plot_view_ids == ("surface-line-x", "surface-line-y")
+    assert tuple(
+        panel.view_ids[0]
+        for panel in app_spec.scene.layout.panels
+        if panel.kind == "line_plot"
+    ) == ("surface-line-x", "surface-line-y")
 
 
 def test_morphology_renderer_uses_fixed_clim_without_dynamic_recaling():
@@ -507,7 +552,7 @@ def test_frontend_shows_modal_for_fatal_session_error():
         app.quit()
 
 
-def test_frontend_shows_loading_state_before_first_document():
+def test_frontend_shows_loading_state_before_first_scene():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     window = VispyFrontendWindow(AppSpec(title="Loading test"))
     window.timer.stop()
@@ -547,7 +592,10 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
                 fields={"bootstrap": field},
                 geometries={},
                 views={"bootstrap-view": view},
-                layout=LayoutSpec(title="Bootstrap", line_plot_view_ids=("bootstrap-view",)),
+                layout=make_layout(
+                    "Bootstrap",
+                    panels=(line_plot_panel_spec("bootstrap-view-panel", "bootstrap-view"),),
+                ),
             )
 
         def initialize(self):
@@ -582,7 +630,7 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
     assert isinstance(window.transport, FakeTransport)
     assert window.transport.session is BootstrapSession
     assert window.scene is not None
-    assert window.scene.layout.line_plot_view_ids == ("bootstrap-view",)
+    assert window.scene.layout.panel("bootstrap-view-panel") is not None
     assert window._stack.currentWidget() is window._layout_splitter
 
     window.close()
@@ -752,11 +800,14 @@ def test_frontend_applies_state_patch_and_refreshes_bound_plot():
         selectors={"segment": StateBinding("selected_trace_entity_ids")},
         series_dim="segment",
     )
-    document = Scene(
+    scene = Scene(
         fields={"voltage": field},
         geometries={},
         views={"trace": view},
-        layout=LayoutSpec(title="State patch test", line_plot_view_ids=("trace",)),
+        layout=make_layout(
+            "State patch test",
+            panels=(line_plot_panel_spec("trace-panel", "trace"),),
+        ),
     )
 
     class FakeTransport:
@@ -770,14 +821,14 @@ def test_frontend_applies_state_patch_and_refreshes_bound_plot():
         def stop(self):
             return None
 
-    window = VispyFrontendWindow(AppSpec(scene=document, title="State patch test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="State patch test"))
     window.timer.stop()
     window.transport = FakeTransport()
 
     window._poll_transport()
 
     assert window.state["selected_trace_entity_ids"] == ["seg-b"]
-    assert "seg-b" in window.line_plot_panels["trace"]._series_items
+    assert "seg-b" in window.line_plot_panel("trace")._series_items
     window.close()
     app.quit()
 
@@ -813,13 +864,19 @@ def test_frontend_can_render_multiple_line_plot_panels():
         fields={"signals": field},
         geometries={},
         views=views,
-        layout=LayoutSpec(title="Multi plot", line_plot_view_ids=("trace-a", "trace-b")),
+        layout=make_layout(
+            "Multi plot",
+            panels=(
+                line_plot_panel_spec("trace-a-panel", "trace-a"),
+                line_plot_panel_spec("trace-b-panel", "trace-b"),
+            ),
+        ),
     )
 
     window = VispyFrontendWindow(AppSpec(scene=scene, title="Multi plot"))
     window.timer.stop()
 
-    assert tuple(window.line_plot_panels.keys()) == ("trace-a", "trace-b")
+    assert tuple(window.line_plot_panels.keys()) == ("trace-a-panel", "trace-b-panel")
     x_a, y_a = window.line_plot_panel("trace-a")._plot_item.getData()
     x_b, y_b = window.line_plot_panel("trace-b")._plot_item.getData()
     assert np.allclose(x_a, np.array([0.0, 1.0, 2.0], dtype=np.float32))
@@ -852,7 +909,13 @@ def test_refresh_planner_targets_only_matching_line_plot_view_for_field_replace(
             "trace-a": LinePlotViewSpec(id="trace-a", field_id="field-a", x_dim="time"),
             "trace-b": LinePlotViewSpec(id="trace-b", field_id="field-b", x_dim="time"),
         },
-        layout=LayoutSpec(title="Multi planner", line_plot_view_ids=("trace-a", "trace-b")),
+        layout=make_layout(
+            "Multi planner",
+            panels=(
+                line_plot_panel_spec("trace-a-panel", "trace-a"),
+                line_plot_panel_spec("trace-b-panel", "trace-b"),
+            ),
+        ),
     )
     planner = RefreshPlanner(scene)
 
@@ -1243,7 +1306,7 @@ def test_line_plot_panel_updates_manual_ticks_when_window_crosses_minor_spacing(
     app.quit()
 
 
-def test_frontend_hides_viewport_when_document_has_no_3d_view():
+def test_frontend_hides_viewport_when_scene_has_no_3d_view():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     field = Field(
         id="cascade",
@@ -1254,7 +1317,7 @@ def test_frontend_hides_viewport_when_document_has_no_3d_view():
             "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
         },
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={},
         views={
@@ -1265,17 +1328,20 @@ def test_frontend_hides_viewport_when_document_has_no_3d_view():
                 series_dim="series",
             )
         },
-        layout=LayoutSpec(title="Cascade", main_3d_view_id=None, line_plot_view_ids=("cascade-plot",)),
+        layout=make_layout(
+            "Cascade",
+            panels=(line_plot_panel_spec("cascade-plot-panel", "cascade-plot"),),
+        ),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Cascade"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Cascade"))
     window.timer.stop()
 
     assert window.viewport is None
-    assert window.controls_host.isHidden()
+    assert not window.controls_host_panels
     assert isinstance(window.centralWidget(), QtWidgets.QStackedWidget)
     assert window._stack.currentWidget() is window._layout_splitter
     assert window._layout_splitter.orientation() == QtCore.Qt.Orientation.Vertical
-    assert "cascade-plot" in window.line_plot_panels
+    assert "cascade-plot-panel" in window.line_plot_panels
 
     window.close()
     app.quit()
@@ -1294,15 +1360,15 @@ def test_frontend_uses_splitters_for_draggable_panel_resize():
     assert row.orientation() == QtCore.Qt.Orientation.Horizontal
     assert row.widget(0) is window.view_hosts["surface-host"]
     assert isinstance(row.widget(1), LinePlotHostPanel)
-    assert row.widget(1).line_plot_panel is window.line_plot_panels["surface-line"]
-    assert window._layout_splitter.widget(1) is window.controls_host
-    assert window.controls_host.controls_panel is window.controls_panel
+    assert row.widget(1).line_plot_panel is window.line_plot_panels["surface-line-panel"]
+    assert window._layout_splitter.widget(1) is resolved_controls_host(window)
+    assert resolved_controls_host(window).controls_panel is resolved_controls_panel(window)
     assert not hasattr(window, "controls")
     assert not hasattr(window, "control_host")
     assert not hasattr(window, "line_plot")
     assert not hasattr(window, "line_plots")
     assert not hasattr(window, "line_plot_for")
-    assert not hasattr(window.controls_host, "controls")
+    assert not hasattr(resolved_controls_host(window), "controls")
     assert not window._layout_splitter.opaqueResize()
     assert not row.opaqueResize()
 
@@ -1335,16 +1401,22 @@ def test_frontend_supports_multiple_3d_viewports():
         x_coords=np.linspace(-1.0, 1.0, 4, dtype=np.float32),
         y_coords=np.linspace(-1.0, 1.0, 4, dtype=np.float32),
     )
-    document = Scene(
+    scene = Scene(
         fields={morph_field.id: morph_field, surface_field.id: surface_field},
         geometries={morph_geometry.id: morph_geometry, surface_geometry.id: surface_geometry},
         views={
             "morphology": MorphologyViewSpec(id="morphology", geometry_id=morph_geometry.id, color_field_id=morph_field.id),
             "surface-view": SurfaceViewSpec(id="surface-view", field_id=surface_field.id, geometry_id=surface_geometry.id),
         },
-        layout=LayoutSpec(title="Multi 3D", view_3d_ids=("morphology", "surface-view")),
+        layout=make_layout(
+            "Multi 3D",
+            panels=(
+                view_3d_panel("morphology-panel", "morphology"),
+                view_3d_panel("surface-panel", "surface-view"),
+            ),
+        ),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Multi 3D"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Multi 3D"))
     window.timer.stop()
 
     assert set(window.viewports.keys()) == {"morphology", "surface-view"}
@@ -1353,19 +1425,32 @@ def test_frontend_supports_multiple_3d_viewports():
     row = window._layout_splitter.widget(0)
     assert isinstance(row, QtWidgets.QSplitter)
     assert row.count() == 2
-    assert window.controls_host.isHidden()
+    assert not window.controls_host_panels
 
     window.close()
     app.quit()
 
 
-def test_layout_spec_derives_default_3d_hosts_from_view_ids():
-    layout = LayoutSpec(title="Derived hosts", view_3d_ids=("morphology", "surface"))
-    document = Scene(fields={}, geometries={}, views={}, layout=layout)
+def test_layout_spec_derives_default_panels_with_standardized_ids():
+    scene = Scene(
+        fields={},
+        geometries={},
+        views={
+            "morphology": MorphologyViewSpec(id="morphology", geometry_id="morphology-geometry"),
+            "surface": SurfaceViewSpec(id="surface", field_id="surface-field", geometry_id="surface-geometry"),
+            "trace": LinePlotViewSpec(id="trace", field_id="trace-field", x_dim="time"),
+        },
+        actions={"reset": ActionSpec(id="reset", label="Reset")},
+        layout=LayoutSpec(title="Derived panels"),
+    )
 
-    assert document.layout.view_3d_ids == ("morphology", "surface")
-    assert tuple(host.id for host in document.layout.view_3d_hosts) == ("morphology", "surface")
-    assert tuple(host.view_ids for host in document.layout.view_3d_hosts) == (("morphology",), ("surface",))
+    assert tuple(panel.id for panel in scene.layout.panels) == (
+        "morphology-panel",
+        "surface-panel",
+        "trace-panel",
+        "controls-panel",
+    )
+    assert scene.layout.panel_grid == ()
 
 
 def test_frontend_builds_explicit_independent_3d_hosts():
@@ -1387,21 +1472,21 @@ def test_frontend_builds_explicit_independent_3d_hosts():
         dims=("segment",),
         coords={"segment": np.array(["seg-a"])},
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={"morphology": MorphologyViewSpec(id="morphology", geometry_id=geometry.id, color_field_id=field.id)},
-        layout=LayoutSpec(
-            title="Hosted",
-            view_3d_hosts=(View3DHostSpec(id="main-host", view_ids=("morphology",), title="Primary 3D"),),
+        layout=make_layout(
+            "Hosted",
+            panels=(view_3d_panel("main-host", "morphology", title="Primary 3D"),),
         ),
     )
 
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Hosted"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Hosted"))
     window.timer.stop()
 
     assert set(window.view_hosts.keys()) == {"main-host"}
-    assert window._view_to_host_id["morphology"] == "main-host"
+    assert window._view_to_panel_id["morphology"] == "main-host"
     assert window.view_hosts["main-host"].title() == "Primary 3D"
     assert window.viewport_for("morphology") is window.view_hosts["main-host"].viewport
 
@@ -1409,7 +1494,7 @@ def test_frontend_builds_explicit_independent_3d_hosts():
     app.quit()
 
 
-def test_controls_panel_renders_and_dispatches_document_actions():
+def test_controls_panel_renders_and_dispatches_scene_actions():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     field = Field(
         id="voltage",
@@ -1431,7 +1516,7 @@ def test_controls_panel_renders_and_dispatches_document_actions():
         xlocs=np.array([0.1, 0.9], dtype=np.float32),
         labels=("sec-a@0.1", "sec-b@0.9"),
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={
@@ -1444,14 +1529,20 @@ def test_controls_panel_renders_and_dispatches_document_actions():
                 payload={"entity_id": StateBinding("selected_entity_id")},
             )
         },
-        layout=LayoutSpec(title="Action test", main_3d_view_id="morphology", action_ids=("mark_selected",)),
+        layout=make_layout(
+            "Action test",
+            panels=(
+                view_3d_panel("morphology-panel", "morphology"),
+                controls_panel_spec(action_ids=("mark_selected",)),
+            ),
+        ),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Action test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Action test"))
     window.timer.stop()
     window.transport = Mock()
     window.state["selected_entity_id"] = "seg-a"
 
-    action_button = window.controls_panel.widgets["mark_selected"]
+    action_button = resolved_controls_panel(window).widgets["mark_selected"]
     action_button.click()
 
     window.transport.send_command.assert_called_once()
@@ -1468,36 +1559,79 @@ def test_controls_host_title_reflects_controls_and_actions_presence():
     window = VispyFrontendWindow(build_surface_cross_section_app())
     window.timer.stop()
 
-    assert window.controls_host.title() == "Controls"
+    assert resolved_controls_host(window).title() == "Controls"
 
-    actions_only_document = Scene(
+    actions_only_scene = Scene(
         fields={},
         geometries={},
         views={},
         actions={"reset": ActionSpec(id="reset", label="Reset")},
-        layout=LayoutSpec(title="Actions only", action_ids=("reset",)),
+        layout=make_layout("Actions only", panels=(controls_panel_spec(),)),
     )
-    window._set_scene(actions_only_document)
-    assert window.controls_host.title() == "Actions"
+    window._set_scene(actions_only_scene)
+    assert resolved_controls_host(window).title() == "Actions"
 
-    controls_and_actions_document = Scene(
+    controls_and_actions_scene = Scene(
         fields={},
         geometries={},
         views={},
         controls={"gain": ControlSpec(id="gain", kind="float", label="Gain", default=1.0)},
         actions={"reset": ActionSpec(id="reset", label="Reset")},
-        layout=LayoutSpec(title="Controls and actions", control_ids=("gain",), action_ids=("reset",)),
+        layout=make_layout(
+            "Controls and actions",
+            panels=(controls_panel_spec(control_ids=("gain",), action_ids=("reset",)),),
+        ),
     )
-    window._set_scene(controls_and_actions_document)
-    assert window.controls_host.title() == "Controls & Actions"
+    window._set_scene(controls_and_actions_scene)
+    assert resolved_controls_host(window).title() == "Controls & Actions"
 
     window.close()
     app.quit()
 
 
+def test_controls_host_uses_scroll_area_for_overflowing_controls():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    window = VispyFrontendWindow(build_surface_cross_section_app())
+    window.timer.stop()
+
+    host = resolved_controls_host(window)
+    panel = resolved_controls_panel(window)
+    assert isinstance(host.scroll_area, QtWidgets.QScrollArea)
+    assert host.scroll_area.widgetResizable()
+    assert host.scroll_area.widget() is panel
+    assert host.scroll_area.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    assert host.sizePolicy().verticalPolicy() == QtWidgets.QSizePolicy.Policy.Ignored
+
+    window.close()
+    app.quit()
+
+
+def test_controls_panel_switches_to_two_columns_when_wide():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = ControlsPanel(lambda *_args: None)
+    controls = [
+        ControlSpec(id=f"gain_{index}", kind="float", label=f"Gain {index}", default=1.0, min=0.0, max=2.0)
+        for index in range(8)
+    ]
+
+    panel.resize(1100, 480)
+    panel.show()
+    app.processEvents()
+    panel.set_controls(controls, [], {})
+    app.processEvents()
+    assert panel._column_count == 2
+
+    panel.resize(700, 480)
+    app.processEvents()
+    assert panel._column_count == 1
+
+    panel.close()
+    app.quit()
+
+
 def test_action_shortcut_dispatches_invoke_action():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    document = Scene(
+    scene = Scene(
         fields={},
         geometries={},
         views={},
@@ -1509,9 +1643,9 @@ def test_action_shortcut_dispatches_invoke_action():
                 shortcuts=("I",),
             )
         },
-        layout=LayoutSpec(title="Shortcut test", action_ids=("toggle",)),
+        layout=make_layout("Shortcut test", panels=(controls_panel_spec(action_ids=("toggle",)),)),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Shortcut test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Shortcut test"))
     window.timer.stop()
     window.transport = Mock()
     window.state["selected_entity_id"] = "seg-a"
@@ -1550,7 +1684,7 @@ def test_selection_mode_action_arms_on_shortcut_and_fires_on_click():
         xlocs=np.array([0.1, 0.9], dtype=np.float32),
         labels=("sec-a@0.1", "sec-b@0.9"),
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={"morphology": MorphologyViewSpec(id="morphology", geometry_id=geometry.id)},
@@ -1562,9 +1696,15 @@ def test_selection_mode_action_arms_on_shortcut_and_fires_on_click():
                 selection_mode=True,
             )
         },
-        layout=LayoutSpec(title="Selection action test", main_3d_view_id="morphology", action_ids=("arm_add",)),
+        layout=make_layout(
+            "Selection action test",
+            panels=(
+                view_3d_panel("morphology-panel", "morphology"),
+                controls_panel_spec(action_ids=("arm_add",)),
+            ),
+        ),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Selection action test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Selection action test"))
     window.timer.stop()
     window.transport = Mock()
 
@@ -1629,7 +1769,7 @@ def test_interaction_callbacks_can_handle_mode_and_entity_click_without_selectio
         xlocs=np.array([0.1, 0.9], dtype=np.float32),
         labels=("sec-a@0.1", "sec-b@0.9"),
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={"morphology": MorphologyViewSpec(id="morphology", geometry_id=geometry.id)},
@@ -1638,14 +1778,16 @@ def test_interaction_callbacks_can_handle_mode_and_entity_click_without_selectio
             "register_entity": ActionSpec(id="register_entity", label="Register entity"),
             "clear_targets": ActionSpec(id="clear_targets", label="Clear targets"),
         },
-        layout=LayoutSpec(
-            title="Callback interaction test",
-            main_3d_view_id="morphology",
-            action_ids=("toggle_mode", "clear_targets"),
+        layout=make_layout(
+            "Callback interaction test",
+            panels=(
+                view_3d_panel("morphology-panel", "morphology"),
+                controls_panel_spec(action_ids=("toggle_mode", "clear_targets")),
+            ),
         ),
     )
     interaction_target = DummyInteractionTarget()
-    window = VispyFrontendWindow(AppSpec(scene=document, interaction_target=interaction_target, title="Callback interaction test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, interaction_target=interaction_target, title="Callback interaction test"))
     window.timer.stop()
     window.transport = Mock()
 
@@ -1666,7 +1808,7 @@ def test_interaction_callbacks_can_handle_mode_and_entity_click_without_selectio
     app.quit()
 
 
-def test_frontend_interaction_context_resolves_entity_info_from_document():
+def test_frontend_interaction_context_resolves_entity_info_from_scene():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     field = Field(
         id="voltage",
@@ -1688,13 +1830,13 @@ def test_frontend_interaction_context_resolves_entity_info_from_document():
         xlocs=np.array([0.1, 0.9], dtype=np.float32),
         labels=("sec-a@0.1", "sec-b@0.9"),
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={"morphology": MorphologyViewSpec(id="morphology", geometry_id=geometry.id)},
-        layout=LayoutSpec(title="Entity info test", main_3d_view_id="morphology"),
+        layout=make_layout("Entity info test", panels=(view_3d_panel("morphology-panel", "morphology"),)),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Entity info test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Entity info test"))
     window.timer.stop()
 
     info = window._interaction_context().entity_info("seg-b")
@@ -1730,18 +1872,24 @@ def test_frontend_reset_action_sends_reset_command():
         xlocs=np.array([0.1, 0.9], dtype=np.float32),
         labels=("sec-a@0.1", "sec-b@0.9"),
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={"morphology": MorphologyViewSpec(id="morphology", geometry_id=geometry.id)},
         actions={"reset": ActionSpec(id="reset", label="Reset")},
-        layout=LayoutSpec(title="Reset button test", main_3d_view_id="morphology", action_ids=("reset",)),
+        layout=make_layout(
+            "Reset button test",
+            panels=(
+                view_3d_panel("morphology-panel", "morphology"),
+                controls_panel_spec(action_ids=("reset",)),
+            ),
+        ),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Reset button test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Reset button test"))
     window.timer.stop()
     window.transport = Mock()
 
-    window._on_action_invoked(document.actions["reset"], {})
+    window._on_action_invoked(scene.actions["reset"], {})
 
     window.transport.send_command.assert_called_once()
     command = window.transport.send_command.call_args[0][0]
@@ -1774,7 +1922,7 @@ class DummyNeuronSession(NeuronSession):
         return {"rolling_window": 25.0, "trim_to_rolling_window": True}
 
 
-def test_neuron_session_build_document_applies_orders_and_trace_updates():
+def test_neuron_session_build_scene_applies_orders_and_trace_updates():
     session = DummyNeuronSession()
     geometry = MorphologyGeometry(
         id="morphology",
@@ -1788,15 +1936,17 @@ def test_neuron_session_build_document_applies_orders_and_trace_updates():
         labels=("sec-a@0.5",),
     )
 
-    document = session.build_scene(
+    scene = session.build_scene(
         geometry=geometry,
         display_values=np.array([1.0], dtype=np.float32),
         time_value=0.0,
     )
 
-    assert document.layout.control_ids == ("gain",)
-    assert document.layout.action_ids == ("toggle_mode",)
-    trace_view = document.views["trace"]
+    controls_panel = scene.layout.panel("controls-panel")
+    assert controls_panel is not None
+    assert controls_panel.control_ids == ("gain",)
+    assert controls_panel.action_ids == ("toggle_mode",)
+    trace_view = scene.views["trace"]
     assert trace_view.rolling_window == 25.0
     assert trace_view.trim_to_rolling_window is True
 
@@ -1831,13 +1981,13 @@ def test_neuron_session_expands_history_budget_to_cover_trace_window():
         xlocs=np.array([0.5], dtype=np.float32),
         labels=("sec-a@0.5",),
     )
-    document = session.build_scene(
+    scene = session.build_scene(
         geometry=geometry,
         display_values=np.array([1.0], dtype=np.float32),
         time_value=0.0,
     )
 
-    assert session._resolved_field_max_samples(document, field_id=NeuronSceneBuilder.HISTORY_FIELD_ID, append_dim="time") == 1201
+    assert session._resolved_field_max_samples(scene, field_id=NeuronSceneBuilder.HISTORY_FIELD_ID, append_dim="time") == 1201
 
 
 def test_frontend_applies_field_append_updates_incrementally():
@@ -1862,7 +2012,7 @@ def test_frontend_applies_field_append_updates_incrementally():
         xlocs=np.array([0.1, 0.9], dtype=np.float32),
         labels=("sec-a@0.1", "sec-b@0.9"),
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={
@@ -1880,9 +2030,15 @@ def test_frontend_applies_field_append_updates_incrementally():
                 selectors={"segment": StateBinding("selected_entity_id")},
             ),
         },
-        layout=LayoutSpec(title="Append test", main_3d_view_id="morphology", line_plot_view_ids=("trace",)),
+        layout=make_layout(
+            "Append test",
+            panels=(
+                view_3d_panel("morphology-panel", "morphology"),
+                line_plot_panel_spec("trace-panel", "trace"),
+            ),
+        ),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Append test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Append test"))
     window.timer.stop()
     window.state["selected_entity_id"] = "seg-a"
     window.transport = Mock()
@@ -1901,7 +2057,7 @@ def test_frontend_applies_field_append_updates_incrementally():
     updated = window.scene.fields["voltage"]
     assert updated.coord("time").tolist() == [1.0, 2.0]
     assert np.allclose(updated.values, np.array([[2.0, 3.0], [20.0, 30.0]], dtype=np.float32))
-    x_data, y_data = window.line_plot_panels["trace"]._plot_item.getData()
+    x_data, y_data = window.line_plot_panel("trace")._plot_item.getData()
     assert np.allclose(x_data, np.array([1.0, 2.0], dtype=np.float32))
     assert np.allclose(y_data, np.array([2.0, 3.0], dtype=np.float32))
 
@@ -1931,7 +2087,7 @@ def test_frontend_batches_multiple_field_appends_into_one_refresh_pass():
         xlocs=np.array([0.1, 0.9], dtype=np.float32),
         labels=("sec-a@0.1", "sec-b@0.9"),
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={
@@ -1949,9 +2105,15 @@ def test_frontend_batches_multiple_field_appends_into_one_refresh_pass():
                 selectors={"segment": StateBinding("selected_entity_id")},
             ),
         },
-        layout=LayoutSpec(title="Batch append test", main_3d_view_id="morphology", line_plot_view_ids=("trace",)),
+        layout=make_layout(
+            "Batch append test",
+            panels=(
+                view_3d_panel("morphology-panel", "morphology"),
+                line_plot_panel_spec("trace-panel", "trace"),
+            ),
+        ),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Batch append test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Batch append test"))
     window.timer.stop()
     window.transport = Mock()
     window._refresh_morphology = Mock()
@@ -2011,7 +2173,7 @@ def test_frontend_flushes_buffered_field_appends_before_field_replace():
         xlocs=np.array([0.1, 0.9], dtype=np.float32),
         labels=("sec-a@0.1", "sec-b@0.9"),
     )
-    document = Scene(
+    scene = Scene(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={
@@ -2029,9 +2191,15 @@ def test_frontend_flushes_buffered_field_appends_before_field_replace():
                 selectors={"segment": StateBinding("selected_entity_id")},
             ),
         },
-        layout=LayoutSpec(title="Append replace order test", main_3d_view_id="morphology", line_plot_view_ids=("trace",)),
+        layout=make_layout(
+            "Append replace order test",
+            panels=(
+                view_3d_panel("morphology-panel", "morphology"),
+                line_plot_panel_spec("trace-panel", "trace"),
+            ),
+        ),
     )
-    window = VispyFrontendWindow(AppSpec(scene=document, title="Append replace order test"))
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Append replace order test"))
     window.timer.stop()
     window.state["selected_entity_id"] = "seg-a"
     window.transport = Mock()

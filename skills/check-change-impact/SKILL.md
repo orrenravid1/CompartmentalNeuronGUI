@@ -28,8 +28,13 @@ Audit changes in this order:
    - `python -m compileall src examples tests`
    - `pytest`
    - `python scripts/generate_indexes.py --check`
-5. Report missing follow-up edits explicitly instead of assuming docs are still correct.
+5. Identify call sites changed by the diff that are not covered by the test suite. `compileall` verifies syntax only; `pytest` only defends paths it exercises. Runtime failures - wrong kwargs, removed methods, type mismatches, untested code paths - are invisible to both. For each uncovered call site, either verify correctness by reading the callee's implementation, or flag it as a required manual smoke-test in the impact report.
+6. Report missing follow-up edits explicitly instead of assuming docs are still correct.
 
 When the change alters public concepts, package boundaries, or workflows, treat docs updates as required work, not optional cleanup.
 
 If the audit says authored docs, `AGENTS.md`, package READMEs, or generated indexes need touching, the required follow-through skill is `update-docs-and-indexes`.
+
+If the change or proposal edits architecture-facing prose about current
+capabilities, limitations, or future work, also use
+`audit-architecture-doc-consistency`.

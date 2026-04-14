@@ -43,17 +43,40 @@ Scene(
     views={"main": MorphologyViewSpec(...)},
     controls={"speed": ControlSpec(...)},
     actions={"reset": ActionSpec(...)},
-    layout=LayoutSpec(view_3d_ids=("main",), ...),
+    layout=LayoutSpec(
+        panels=(
+            PanelSpec(id="main_panel", kind="view_3d", view_ids=("main",)),
+            PanelSpec(id="controls_panel", kind="controls"),
+        ),
+        ...,
+    ),
 )
 ```
 
-`LayoutSpec` controls which views and controls are shown and in what order. `view_3d_ids` names the active 3D views in layout order. `line_plot_view_ids` does the same for line plots, so plots are an ordered plural panel set rather than a singleton sidecar. `view_3d_hosts` is the more generic hosting layer: it says how those views are mounted in the frontend. If the resolved 3D view list is empty, the frontend collapses to a plot-and-controls layout. `main_3d_view_id` remains as a compatibility alias for the first 3D view during the transition.
+`LayoutSpec` now carries explicit `PanelSpec` entries for every visible panel kind:
+3-D, line plot, and controls. A panel has a stable `id`, a `kind`, and the ids
+of the views, controls, actions, or operators it hosts. This already removes the
+old identity asymmetry between 3-D, plots, and controls at the panel-spec level.
+
+The main remaining layout debt is elsewhere:
+
+- topology is still expressed by row-major `panel_grid`
+- `LayoutSpec.panels` can still be implicitly derived when omitted
+- the current `PanelSpec` shape is one generic struct rather than a more typed
+  panel family
+
+If the resolved 3D view list is empty, the frontend collapses to a
+plot-and-controls layout.
 
 The important architectural split is:
 
 - `ViewSpec` says what to render
-- `View3DHostSpec` says how one or more 3D views are hosted
-- `LayoutSpec` orders those hosts alongside other panels
+- `PanelSpec` says which visible panel exists and what it hosts
+- `LayoutSpec` orders those panels
+
+The layout workbench refactor should therefore focus on replacing row-major
+`panel_grid` and implicit panel derivation with an explicit recursive layout
+tree, not on inventing panel ids from scratch.
 
 See [View and Layout Model](../concepts/view-layout-model.md) for the user-facing mental model behind that split.
 

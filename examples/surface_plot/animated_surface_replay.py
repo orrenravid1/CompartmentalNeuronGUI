@@ -21,7 +21,7 @@ Run: python examples/surface_plot/animated_surface_replay.py
 
 import numpy as np
 
-from compneurovis import ActionSpec, SurfaceViewSpec, View3DHostSpec, build_surface_app, grid_field, run_app
+from compneurovis import ActionSpec, PanelSpec, SurfaceViewSpec, build_surface_app, grid_field, run_app
 from compneurovis.core import AppSpec
 from compneurovis.session import BufferedSession, SceneReady, FieldReplace, InvokeAction, Reset
 
@@ -67,13 +67,16 @@ scene = build_surface_app(
     surface_view=surface_view,
     controls={},
     title="animated sinc wave — replay",
-    view_3d_hosts=(View3DHostSpec(id="surface-host", view_ids=("surface",), camera_distance=30.0),),
+    panels=(
+        PanelSpec(id="surface-host", kind="view_3d", view_ids=("surface",), camera_distance=30.0),
+        PanelSpec(id="controls-panel", kind="controls", action_ids=("pause", "reset")),
+    ),
+    panel_grid=(("surface-host",), ("controls-panel",)),
 ).scene
 
 # Add explicit playback controls so the example exposes buttons in the controls panel.
 scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=("Space",))
 scene.actions["reset"] = ActionSpec("reset", "Reset", shortcuts=("R",))
-scene.layout.action_ids = ("pause", "reset")
 
 
 class ReplayAnimationSession(BufferedSession):

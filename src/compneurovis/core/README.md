@@ -14,13 +14,14 @@ summary: Field, geometry, view, control, and scene primitives.
 - `GridSliceOperatorSpec`
 - `Scene`
 - `LayoutSpec`
-- `View3DHostSpec`
+- `PanelSpec`
 - `ViewSpec`
 - `ControlSpec`
 - declarative binding helpers such as `AttributeRef` and `SeriesSpec`
 
-`View3DHostSpec` owns 3-D host concerns such as initial camera distance and
-starting turntable orientation. Those settings belong here rather than on
+`PanelSpec` is the current visible-panel seam. A 3-D `PanelSpec` owns host
+concerns such as initial camera distance, turntable orientation, and projected
+operator overlays. Those settings belong on the visible panel rather than on
 `SurfaceViewSpec` or `MorphologyViewSpec`, which describe rendered content.
 
 Operator specs live alongside fields, geometry, and views so derived workflows

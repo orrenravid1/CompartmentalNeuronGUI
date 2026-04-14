@@ -21,7 +21,7 @@ Replay still needs a normal `Scene`. The difference is that the data frames alre
 ```python
 import numpy as np
 
-from compneurovis import Scene, Field, LayoutSpec, LinePlotViewSpec
+from compneurovis import Scene, Field, LayoutSpec, LinePlotViewSpec, PanelSpec
 
 field = Field(
     id="trace",
@@ -42,12 +42,19 @@ scene = Scene(
             y_label="Signal",
         )
     },
-    layout=LayoutSpec(title="Replay demo", line_plot_view_ids=("trace-view",)),
+    layout=LayoutSpec(
+        title="Replay demo",
+        panels=(
+            PanelSpec(id="trace-panel", kind="line_plot", view_ids=("trace-view",)),
+            PanelSpec(id="controls-panel", kind="controls"),
+        ),
+        panel_grid=(("trace-panel",), ("controls-panel",)),
+    ),
 )
 ```
 
-`line_plot_view_ids` is plural because replay scenes can drive more than one
-trace panel. The frontend creates one framed plot host per listed view id.
+Each framed plot host or controls region is now an explicit `PanelSpec`.
+`panel_grid` places those panel ids in row-major order.
 
 ## 2. Prepare Frames
 

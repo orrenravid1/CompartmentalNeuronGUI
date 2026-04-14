@@ -5,7 +5,7 @@ import time
 
 import numpy as np
 
-from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, Scene, View3DHostSpec, run_app
+from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, run_app
 from compneurovis.session import BufferedSession, FieldReplace
 
 
@@ -70,10 +70,11 @@ def build_scene() -> Scene:
         },
         layout=LayoutSpec(
             title="Two Morphology Views",
-            view_3d_hosts=(
-                View3DHostSpec(id="left-host", view_ids=("morphology-left",), title="Morphology View A"),
-                View3DHostSpec(id="right-host", view_ids=("morphology-right",), title="Morphology View B"),
+            panels=(
+                PanelSpec(id="left-host", kind="view_3d", view_ids=("morphology-left",), title="Morphology View A"),
+                PanelSpec(id="right-host", kind="view_3d", view_ids=("morphology-right",), title="Morphology View B"),
             ),
+            panel_grid=(("left-host", "right-host"),),
         ),
     )
 

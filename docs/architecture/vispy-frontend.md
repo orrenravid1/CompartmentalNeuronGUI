@@ -15,14 +15,18 @@ The frontend is `VispyFrontendWindow` (a `QMainWindow`) with three panel regions
 | Line plot(s) | `LinePlotHostPanel` -> `LinePlotPanel` | A host provides the same framed chrome as 3-D panels while the inner plot renders 1-D slices or multi-series traces via pyqtgraph |
 | Controls | `ControlsHostPanel` -> `ControlsPanel` | A framed host owns the visible section chrome while the inner panel renders sliders, spinboxes, dropdowns, and action buttons |
 
-Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, so the main panes are draggable/resizable. `LayoutSpec.view_3d_hosts` is the primary 3D layout seam. Each `View3DHostSpec` declares:
+Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, so the main panes are draggable/resizable. `LayoutSpec.panels` is the current panel seam. Each `PanelSpec` declares a stable `id`, a `kind`, and the hosted view/control/action ids for one visible panel.
+
+For 3-D panels, `PanelSpec` also currently carries host-level settings such as:
 
 - which 3D views it owns
 - which host kind should mount them
 - optional host-level titling
 - optional initial camera settings such as turntable distance, azimuth, and elevation
 
-If `view_3d_hosts` is omitted, the layout derives one independent host per `view_3d_id`. If the resolved 3D host list is empty, the 3D splitter is hidden and the right panel fills the window.
+If `LayoutSpec.panels` is omitted, the layout currently derives default panels
+from the scene's views, controls, and actions. If the resolved 3D view list is
+empty, the 3D splitter is hidden and the right panel fills the window.
 
 The right-side controls host is only shown when the resolved layout actually contains controls or actions. Plot-only scenes do not keep an empty "Controls" frame around, and pure 3-D scenes hide the entire right pane when there are no plots or controls to show.
 
@@ -48,13 +52,17 @@ Refresh targets are explicitly bound to a `view_id`, so the frontend can refresh
 
 The surface-axis overlay also keeps long-lived pooled visuals instead of recreating one VisPy text or line object per tick on every slider move. Geometry refresh updates the shared line/text data; style refresh reuses those same visuals and only changes colors or font sizes.
 
-Line plots and controls now follow the same host-wrapper pattern as 3-D views: the group-box host owns the visible frame/title, while the inner widget focuses on plotting or control rendering.
+Line plots and controls now follow the same host-wrapper pattern as 3-D views:
+the group-box host owns the visible frame/title, while the inner widget focuses
+on plotting or control rendering. The remaining mismatch is not panel identity
+but layout topology: the frontend still arranges panels through row-major
+`panel_grid` rather than an explicit recursive split tree.
 
 For grid operators, the current pattern is:
 
 - operator semantics live on `Scene.operators`
 - `LinePlotViewSpec` can reference an operator id to render derived output
-- `View3DHostSpec.operator_ids` controls which overlays a 3-D host should project
+- `PanelSpec.operator_ids` controls which overlays a 3-D host should project
 
 That keeps overlays and linked plots decoupled from `SurfaceViewSpec`.
 
@@ -64,18 +72,19 @@ The frontend now separates:
 
 - view semantics
   - `MorphologyViewSpec`, `SurfaceViewSpec`
-- host semantics
-  - `View3DHostSpec`
+- panel semantics
+  - `PanelSpec`
 - concrete VisPy widget implementation
   - currently `IndependentCanvas3DHostPanel`
 
-That means the current behavior:
+That means the current built-in independent host behavior is:
 
-- one 3D view
-- one `SceneCanvas`
-- one `ViewBox`
+- one 3D view per host
+- one `SceneCanvas` per host
+- one `ViewBox` per host
 
-is no longer the only architectural shape. It is the current host implementation.
+An app can already mount multiple such hosts in one window. This list describes
+the current host implementation, not a global one-view limit.
 
 This is the intended extension point for future alternatives such as:
 

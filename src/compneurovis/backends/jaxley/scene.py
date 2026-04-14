@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding
+from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding
+from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
 
 
 class JaxleySceneBuilder:
@@ -11,6 +12,12 @@ class JaxleySceneBuilder:
     DISPLAY_FIELD_ID = "segment_display"
     HISTORY_FIELD_ID = "segment_history"
     TRACE_FIELD_ID = HISTORY_FIELD_ID
+
+    @staticmethod
+    def _ordered_ids(items: dict[str, object], preferred: tuple[str, ...] | None) -> tuple[str, ...]:
+        if preferred is None:
+            return tuple(items.keys())
+        return tuple(item_id for item_id in preferred if item_id in items)
 
     @staticmethod
     def _split_xyzr_into_equal_length_segments(xyzr: np.ndarray, ncomp: int) -> list[np.ndarray]:
@@ -232,17 +239,42 @@ class JaxleySceneBuilder:
                 pen="#1f3c88",
             ),
         }
+        controls_dict = {} if controls is None else dict(controls)
+        actions_dict = {} if actions is None else dict(actions)
+        control_ids = JaxleySceneBuilder._ordered_ids(controls_dict, control_ids)
+        action_ids = JaxleySceneBuilder._ordered_ids(actions_dict, action_ids)
+        panels = [
+            PanelSpec(
+                id="morphology-panel",
+                kind=PANEL_KIND_VIEW_3D,
+                view_ids=("morphology",),
+            ),
+            PanelSpec(
+                id="trace-panel",
+                kind=PANEL_KIND_LINE_PLOT,
+                view_ids=("trace",),
+            ),
+        ]
+        panel_grid: list[tuple[str, ...]] = [("morphology-panel", "trace-panel")]
+        if control_ids or action_ids:
+            panels.append(
+                PanelSpec(
+                    id="controls-panel",
+                    kind=PANEL_KIND_CONTROLS,
+                    control_ids=control_ids,
+                    action_ids=action_ids,
+                )
+            )
+            panel_grid.append(("controls-panel",))
         return Scene(
             fields={display_field.id: display_field, trace_field.id: trace_field},
             geometries={geometry.id: geometry},
             views=views,
-            controls={} if controls is None else dict(controls),
-            actions={} if actions is None else dict(actions),
+            controls=controls_dict,
+            actions=actions_dict,
             layout=LayoutSpec(
                 title=title,
-                view_3d_ids=("morphology",),
-                line_plot_view_ids=("trace",),
-                control_ids=tuple(controls.keys()) if controls and control_ids is None else (() if control_ids is None else control_ids),
-                action_ids=tuple(actions.keys()) if actions and action_ids is None else (() if action_ids is None else action_ids),
+                panels=tuple(panels),
+                panel_grid=tuple(panel_grid),
             ),
         )

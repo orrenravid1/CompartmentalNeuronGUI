@@ -82,7 +82,7 @@ def test_pipe_transport_roundtrip():
         while time.time() < deadline and not updates:
             updates = transport.poll_updates()
             time.sleep(0.05)
-        assert updates, "expected initial document update"
+        assert updates, "expected initial scene update"
 
         transport.send_command(SetControl("demo", 5.0))
         deadline = time.time() + 5
@@ -114,7 +114,7 @@ def test_pipe_transport_roundtrip_from_factory():
         while time.time() < deadline and not updates:
             updates = transport.poll_updates()
             time.sleep(0.05)
-        assert updates, "expected initial document update"
+        assert updates, "expected initial scene update"
 
         transport.send_command(SetControl("demo", 7.0))
         deadline = time.time() + 5
@@ -141,7 +141,7 @@ def test_pipe_transport_roundtrip_interaction_commands():
         while time.time() < deadline and not updates:
             updates = transport.poll_updates()
             time.sleep(0.05)
-        assert updates, "expected initial document update"
+        assert updates, "expected initial scene update"
 
         transport.send_command(EntityClicked("seg-a"))
         deadline = time.time() + 5

@@ -2,7 +2,7 @@
 Two Line Plots - debug-oriented example that renders two live line plots at once with no 3-D host.
 
 Patterns shown:
-  - LayoutSpec.line_plot_view_ids with multiple line plot panels in one window
+  - explicit PanelSpec line-plot panels with a row-major panel_grid
   - a single appended 2-D Field feeding multiple views through selectors
   - BufferedSession live updates without morphology or surface views
 
@@ -16,7 +16,7 @@ import time
 
 import numpy as np
 
-from compneurovis import AppSpec, Field, LayoutSpec, LinePlotViewSpec, Scene, run_app
+from compneurovis import AppSpec, Field, LayoutSpec, LinePlotViewSpec, PanelSpec, Scene, run_app
 from compneurovis.session import BufferedSession, FieldAppend
 
 
@@ -85,7 +85,11 @@ def build_scene() -> Scene:
         views=views,
         layout=LayoutSpec(
             title="Two Line Plots",
-            line_plot_view_ids=("trace-fast", "trace-slow"),
+            panels=(
+                PanelSpec(id="trace-fast-panel", kind="line_plot", view_ids=("trace-fast",)),
+                PanelSpec(id="trace-slow-panel", kind="line_plot", view_ids=("trace-slow",)),
+            ),
+            panel_grid=(("trace-fast-panel", "trace-slow-panel"),),
         ),
     )
 

@@ -6,7 +6,7 @@ together in real time. No simulation or session is involved.
 
 Patterns shown:
   - GridSliceOperatorSpec to model a reusable slice operator over a surface field
-  - View3DHostSpec.operator_ids to project operator overlays into the 3-D host without baking them into SurfaceViewSpec
+  - PanelSpec.operator_ids to project operator overlays into the 3-D panel without baking them into SurfaceViewSpec
   - LinePlotViewSpec.operator_id to show the operator output as a linked 2-D trace
 
 Run: python examples/surface_plot/surface_cross_section_visualizer.py
@@ -18,8 +18,8 @@ from compneurovis import (
     ControlSpec,
     GridSliceOperatorSpec,
     LinePlotViewSpec,
+    PanelSpec,
     SurfaceViewSpec,
-    View3DHostSpec,
     build_surface_app,
     grid_field,
     run_app,
@@ -105,12 +105,26 @@ app = build_surface_app(
     line_views=(line_view,),
     operators={slice_operator.id: slice_operator},
     controls=controls,
-    view_3d_hosts=(View3DHostSpec(
-        id="surface-host",
-        view_ids=("surface",),
-        operator_ids=(slice_operator.id,),
-        camera_distance=30.0,
-    ),),
+    panels=(
+        PanelSpec(
+            id="surface-host",
+            kind="view_3d",
+            view_ids=("surface",),
+            operator_ids=(slice_operator.id,),
+            camera_distance=30.0,
+        ),
+        PanelSpec(
+            id="cross-section-panel",
+            kind="line_plot",
+            view_ids=("cross-section",),
+        ),
+        PanelSpec(
+            id="controls-panel",
+            kind="controls",
+            control_ids=tuple(controls.keys()),
+        ),
+    ),
+    panel_grid=(("surface-host", "cross-section-panel"), ("controls-panel",)),
 )
 
 

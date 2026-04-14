@@ -7,105 +7,208 @@ from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry
 from compneurovis.core.operators import OperatorSpec
-from compneurovis.core.views import ViewSpec
+from compneurovis.core.views import LinePlotViewSpec, MorphologyViewSpec, SurfaceViewSpec, ViewSpec
+
+
+PANEL_KIND_VIEW_3D = "view_3d"
+PANEL_KIND_LINE_PLOT = "line_plot"
+PANEL_KIND_CONTROLS = "controls"
 
 
 @dataclass(slots=True)
-class View3DHostSpec:
+class PanelSpec:
     id: str
-    view_ids: tuple[str, ...]
+    kind: str
+    view_ids: tuple[str, ...] = ()
+    control_ids: tuple[str, ...] = ()
+    action_ids: tuple[str, ...] = ()
     operator_ids: tuple[str, ...] = ()
-    kind: str = "independent_canvas"
+    host_kind: str = "independent_canvas"
     title: str | None = None
     camera_distance: float | None = 200.0
     camera_elevation: float = 30.0
     camera_azimuth: float = 30.0
 
-    def normalized(self) -> "View3DHostSpec | None":
-        view_ids = tuple(dict.fromkeys(view_id for view_id in self.view_ids if view_id))
-        operator_ids = tuple(dict.fromkeys(operator_id for operator_id in self.operator_ids if operator_id))
-        if not view_ids:
-            return None
-        host_id = self.id or view_ids[0]
-        return View3DHostSpec(
-            id=host_id,
-            view_ids=view_ids,
-            operator_ids=operator_ids,
-            kind=self.kind,
-            title=self.title,
-            camera_distance=self.camera_distance,
-            camera_elevation=self.camera_elevation,
-            camera_azimuth=self.camera_azimuth,
-        )
-
 
 @dataclass(slots=True)
 class LayoutSpec:
     title: str = "CompNeuroVis"
-    main_3d_view_id: str | None = None
-    view_3d_ids: tuple[str, ...] = ()
-    view_3d_hosts: tuple[View3DHostSpec, ...] = ()
-    line_plot_view_ids: tuple[str, ...] = ()
+    panels: tuple[PanelSpec, ...] = ()
     panel_grid: tuple[tuple[str, ...], ...] = ()
-    control_ids: tuple[str, ...] = ()
-    action_ids: tuple[str, ...] = ()
 
-    def resolved_3d_view_ids(self) -> tuple[str, ...]:
-        if self.view_3d_ids:
-            return tuple(dict.fromkeys(view_id for view_id in self.view_3d_ids if view_id))
-        if self.main_3d_view_id is None:
-            return ()
-        return (self.main_3d_view_id,)
+    def resolved_panels(self) -> tuple[PanelSpec, ...]:
+        return self.panels
 
-    def resolved_3d_hosts(self) -> tuple[View3DHostSpec, ...]:
-        if self.view_3d_hosts:
-            resolved_hosts: list[View3DHostSpec] = []
-            seen_view_ids: set[str] = set()
-            for host in self.view_3d_hosts:
-                normalized = host.normalized()
-                if normalized is None:
-                    continue
-                filtered_view_ids = tuple(view_id for view_id in normalized.view_ids if view_id not in seen_view_ids)
-                if not filtered_view_ids:
-                    continue
-                seen_view_ids.update(filtered_view_ids)
-                resolved_hosts.append(
-                    View3DHostSpec(
-                        id=normalized.id,
-                        view_ids=filtered_view_ids,
-                        operator_ids=normalized.operator_ids,
-                        kind=normalized.kind,
-                        title=normalized.title,
-                        camera_distance=normalized.camera_distance,
-                        camera_elevation=normalized.camera_elevation,
-                        camera_azimuth=normalized.camera_azimuth,
+    def panels_of_kind(self, kind: str) -> tuple[PanelSpec, ...]:
+        return tuple(panel for panel in self.panels if panel.kind == kind)
+
+    def panel(self, panel_id: str) -> PanelSpec | None:
+        for panel in self.panels:
+            if panel.id == panel_id:
+                return panel
+        return None
+
+    def panel_for_view(self, view_id: str, *, kind: str | None = None) -> PanelSpec | None:
+        for panel in self.panels:
+            if kind is not None and panel.kind != kind:
+                continue
+            if view_id in panel.view_ids:
+                return panel
+        return None
+
+    def normalize_panels(
+        self,
+        *,
+        views: dict[str, ViewSpec],
+        controls: dict[str, ControlSpec],
+        actions: dict[str, ActionSpec],
+    ) -> None:
+        if self.panels:
+            self.panels = self._normalize_explicit_panels(
+                views=views,
+                controls=controls,
+                actions=actions,
+            )
+        else:
+            self.panels = self._derive_default_panels(
+                views=views,
+                controls=controls,
+                actions=actions,
+            )
+
+    def _normalize_explicit_panels(
+        self,
+        *,
+        views: dict[str, ViewSpec],
+        controls: dict[str, ControlSpec],
+        actions: dict[str, ActionSpec],
+    ) -> tuple[PanelSpec, ...]:
+        normalized: list[PanelSpec] = []
+        seen_panel_ids: set[str] = set()
+        seen_view_ids: set[str] = set()
+
+        for panel in self.panels:
+            panel_id = panel.id.strip()
+            if not panel_id:
+                raise ValueError("PanelSpec.id must be non-empty")
+            if panel_id in seen_panel_ids:
+                raise ValueError(f"Duplicate panel id '{panel_id}'")
+
+            if panel.kind == PANEL_KIND_VIEW_3D:
+                view_ids = tuple(
+                    dict.fromkeys(
+                        view_id
+                        for view_id in panel.view_ids
+                        if view_id in views and isinstance(views[view_id], (MorphologyViewSpec, SurfaceViewSpec))
                     )
                 )
-            return tuple(resolved_hosts)
-        return tuple(
-            View3DHostSpec(id=view_id, view_ids=(view_id,), kind="independent_canvas")
-            for view_id in self.resolved_3d_view_ids()
-        )
+                if not view_ids:
+                    continue
+                duplicate_view_ids = [view_id for view_id in view_ids if view_id in seen_view_ids]
+                if duplicate_view_ids:
+                    joined = ", ".join(duplicate_view_ids)
+                    raise ValueError(f"3D view ids assigned to multiple panels: {joined}")
+                seen_view_ids.update(view_ids)
+                normalized.append(
+                    PanelSpec(
+                        id=panel_id,
+                        kind=panel.kind,
+                        view_ids=view_ids,
+                        operator_ids=tuple(dict.fromkeys(operator_id for operator_id in panel.operator_ids if operator_id)),
+                        host_kind=panel.host_kind,
+                        title=panel.title,
+                        camera_distance=panel.camera_distance,
+                        camera_elevation=panel.camera_elevation,
+                        camera_azimuth=panel.camera_azimuth,
+                    )
+                )
+            elif panel.kind == PANEL_KIND_LINE_PLOT:
+                view_ids = tuple(
+                    dict.fromkeys(
+                        view_id
+                        for view_id in panel.view_ids
+                        if view_id in views and isinstance(views[view_id], LinePlotViewSpec)
+                    )
+                )
+                if not view_ids:
+                    continue
+                if len(view_ids) != 1:
+                    raise ValueError(
+                        f"Line plot panel '{panel_id}' must reference exactly one line-plot view id"
+                    )
+                duplicate_view_ids = [view_id for view_id in view_ids if view_id in seen_view_ids]
+                if duplicate_view_ids:
+                    joined = ", ".join(duplicate_view_ids)
+                    raise ValueError(f"Line plot view ids assigned to multiple panels: {joined}")
+                seen_view_ids.update(view_ids)
+                normalized.append(
+                    PanelSpec(
+                        id=panel_id,
+                        kind=panel.kind,
+                        view_ids=view_ids,
+                        title=panel.title,
+                    )
+                )
+            elif panel.kind == PANEL_KIND_CONTROLS:
+                control_ids = tuple(dict.fromkeys(control_id for control_id in panel.control_ids if control_id))
+                action_ids = tuple(dict.fromkeys(action_id for action_id in panel.action_ids if action_id))
+                if not control_ids and not action_ids:
+                    control_ids = tuple(controls.keys())
+                    action_ids = tuple(actions.keys())
+                normalized.append(
+                    PanelSpec(
+                        id=panel_id,
+                        kind=panel.kind,
+                        control_ids=control_ids,
+                        action_ids=action_ids,
+                        title=panel.title,
+                    )
+                )
+            else:
+                raise ValueError(f"Unsupported panel kind '{panel.kind}'")
 
-    def normalize_3d_views(self) -> None:
-        resolved_hosts = self.resolved_3d_hosts()
-        resolved_view_ids = tuple(
-            dict.fromkeys(
-                view_id
-                for host in resolved_hosts
-                for view_id in host.view_ids
+            seen_panel_ids.add(panel_id)
+
+        return tuple(normalized)
+
+    def _derive_default_panels(
+        self,
+        *,
+        views: dict[str, ViewSpec],
+        controls: dict[str, ControlSpec],
+        actions: dict[str, ActionSpec],
+    ) -> tuple[PanelSpec, ...]:
+        panels: list[PanelSpec] = []
+
+        for view in views.values():
+            if isinstance(view, (MorphologyViewSpec, SurfaceViewSpec)):
+                panels.append(
+                    PanelSpec(
+                        id=f"{view.id}-panel",
+                        kind=PANEL_KIND_VIEW_3D,
+                        view_ids=(view.id,),
+                    )
+                )
+            elif isinstance(view, LinePlotViewSpec):
+                panels.append(
+                    PanelSpec(
+                        id=f"{view.id}-panel",
+                        kind=PANEL_KIND_LINE_PLOT,
+                        view_ids=(view.id,),
+                    )
+                )
+
+        if controls or actions:
+            panels.append(
+                PanelSpec(
+                    id="controls-panel",
+                    kind=PANEL_KIND_CONTROLS,
+                    control_ids=tuple(controls.keys()),
+                    action_ids=tuple(actions.keys()),
+                )
             )
-        )
-        self.view_3d_hosts = resolved_hosts
-        self.view_3d_ids = resolved_view_ids
-        self.main_3d_view_id = resolved_view_ids[0] if resolved_view_ids else None
 
-    def resolved_line_plot_view_ids(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(view_id for view_id in self.line_plot_view_ids if view_id))
-
-    def normalize_line_plots(self) -> None:
-        resolved_view_ids = self.resolved_line_plot_view_ids()
-        self.line_plot_view_ids = resolved_view_ids
+        return tuple(panels)
 
 
 @dataclass(slots=True)
@@ -127,12 +230,11 @@ class Scene:
         self.controls = dict(self.controls)
         self.actions = dict(self.actions)
         self.metadata = dict(self.metadata)
-        self.layout.normalize_3d_views()
-        self.layout.normalize_line_plots()
-        if not self.layout.control_ids:
-            self.layout.control_ids = tuple(self.controls.keys())
-        if not self.layout.action_ids:
-            self.layout.action_ids = tuple(self.actions.keys())
+        self.layout.normalize_panels(
+            views=self.views,
+            controls=self.controls,
+            actions=self.actions,
+        )
 
     def replace_view(self, view_id: str, updates: dict[str, Any]) -> None:
         self.views[view_id] = replace(self.views[view_id], **updates)

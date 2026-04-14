@@ -19,12 +19,12 @@ Grid operators such as `GridSliceOperatorSpec` are rendered as host-level
 overlays and can also feed other panels such as the line plot without turning
 that operator into implicit `SurfaceViewSpec` state.
 
-3D layout is now routed through explicit host specs:
+3D layout is now routed through explicit panel specs:
 
-- `View3DHostSpec` describes how one or more 3D views are mounted
-- `View3DHostSpec` also carries host-level starting camera settings such as
+- `PanelSpec(kind="view_3d")` describes how one or more 3D views are mounted
+- 3-D `PanelSpec`s also carry host-level starting camera settings such as
   distance, azimuth, and elevation
-- `View3DHostSpec.operator_ids` selects which operator overlays the host should project
+- `PanelSpec.operator_ids` selects which operator overlays the host should project
 - `IndependentCanvas3DHostPanel` is the current built-in host implementation
 
 That keeps the current one-view-one-canvas behavior intact while leaving room for future shared-canvas or shared-scene hosts.

@@ -45,10 +45,7 @@ class CrashAfterOpenSession(BufferedSession):
             fields={field.id: field},
             geometries={},
             views={"trace": view},
-            layout=LayoutSpec(
-                title="Session Error Demo",
-                line_plot_view_ids=("trace",),
-            ),
+            layout=LayoutSpec(title="Session Error Demo"),
         )
 
     def advance(self) -> None:

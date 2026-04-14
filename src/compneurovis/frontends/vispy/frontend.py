@@ -12,7 +12,8 @@ from vispy import app as vispy_app, use
 
 use(app="pyqt6", gl="gl+")
 
-from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, Scene, StateBinding, SurfaceViewSpec, View3DHostSpec
+from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec
+from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
 from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, IndependentCanvas3DHostPanel, LinePlotHostPanel, LinePlotPanel, Viewport3DPanel
 from compneurovis.session import ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
 from compneurovis.session.base import resolve_startup_scene_source
@@ -123,8 +124,12 @@ class RefreshPlanner:
     def __init__(self, scene: Scene):
         self.scene = scene
 
-    def _view_3d_ids(self) -> tuple[str, ...]:
-        return self.scene.layout.resolved_3d_view_ids()
+    def _view_ids_in_3d_panels(self) -> tuple[str, ...]:
+        return tuple(
+            view_id
+            for panel in self.scene.layout.panels_of_kind(PANEL_KIND_VIEW_3D)
+            for view_id in panel.view_ids
+        )
 
     def _view_3d(self, view_id: str):
         return self.scene.views.get(view_id)
@@ -132,32 +137,29 @@ class RefreshPlanner:
     def morphology_views(self) -> dict[str, MorphologyViewSpec]:
         return {
             view_id: view
-            for view_id in self._view_3d_ids()
+            for view_id in self._view_ids_in_3d_panels()
             if isinstance((view := self._view_3d(view_id)), MorphologyViewSpec)
         }
 
     def surface_views(self) -> dict[str, SurfaceViewSpec]:
         return {
             view_id: view
-            for view_id in self._view_3d_ids()
+            for view_id in self._view_ids_in_3d_panels()
             if isinstance((view := self._view_3d(view_id)), SurfaceViewSpec)
         }
 
-    def _host_for_view(self, view_id: str) -> View3DHostSpec | None:
-        for host in self.scene.layout.view_3d_hosts:
-            if view_id in host.view_ids:
-                return host
-        return None
+    def _panel_for_view(self, view_id: str, *, kind: str | None = None) -> PanelSpec | None:
+        return self.scene.layout.panel_for_view(view_id, kind=kind)
 
     def grid_slice_operators_for_view(self, view_id: str) -> dict[str, GridSliceOperatorSpec]:
         surface_view = self.surface_views().get(view_id)
         if surface_view is None:
             return {}
-        host = self._host_for_view(view_id)
-        if host is None:
+        panel = self._panel_for_view(view_id, kind=PANEL_KIND_VIEW_3D)
+        if panel is None:
             return {}
         operators: dict[str, GridSliceOperatorSpec] = {}
-        for operator_id in host.operator_ids:
+        for operator_id in panel.operator_ids:
             operator = self.scene.operators.get(operator_id)
             if not isinstance(operator, GridSliceOperatorSpec):
                 continue
@@ -171,7 +173,8 @@ class RefreshPlanner:
     def line_views(self) -> dict[str, LinePlotViewSpec]:
         return {
             view_id: view
-            for view_id in self.scene.layout.resolved_line_plot_view_ids()
+            for panel in self.scene.layout.panels_of_kind(PANEL_KIND_LINE_PLOT)
+            for view_id in panel.view_ids
             if isinstance((view := self.scene.views.get(view_id)), LinePlotViewSpec)
         }
 
@@ -315,11 +318,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
         self.viewports: dict[str, Viewport3DPanel] = {}
         self.view_hosts: dict[str, IndependentCanvas3DHostPanel] = {}
-        self._view_to_host_id: dict[str, str] = {}
+        self._view_to_panel_id: dict[str, str] = {}
         self.line_plot_host_panels: dict[str, LinePlotHostPanel] = {}
         self.line_plot_panels: dict[str, LinePlotPanel] = {}
-        self.controls_panel = ControlsPanel(self._on_control_changed, self._on_action_invoked)
-        self.controls_host = ControlsHostPanel(self.controls_panel)
+        self.controls_host_panels: dict[str, ControlsHostPanel] = {}
+        self.controls_panels: dict[str, ControlsPanel] = {}
 
         self._layout_splitter: QtWidgets.QSplitter | None = None
 
@@ -351,7 +354,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         return next(iter(self.viewports.values()), None)
 
     def line_plot_panel(self, view_id: str) -> LinePlotPanel | None:
-        return self.line_plot_panels.get(view_id)
+        panel_id = self._view_to_panel_id.get(view_id)
+        if panel_id is None:
+            return None
+        return self.line_plot_panels.get(panel_id)
+
+    def controls_panel(self, panel_id: str) -> ControlsPanel | None:
+        return self.controls_panels.get(panel_id)
 
     def viewport_for(self, view_id: str) -> Viewport3DPanel | None:
         return self.viewports.get(view_id)
@@ -378,23 +387,27 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._apply_refresh_targets(self.refresh_planner.full_refresh_targets())
         self._show_content_state()
 
-    def _view_3d_ids(self) -> tuple[str, ...]:
+    def _view_ids_in_3d_panels(self) -> tuple[str, ...]:
         if self.scene is None:
             return ()
-        return self.scene.layout.resolved_3d_view_ids()
+        return tuple(
+            view_id
+            for panel in self.scene.layout.panels_of_kind(PANEL_KIND_VIEW_3D)
+            for view_id in panel.view_ids
+        )
 
-    def _create_view_host(self, host: View3DHostSpec):
-        if host.kind != "independent_canvas":
-            raise ValueError(f"Unsupported 3D host kind '{host.kind}'")
-        if len(host.view_ids) != 1:
+    def _create_view_host(self, panel: PanelSpec):
+        if panel.host_kind != "independent_canvas":
+            raise ValueError(f"Unsupported 3D host kind '{panel.host_kind}'")
+        if len(panel.view_ids) != 1:
             raise ValueError(
-                f"3D host '{host.id}' with kind='independent_canvas' must contain exactly one view id"
+                f"3D panel '{panel.id}' with host_kind='independent_canvas' must contain exactly one view id"
             )
-        view_id = host.view_ids[0]
+        view_id = panel.view_ids[0]
         view = self.scene.views.get(view_id) if self.scene is not None else None
-        title = host.title or getattr(view, "title", None) or view_id
+        title = panel.title or getattr(view, "title", None) or view_id
         return IndependentCanvas3DHostPanel(
-            host=host,
+            panel=panel,
             title=title,
             on_entity_selected=self._on_entity_selected,
         )
@@ -402,9 +415,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _rebuild_panels(self) -> None:
         self.viewports.clear()
         self.view_hosts.clear()
-        self._view_to_host_id.clear()
+        self._view_to_panel_id.clear()
         self.line_plot_host_panels.clear()
         self.line_plot_panels.clear()
+        self.controls_host_panels.clear()
+        self.controls_panels.clear()
 
         if self._layout_splitter is not None:
             idx = self._stack.indexOf(self._layout_splitter)
@@ -418,35 +433,21 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         outer.setOpaqueResize(False)
         self._layout_splitter = outer
 
-        controls_placed = False
         for row_cells in self._resolved_panel_grid():
             if len(row_cells) == 1:
                 cell = row_cells[0]
-                if cell == "controls":
-                    outer.addWidget(self.controls_host)
-                    controls_placed = True
-                else:
-                    widget = self._make_panel_for_cell(cell)
-                    if widget is not None:
-                        outer.addWidget(widget)
+                widget = self._make_panel_for_cell(cell)
+                if widget is not None:
+                    outer.addWidget(widget)
             else:
                 row = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
                 row.setChildrenCollapsible(False)
                 row.setOpaqueResize(False)
                 for cell in row_cells:
-                    if cell == "controls":
-                        row.addWidget(self.controls_host)
-                        controls_placed = True
-                    else:
-                        widget = self._make_panel_for_cell(cell)
-                        if widget is not None:
-                            row.addWidget(widget)
+                    widget = self._make_panel_for_cell(cell)
+                    if widget is not None:
+                        row.addWidget(widget)
                 outer.addWidget(row)
-
-        if not controls_placed:
-            controls, actions = self._resolved_controls_and_actions()
-            if controls or actions:
-                outer.addWidget(self.controls_host)
 
         self._stack.addWidget(outer)
 
@@ -462,37 +463,46 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if self.scene is None:
             return ()
         layout = self.scene.layout
-        view_ids = list(layout.resolved_3d_view_ids()) + list(layout.resolved_line_plot_view_ids())
-        controls, actions = self._resolved_controls_and_actions()
-        has_controls = bool(controls or actions)
-        if not view_ids and not has_controls:
+        non_controls = [panel.id for panel in layout.resolved_panels() if panel.kind != PANEL_KIND_CONTROLS]
+        controls = [panel.id for panel in layout.panels_of_kind(PANEL_KIND_CONTROLS)]
+        if not non_controls and not controls:
             return ()
         rows: list[tuple[str, ...]] = []
-        if view_ids:
-            rows.append(tuple(view_ids))
-        if has_controls:
-            rows.append(("controls",))
+        if non_controls:
+            rows.append(tuple(non_controls))
+        for panel_id in controls:
+            rows.append((panel_id,))
         return tuple(rows)
 
     def _make_panel_for_cell(self, cell_id: str) -> QtWidgets.QWidget | None:
         if self.scene is None:
             return None
-        view = self.scene.views.get(cell_id)
-        if isinstance(view, LinePlotViewSpec):
-            host = LinePlotHostPanel(view_id=cell_id, title=view.title or cell_id)
-            self.line_plot_host_panels[cell_id] = host
-            self.line_plot_panels[cell_id] = host.line_plot_panel
+        panel_spec = self.scene.layout.panel(cell_id)
+        if panel_spec is None:
+            return None
+        if panel_spec.kind == PANEL_KIND_LINE_PLOT:
+            view_id = panel_spec.view_ids[0]
+            view = self.scene.views.get(view_id)
+            title = panel_spec.title or getattr(view, "title", None) or view_id
+            host = LinePlotHostPanel(panel_id=panel_spec.id, view_id=view_id, title=title)
+            self.line_plot_host_panels[panel_spec.id] = host
+            self.line_plot_panels[panel_spec.id] = host.line_plot_panel
+            self._view_to_panel_id[view_id] = panel_spec.id
             return host
-        if isinstance(view, (MorphologyViewSpec, SurfaceViewSpec)):
-            host_spec = next(
-                (spec for spec in self.scene.layout.view_3d_hosts if cell_id in spec.view_ids),
-                View3DHostSpec(id=cell_id, view_ids=(cell_id,), kind="independent_canvas"),
-            )
-            panel = self._create_view_host(host_spec)
-            self.view_hosts[host_spec.id] = panel
-            self.viewports[cell_id] = panel.viewport
-            self._view_to_host_id[cell_id] = host_spec.id
+        if panel_spec.kind == PANEL_KIND_VIEW_3D:
+            panel = self._create_view_host(panel_spec)
+            self.view_hosts[panel_spec.id] = panel
+            for view_id in panel_spec.view_ids:
+                self.viewports[view_id] = panel.viewport
+                self._view_to_panel_id[view_id] = panel_spec.id
             return panel
+        if panel_spec.kind == PANEL_KIND_CONTROLS:
+            controls_panel = ControlsPanel(self._on_control_changed, self._on_action_invoked)
+            title = panel_spec.title or "Controls"
+            host = ControlsHostPanel(controls_panel, panel_id=panel_spec.id, title=title)
+            self.controls_host_panels[panel_spec.id] = host
+            self.controls_panels[panel_spec.id] = controls_panel
+            return host
         return None
 
     def _morphology_view(self, view_id: str):
@@ -514,21 +524,25 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         return view if isinstance(view, LinePlotViewSpec) else None
 
     def _view_host(self, view_id: str):
-        host_id = self._view_to_host_id.get(view_id)
-        if host_id is None:
+        panel_id = self._view_to_panel_id.get(view_id)
+        if panel_id is None:
             return None
-        return self.view_hosts.get(host_id)
+        return self.view_hosts.get(panel_id)
 
-    def _resolved_controls_and_actions(self) -> tuple[list[ControlSpec], list[ActionSpec]]:
+    def _resolved_controls_and_actions(self, panel_id: str) -> tuple[list[ControlSpec], list[ActionSpec]]:
         if self.scene is None:
             return [], []
-        controls = [self.scene.controls[control_id] for control_id in self.scene.layout.control_ids if control_id in self.scene.controls]
-        actions = [self.scene.actions[action_id] for action_id in self.scene.layout.action_ids if action_id in self.scene.actions]
+        panel = self.scene.layout.panel(panel_id)
+        if panel is None or panel.kind != PANEL_KIND_CONTROLS:
+            return [], []
+        controls = [self.scene.controls[control_id] for control_id in panel.control_ids if control_id in self.scene.controls]
+        actions = [self.scene.actions[action_id] for action_id in panel.action_ids if action_id in self.scene.actions]
         return controls, actions
 
     def _update_panel_visibility(self) -> None:
-        controls, actions = self._resolved_controls_and_actions()
-        self.controls_host.setVisible(bool(controls or actions))
+        for panel_id, host in self.controls_host_panels.items():
+            controls, actions = self._resolved_controls_and_actions(panel_id)
+            host.setVisible(bool(controls or actions))
         self._apply_panel_sizes()
 
     def _apply_panel_sizes(self) -> None:
@@ -539,9 +553,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         n_rows = self._layout_splitter.count()
         if n_rows == 0:
             return
-        last_is_controls = self._layout_splitter.widget(n_rows - 1) is self.controls_host
+        last_is_controls = isinstance(self._layout_splitter.widget(n_rows - 1), ControlsHostPanel)
         if last_is_controls and n_rows > 1:
-            ctrl_h = max(1, int(height * 0.35))
+            ctrl_h = min(max(140, int(height * 0.28)), max(140, int(height * 0.45)))
             view_h = max(1, int((height - ctrl_h) / (n_rows - 1)))
             sizes = [view_h] * (n_rows - 1) + [ctrl_h]
         else:
@@ -558,9 +572,12 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _refresh_controls(self) -> None:
         if self.scene is None:
             return
-        controls, actions = self._resolved_controls_and_actions()
-        self.controls_host.set_section_title(has_controls=bool(controls), has_actions=bool(actions))
-        self.controls_panel.set_controls(controls, actions, self.state)
+        for panel_id, host in self.controls_host_panels.items():
+            controls, actions = self._resolved_controls_and_actions(panel_id)
+            host.set_section_title(has_controls=bool(controls), has_actions=bool(actions))
+            panel = self.controls_panels.get(panel_id)
+            if panel is not None:
+                panel.set_controls(controls, actions, self.state)
 
     def _resolved_morphology_state(self, view: MorphologyViewSpec) -> dict[str, Any]:
         return {
@@ -602,16 +619,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             resolved[operator.position_state_key] = self.state.get(operator.position_state_key)
         return resolved
 
-    def _view_host_spec(self, view_id: str) -> View3DHostSpec | None:
+    def _view_panel_spec(self, view_id: str) -> PanelSpec | None:
         if self.scene is None:
             return None
-        host_id = self._view_to_host_id.get(view_id)
-        if host_id is None:
-            return None
-        for host in self.scene.layout.view_3d_hosts:
-            if host.id == host_id:
-                return host
-        return None
+        return self.scene.layout.panel_for_view(view_id, kind=PANEL_KIND_VIEW_3D)
 
     def _grid_slice_operators_for_view(self, view_id: str) -> list[GridSliceOperatorSpec]:
         if self.scene is None:
@@ -619,11 +630,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         surface_view = self._surface_view(view_id)
         if surface_view is None:
             return []
-        host = self._view_host_spec(view_id)
-        if host is None:
+        panel = self._view_panel_spec(view_id)
+        if panel is None:
             return []
         operators: list[GridSliceOperatorSpec] = []
-        for operator_id in host.operator_ids:
+        for operator_id in panel.operator_ids:
             operator = self.scene.operators.get(operator_id)
             if not isinstance(operator, GridSliceOperatorSpec):
                 continue
@@ -732,7 +743,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _refresh_line_plot(self, view_id: str) -> None:
         if self.scene is None:
             return
-        host = self.line_plot_host_panels.get(view_id)
+        panel_id = self._view_to_panel_id.get(view_id)
+        if panel_id is None:
+            return
+        host = self.line_plot_host_panels.get(panel_id)
         if host is None:
             return
         line_view = self._line_view(view_id)
@@ -797,9 +811,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             elif target.kind == "operator_overlay" and target.view_id is not None:
                 self._refresh_operator_overlays(target.view_id)
                 dirty_viewports.add(target.view_id)
-        dirty_hosts = {self._view_to_host_id[view_id] for view_id in dirty_viewports if view_id in self._view_to_host_id}
-        for host_id in dirty_hosts:
-            host = self.view_hosts.get(host_id)
+        dirty_hosts = {self._view_to_panel_id[view_id] for view_id in dirty_viewports if view_id in self._view_to_panel_id}
+        for panel_id in dirty_hosts:
+            host = self.view_hosts.get(panel_id)
             if host is not None:
                 host.commit()
 
@@ -988,10 +1002,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if self.scene is None:
             return None
         pressed = self._event_key_text(event)
-        for action_id in self.scene.layout.action_ids:
-            action = self.scene.actions.get(action_id)
-            if action is None:
-                continue
+        for action in self.scene.actions.values():
             for shortcut in action.shortcuts:
                 normalized = QtGui.QKeySequence(shortcut).toString(QtGui.QKeySequence.SequenceFormat.PortableText)
                 if normalized and normalized == pressed:

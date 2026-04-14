@@ -20,6 +20,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 
 ### Coverage
 
+- `audit-architecture-doc-consistency`
 - `audit-code-smells`
 - `audit-layer-boundaries`
 - `audit-skill-coverage`
@@ -65,6 +66,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 
 ### Docs
 
+- `audit-architecture-doc-consistency`
 - `check-concept-coverage`
 - `check-docs-coverage`
 - `update-docs-and-indexes`
@@ -114,6 +116,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 
 ### Verify
 
+- `audit-architecture-doc-consistency`
 - `audit-code-smells`
 - `audit-layer-boundaries`
 - `audit-skill-coverage`
@@ -133,6 +136,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 - `add-field-visualization`
 - `add-simulator-backend`
 - `add-view-panel`
+- `audit-architecture-doc-consistency`
 - `audit-code-smells`
 - `audit-layer-boundaries`
 - `audit-skill-coverage`
@@ -163,6 +167,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 - `add-field-visualization` (kind: authoring, surface: examples, stage: implement, trust: general): Add or update a field-driven visualization in CompNeuroVis. Use when building static or precomputed field views, grid-backed surfaces, line-plot slices, or field-oriented example apps with the builder layer. (`skills/add-field-visualization/SKILL.md`)
 - `add-simulator-backend` (kind: authoring, surface: backend, stage: implement, trust: general): Add or update a simulator backend/session for CompNeuroVis. Use when creating a new live or replay backend under compneurovis.backends, wiring it to the Session protocol, or documenting how a backend should emit SceneReady, FieldReplace or FieldAppend, StatePatch, Status, and ScenePatch updates. (`skills/add-simulator-backend/SKILL.md`)
 - `add-view-panel` (kind: authoring, surface: frontend, stage: implement, trust: general): Add or update a frontend view or panel in CompNeuroVis. Use when extending the VisPy frontend with a new panel, renderer, or view-spec consumer, or when changing how frontend-owned state maps onto rendered output. (`skills/add-view-panel/SKILL.md`)
+- `audit-architecture-doc-consistency` (kind: coverage, surface: docs, stage: verify, trust: general): Audit CompNeuroVis architecture, concept, backlog, roadmap, and proposal docs for stale, understated, overstated, or contradictory capability claims against the current repo behavior. Use after editing architecture-facing docs, when writing a design proposal, or when a sentence about current support may no longer match code, examples, or tests. (`skills/audit-architecture-doc-consistency/SKILL.md`)
 - `audit-code-smells` (kind: coverage, surface: cross-cutting, stage: verify, trust: general): Detect architectural drift patterns in CompNeuroVis that pass compilation and tests but violate the intended layering model. Use after a change touches core, session, backends, or frontend code when design violations may have crept in. (`skills/audit-code-smells/SKILL.md`)
 - `audit-layer-boundaries` (kind: coverage, surface: cross-cutting, stage: verify, trust: general): Check the CompNeuroVis import graph for structural layer violations across core, session, builders/backends, and frontends. Use when a refactor or new module may have introduced a cross-layer import that bypasses the intended dependency direction. (`skills/audit-layer-boundaries/SKILL.md`)
 - `audit-skill-coverage` (kind: coverage, surface: repo-infra, stage: verify, trust: general): Check whether a CompNeuroVis change introduces a new reusable workflow that deserves a repo-owned skill. Use after check-change-impact and before register-skill in the pr-readiness pipeline. (`skills/audit-skill-coverage/SKILL.md`)

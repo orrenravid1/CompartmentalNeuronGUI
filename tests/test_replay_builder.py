@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from compneurovis import Field, LayoutSpec, Scene, SurfaceViewSpec, build_replay_app
+from compneurovis import Field, LayoutSpec, PanelSpec, Scene, SurfaceViewSpec, build_replay_app
 from compneurovis.session import FieldReplace, Reset
 
 
@@ -20,7 +20,14 @@ def _scene() -> Scene:
         fields={field.id: field},
         geometries={},
         views={"surface": SurfaceViewSpec(id="surface", field_id=field.id)},
-        layout=LayoutSpec(title="Replay test", main_3d_view_id="surface"),
+        layout=LayoutSpec(
+            title="Replay test",
+            panels=(
+                PanelSpec(id="surface-panel", kind="view_3d", view_ids=("surface",)),
+                PanelSpec(id="controls-panel", kind="controls"),
+            ),
+            panel_grid=(("surface-panel",), ("controls-panel",)),
+        ),
     )
 
 
@@ -35,7 +42,9 @@ def test_build_replay_app_exposes_reset_action():
     assert app.scene is scene
     assert "reset" in scene.actions
     assert scene.actions["reset"].shortcuts == ("Space",)
-    assert "reset" in scene.layout.action_ids
+    controls_panel = scene.layout.panel("controls-panel")
+    assert controls_panel is not None
+    assert controls_panel.action_ids == ("reset",)
 
 
 def test_replay_session_reset_emits_first_frame():

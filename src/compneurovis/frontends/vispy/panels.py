@@ -15,7 +15,7 @@ from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
-from compneurovis.core.scene import View3DHostSpec
+from compneurovis.core.scene import PanelSpec
 from compneurovis.core.state import StateBinding
 from compneurovis.core.views import LinePlotViewSpec, MorphologyViewSpec, SurfaceViewSpec
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer, SurfaceRenderer
@@ -36,7 +36,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
     def __init__(
         self,
         *,
-        host_spec: View3DHostSpec | None = None,
+        host_spec: PanelSpec | None = None,
         on_entity_selected=None,
         parent=None,
     ):
@@ -298,11 +298,11 @@ class Viewport3DPanel(QtWidgets.QWidget):
 
 
 class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
-    def __init__(self, *, host: View3DHostSpec, title: str | None = None, on_entity_selected=None, parent=None):
-        super().__init__(title or host.view_ids[0], parent)
-        self.host_id = host.id
-        self.view_ids = host.view_ids
-        self.viewport = Viewport3DPanel(host_spec=host, on_entity_selected=on_entity_selected)
+    def __init__(self, *, panel: PanelSpec, title: str | None = None, on_entity_selected=None, parent=None):
+        super().__init__(title or panel.view_ids[0], parent)
+        self.panel_id = panel.id
+        self.view_ids = panel.view_ids
+        self.viewport = Viewport3DPanel(host_spec=panel, on_entity_selected=on_entity_selected)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 8, 4, 4)
         layout.addWidget(self.viewport)
@@ -833,8 +833,9 @@ class LinePlotPanel(pg.PlotWidget):
 
 
 class LinePlotHostPanel(QtWidgets.QGroupBox):
-    def __init__(self, *, view_id: str, title: str | None = None, parent=None):
+    def __init__(self, *, panel_id: str, view_id: str, title: str | None = None, parent=None):
         super().__init__(title or view_id, parent)
+        self.panel_id = panel_id
         self.view_id = view_id
         self.line_plot_panel = LinePlotPanel(show_internal_title=False)
         layout = QtWidgets.QVBoxLayout(self)
@@ -858,108 +859,29 @@ class LinePlotHostPanel(QtWidgets.QGroupBox):
 
 
 class ControlsPanel(QtWidgets.QWidget):
+    _MULTI_COLUMN_MIN_WIDTH = 900
+    _MULTI_COLUMN_MIN_ITEMS = 8
+
     def __init__(self, on_value_changed, on_action_invoked=None, parent=None):
         super().__init__(parent)
         self.on_value_changed = on_value_changed
         self.on_action_invoked = on_action_invoked
         self.widgets: dict[str, QtWidgets.QWidget] = {}
-        self.layout = QtWidgets.QVBoxLayout(self)
-        self.layout.setContentsMargins(6, 6, 6, 6)
-        self.layout.setSpacing(6)
+        self._controls: list[ControlSpec] = []
+        self._actions: list[ActionSpec] = []
+        self._state: dict[str, Any] = {}
+        self._column_count = 1
+        self._grid = QtWidgets.QGridLayout(self)
+        self._grid.setContentsMargins(6, 6, 6, 6)
+        self._grid.setHorizontalSpacing(10)
+        self._grid.setVerticalSpacing(6)
+        self._grid.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def set_controls(self, controls: list[ControlSpec], actions: list[ActionSpec], state: dict[str, Any]) -> None:
-        while self.layout.count():
-            item = self.layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-        self.widgets.clear()
-
-        for control in controls:
-            row = QtWidgets.QWidget()
-            row_layout = QtWidgets.QHBoxLayout(row)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.addWidget(QtWidgets.QLabel(control.label))
-            key = control.resolved_state_key()
-            current = state.get(key, control.default)
-
-            if control.kind in ("float", "double"):
-                slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
-                steps = int(control.steps or 100)
-                slider.setRange(0, steps)
-                mn = float(control.min if control.min is not None else 0.0)
-                mx = float(control.max if control.max is not None else 1.0)
-                value_label = QtWidgets.QLabel("")
-
-                def on_change(raw: int, *, spec=control, label=value_label, min_value=mn, max_value=mx, steps_value=steps):
-                    frac = raw / max(1, steps_value)
-                    if spec.scale == "log" and min_value > 0 and max_value > min_value:
-                        value = float(min_value * ((max_value / min_value) ** frac))
-                    else:
-                        value = float(min_value + (max_value - min_value) * frac)
-                    label.setText(f"{value:.3g}")
-                    self.on_value_changed(spec, value)
-
-                try:
-                    v0 = int(round((float(current) - mn) / (mx - mn) * steps)) if mx > mn else 0
-                except Exception:
-                    v0 = 0
-                slider.setValue(max(0, min(steps, v0)))
-                slider.valueChanged.connect(on_change)
-                frac = slider.value() / max(1, steps)
-                if control.scale == "log" and mn > 0 and mx > mn:
-                    initial_value = float(mn * ((mx / mn) ** frac))
-                else:
-                    initial_value = float(mn + (mx - mn) * frac)
-                value_label.setText(f"{initial_value:.3g}")
-                row_layout.addWidget(slider, 1)
-                row_layout.addWidget(value_label)
-                self.widgets[control.id] = slider
-
-            elif control.kind == "int":
-                spin = QtWidgets.QSpinBox()
-                spin.setRange(int(control.min if control.min is not None else 0), int(control.max if control.max is not None else 100))
-                spin.setValue(int(current))
-                spin.valueChanged.connect(lambda value, spec=control: self.on_value_changed(spec, int(value)))
-                row_layout.addWidget(spin)
-                self.widgets[control.id] = spin
-
-            elif control.kind == "bool":
-                checkbox = QtWidgets.QCheckBox()
-                checkbox.setChecked(bool(current))
-                checkbox.toggled.connect(lambda value, spec=control: self.on_value_changed(spec, bool(value)))
-                row_layout.addWidget(checkbox)
-                self.widgets[control.id] = checkbox
-
-            elif control.kind == "enum":
-                combo = QtWidgets.QComboBox()
-                combo.addItems([str(option) for option in control.options])
-                if str(current) in control.options:
-                    combo.setCurrentIndex(control.options.index(str(current)))
-                combo.currentIndexChanged.connect(
-                    lambda idx, spec=control, options=control.options: self.on_value_changed(spec, options[int(idx)])
-                )
-                row_layout.addWidget(combo)
-                self.widgets[control.id] = combo
-
-            self.layout.addWidget(row)
-
-        if actions:
-            if controls:
-                divider = QtWidgets.QFrame()
-                divider.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-                divider.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
-                self.layout.addWidget(divider)
-
-            for action in actions:
-                button = QtWidgets.QPushButton(action.label)
-                button.clicked.connect(lambda _checked=False, spec=action: self._invoke_action(spec, state))
-                if action.shortcuts:
-                    button.setToolTip(f"Shortcut: {', '.join(action.shortcuts)}")
-                self.layout.addWidget(button)
-                self.widgets[action.id] = button
-
-        self.layout.addStretch(1)
+        self._controls = list(controls)
+        self._actions = list(actions)
+        self._state = state
+        self._rebuild_grid(force=True)
 
     def _invoke_action(self, action: ActionSpec, state: dict[str, Any]) -> None:
         if self.on_action_invoked is None:
@@ -970,14 +892,155 @@ class ControlsPanel(QtWidgets.QWidget):
         }
         self.on_action_invoked(action, payload)
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._rebuild_grid(force=False)
+
+    def _desired_column_count(self) -> int:
+        item_count = len(self._controls) + len(self._actions)
+        if item_count < self._MULTI_COLUMN_MIN_ITEMS:
+            return 1
+        if self.width() < self._MULTI_COLUMN_MIN_WIDTH:
+            return 1
+        return 2
+
+    def _clear_grid(self) -> None:
+        while self._grid.count():
+            item = self._grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _rebuild_grid(self, *, force: bool) -> None:
+        column_count = self._desired_column_count()
+        if not force and column_count == self._column_count:
+            return
+
+        self._column_count = column_count
+        self._clear_grid()
+        self.widgets.clear()
+
+        for column in range(column_count):
+            self._grid.setColumnStretch(column, 1)
+
+        row_index = 0
+        for index, control in enumerate(self._controls):
+            row = row_index + (index // column_count)
+            column = index % column_count
+            self._grid.addWidget(self._build_control_row(control, self._state), row, column)
+        if self._controls:
+            row_index += math.ceil(len(self._controls) / column_count)
+
+        if self._controls and self._actions:
+            divider = QtWidgets.QFrame()
+            divider.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+            divider.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+            self._grid.addWidget(divider, row_index, 0, 1, column_count)
+            row_index += 1
+
+        for index, action in enumerate(self._actions):
+            row = row_index + (index // column_count)
+            column = index % column_count
+            self._grid.addWidget(self._build_action_button(action, self._state), row, column)
+
+        if self._actions:
+            row_index += math.ceil(len(self._actions) / column_count)
+
+        self._grid.setRowStretch(row_index, 1)
+
+    def _build_control_row(self, control: ControlSpec, state: dict[str, Any]) -> QtWidgets.QWidget:
+        row = QtWidgets.QWidget()
+        row_layout = QtWidgets.QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(QtWidgets.QLabel(control.label))
+        key = control.resolved_state_key()
+        current = state.get(key, control.default)
+
+        if control.kind in ("float", "double"):
+            slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+            steps = int(control.steps or 100)
+            slider.setRange(0, steps)
+            mn = float(control.min if control.min is not None else 0.0)
+            mx = float(control.max if control.max is not None else 1.0)
+            value_label = QtWidgets.QLabel("")
+
+            def on_change(raw: int, *, spec=control, label=value_label, min_value=mn, max_value=mx, steps_value=steps):
+                frac = raw / max(1, steps_value)
+                if spec.scale == "log" and min_value > 0 and max_value > min_value:
+                    value = float(min_value * ((max_value / min_value) ** frac))
+                else:
+                    value = float(min_value + (max_value - min_value) * frac)
+                label.setText(f"{value:.3g}")
+                self.on_value_changed(spec, value)
+
+            try:
+                v0 = int(round((float(current) - mn) / (mx - mn) * steps)) if mx > mn else 0
+            except Exception:
+                v0 = 0
+            slider.setValue(max(0, min(steps, v0)))
+            slider.valueChanged.connect(on_change)
+            frac = slider.value() / max(1, steps)
+            if control.scale == "log" and mn > 0 and mx > mn:
+                initial_value = float(mn * ((mx / mn) ** frac))
+            else:
+                initial_value = float(mn + (mx - mn) * frac)
+            value_label.setText(f"{initial_value:.3g}")
+            row_layout.addWidget(slider, 1)
+            row_layout.addWidget(value_label)
+            self.widgets[control.id] = slider
+
+        elif control.kind == "int":
+            spin = QtWidgets.QSpinBox()
+            spin.setRange(int(control.min if control.min is not None else 0), int(control.max if control.max is not None else 100))
+            spin.setValue(int(current))
+            spin.valueChanged.connect(lambda value, spec=control: self.on_value_changed(spec, int(value)))
+            row_layout.addWidget(spin)
+            self.widgets[control.id] = spin
+
+        elif control.kind == "bool":
+            checkbox = QtWidgets.QCheckBox()
+            checkbox.setChecked(bool(current))
+            checkbox.toggled.connect(lambda value, spec=control: self.on_value_changed(spec, bool(value)))
+            row_layout.addWidget(checkbox)
+            self.widgets[control.id] = checkbox
+
+        elif control.kind == "enum":
+            combo = QtWidgets.QComboBox()
+            combo.addItems([str(option) for option in control.options])
+            if str(current) in control.options:
+                combo.setCurrentIndex(control.options.index(str(current)))
+            combo.currentIndexChanged.connect(
+                lambda idx, spec=control, options=control.options: self.on_value_changed(spec, options[int(idx)])
+            )
+            row_layout.addWidget(combo)
+            self.widgets[control.id] = combo
+
+        return row
+
+    def _build_action_button(self, action: ActionSpec, state: dict[str, Any]) -> QtWidgets.QPushButton:
+        button = QtWidgets.QPushButton(action.label)
+        button.clicked.connect(lambda _checked=False, spec=action: self._invoke_action(spec, state))
+        if action.shortcuts:
+            button.setToolTip(f"Shortcut: {', '.join(action.shortcuts)}")
+        self.widgets[action.id] = button
+        return button
+
 
 class ControlsHostPanel(QtWidgets.QGroupBox):
-    def __init__(self, controls_panel: ControlsPanel, *, title: str = "Controls", parent=None):
+    def __init__(self, controls_panel: ControlsPanel, *, panel_id: str, title: str = "Controls", parent=None):
         super().__init__(title, parent)
+        self.panel_id = panel_id
         self.controls_panel = controls_panel
+        self.scroll_area = QtWidgets.QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setWidget(self.controls_panel)
+        self.setMinimumHeight(0)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Ignored)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 8, 4, 4)
-        layout.addWidget(self.controls_panel)
+        layout.addWidget(self.scroll_area)
 
     def set_section_title(self, *, has_controls: bool, has_actions: bool) -> None:
         if has_controls and has_actions:

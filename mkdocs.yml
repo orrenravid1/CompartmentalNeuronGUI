@@ -82,6 +82,8 @@ nav:
           - Roadmap: architecture/design/roadmap.md
           - Design Decisions: architecture/design/decisions.md
           - Backlog: architecture/design/backlog.md
+          - Proposals:
+              - Layout Workbench: architecture/design/proposals/layout-workbench-proposal.md
   - API Reference:
       - Overview: api/index.md
       - Public API: api/public-api.md

@@ -1,6 +1,6 @@
 from compneurovis.core.bindings import AttributeRef, SeriesSpec
 from compneurovis.core.controls import ActionSpec, ControlSpec
-from compneurovis.core.scene import AppSpec, LayoutSpec, Scene, View3DHostSpec
+from compneurovis.core.scene import AppSpec, LayoutSpec, PanelSpec, Scene
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry, GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
@@ -22,9 +22,9 @@ __all__ = [
     "MorphologyGeometry",
     "MorphologyViewSpec",
     "OperatorSpec",
+    "PanelSpec",
     "SeriesSpec",
     "StateBinding",
     "SurfaceViewSpec",
-    "View3DHostSpec",
     "ViewSpec",
 ]

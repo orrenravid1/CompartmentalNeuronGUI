@@ -18,12 +18,13 @@ Run this sequence:
 2. Use `check-docs-coverage` to verify every name in `__all__` appears in at least one authored doc. Uncovered names are required work before the change is doc-complete.
 3. If the change added a builder, session type, view spec, or geometry type, use `check-tutorial-coverage` to verify each has a tutorial or non-debug example.
 4. If the change introduced a new major primitive or interaction model, use `check-concept-coverage` to verify a concept doc exists for it.
-5. Use `check-test-coverage-drift` to confirm the current tests still defend the changed behavior.
-6. Use `audit-skill-coverage` to determine whether the change introduces a new reusable workflow that warrants a new skill.
-7. If the change is a deliberate terminology or taxonomy rename, use `breaking-rename-sweep`.
-8. If a skill was created or renamed, use `register-skill`.
-9. Use `update-docs-and-indexes` when code paths, package boundaries, public API, workflow docs, `AGENTS.md`, package READMEs, or generated indexes changed. This is still required when the docs edits were incidental to another change.
-10. Run the verification set that matches the impact:
+5. If architecture, concept, roadmap, backlog, or proposal docs changed, use `audit-architecture-doc-consistency` to catch stale or contradictory capability claims.
+6. Use `check-test-coverage-drift` to confirm the current tests still defend the changed behavior.
+7. Use `audit-skill-coverage` to determine whether the change introduces a new reusable workflow that warrants a new skill.
+8. If the change is a deliberate terminology or taxonomy rename, use `breaking-rename-sweep`.
+9. If a skill was created or renamed, use `register-skill`.
+10. Use `update-docs-and-indexes` when code paths, package boundaries, public API, workflow docs, `AGENTS.md`, package READMEs, or generated indexes changed. This is still required when the docs edits were incidental to another change.
+11. Run the verification set that matches the impact:
    - targeted `pytest` modules first
    - `python scripts/check_architecture_invariants.py`
    - `python scripts/check_packaging_metadata.py`
@@ -33,9 +34,9 @@ Run this sequence:
    - `python -m mkdocs build --strict`
    - optionally, for stricter docs-language CI, `python scripts/check_docs_vocabulary.py --fail-on-warnings`
    - for human contributors without agent support, `python scripts/pr_readiness.py check` is the one-command local quality gate
-11. When the implementation commit is complete and the working tree is clean, run `python scripts/pr_readiness.py seal`.
-12. Human contributors should usually prefer `python scripts/pr_readiness.py seal --commit`, which creates the standalone final attestation commit automatically.
-13. If any code, docs, examples, or skill files change after the seal, regenerate the attestation and create a new final seal commit.
+12. When the implementation commit is complete and the working tree is clean, run `python scripts/pr_readiness.py seal`.
+13. Human contributors should usually prefer `python scripts/pr_readiness.py seal --commit`, which creates the standalone final attestation commit automatically.
+14. If any code, docs, examples, or skill files change after the seal, regenerate the attestation and create a new final seal commit.
 
 Finish with a short readiness report that states:
 

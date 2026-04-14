@@ -23,11 +23,11 @@ The top-level package gathers the most important public types and entrypoints in
         - LinePlotViewSpec
         - MorphologyGeometry
         - MorphologyViewSpec
+        - PanelSpec
         - ReplaySession
         - SeriesSpec
         - StateBinding
         - SurfaceViewSpec
-        - View3DHostSpec
         - ViewSpec
         - VispyFrontendWindow
         - build_replay_app

@@ -677,13 +677,15 @@ class SurfaceRenderer:
             if colors is not None:
                 self.surface.set_data(x=x, y=y, z=z, colors=colors)
             else:
-                self.surface.set_data(x=x, y=y, z=z, color=surface_rgba)
+                self.surface.set_data(x=x, y=y, z=z)
+                self.surface.color = surface_rgba
         else:
             # Only z (and colors) changed — skip x/y GPU upload.
             if colors is not None:
                 self.surface.set_data(z=z, colors=colors)
             else:
-                self.surface.set_data(z=z, color=surface_rgba)
+                self.surface.set_data(z=z)
+                self.surface.color = surface_rgba
         if recreate_surface:
             self.view.camera.set_range()
 

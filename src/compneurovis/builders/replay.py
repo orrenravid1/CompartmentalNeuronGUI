@@ -44,8 +44,11 @@ def build_replay_app(*, scene: Scene, field_id: str, frames) -> AppSpec:
     """Build an app that replays precomputed frames through ReplaySession."""
 
     scene.actions.setdefault("reset", ActionSpec("reset", "Reset", shortcuts=("Space",)))
-    if "reset" not in scene.layout.action_ids:
-        scene.layout.action_ids = (*scene.layout.action_ids, "reset")
+    scene.layout.normalize_panels(
+        views=scene.views,
+        controls=scene.controls,
+        actions=scene.actions,
+    )
 
     return AppSpec(
         scene=scene,

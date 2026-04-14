@@ -74,7 +74,7 @@ Any `ViewSpec` property that accepts a `StateBinding` will resolve to the curren
 ## 4. Assemble and Run
 
 ```python
-from compneurovis import View3DHostSpec, build_surface_app, run_app
+from compneurovis import PanelSpec, build_surface_app, run_app
 
 app = build_surface_app(
     field=field,
@@ -82,19 +82,28 @@ app = build_surface_app(
     title="sinc surface",
     surface_view=surface_view,
     controls=controls,
-    view_3d_hosts=(View3DHostSpec(
-        id="surface-host",
-        view_ids=("surface",),
-        camera_distance=120.0,
-    ),),
+    panels=(
+        PanelSpec(
+            id="surface-panel",
+            kind="view_3d",
+            view_ids=("surface",),
+            camera_distance=120.0,
+        ),
+        PanelSpec(
+            id="controls-panel",
+            kind="controls",
+            control_ids=tuple(controls.keys()),
+        ),
+    ),
+    panel_grid=(("surface-panel",), ("controls-panel",)),
 )
 
 run_app(app)
 ```
 
 `build_surface_app()` builds the `Scene` and `AppSpec` for you. There is no `Session` — the field values are static.
-Use `view_3d_hosts` when you want to tune host-level camera settings such as the
-initial distance without changing what the `SurfaceViewSpec` renders.
+Use a 3-D `PanelSpec` when you want to tune host-level camera settings such as
+the initial distance without changing what the `SurfaceViewSpec` renders.
 
 ## Adding a Line Plot Slice
 
@@ -122,19 +131,13 @@ line_view = LinePlotViewSpec(
 ```
 
 Then pass `line_views=(line_view,)` and `operators={slice_operator.id: slice_operator}`
-to `build_surface_app(...)`, and attach the operator to the 3-D host through
-`View3DHostSpec.operator_ids`, for example:
+to `build_surface_app(...)`, and attach the operator to the 3-D panel through
+`PanelSpec.operator_ids`, for example:
 
 `line_views` accepts any number of `LinePlotViewSpec`s. The frontend mounts one
 framed plot host per listed view, in the order you pass them.
 
 ```python
-surface_host = View3DHostSpec(
-    id="surface-host",
-    view_ids=("surface",),
-    operator_ids=(slice_operator.id,),
-)
-
 app = build_surface_app(
     field=field,
     geometry=geometry,
@@ -142,7 +145,25 @@ app = build_surface_app(
     line_views=(line_view,),
     operators={slice_operator.id: slice_operator},
     controls=controls,
-    view_3d_hosts=(surface_host,),
+    panels=(
+        PanelSpec(
+            id="surface-panel",
+            kind="view_3d",
+            view_ids=("surface",),
+            operator_ids=(slice_operator.id,),
+        ),
+        PanelSpec(
+            id="line-panel",
+            kind="line_plot",
+            view_ids=("line",),
+        ),
+        PanelSpec(
+            id="controls-panel",
+            kind="controls",
+            control_ids=tuple(controls.keys()),
+        ),
+    ),
+    panel_grid=(("surface-panel", "line-panel"), ("controls-panel",)),
 )
 ```
 

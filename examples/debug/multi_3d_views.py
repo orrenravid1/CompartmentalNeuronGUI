@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, Scene, SurfaceViewSpec, View3DHostSpec, grid_field, run_app
+from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, SurfaceViewSpec, grid_field, run_app
 
 
 def build_demo_app() -> AppSpec:
@@ -65,10 +65,11 @@ def build_demo_app() -> AppSpec:
         },
         layout=LayoutSpec(
             title="Multi 3D View Demo",
-            view_3d_hosts=(
-                View3DHostSpec(id="morphology-host", view_ids=("morphology",)),
-                View3DHostSpec(id="surface-host", view_ids=("surface",)),
+            panels=(
+                PanelSpec(id="morphology-host", kind="view_3d", view_ids=("morphology",)),
+                PanelSpec(id="surface-host", kind="view_3d", view_ids=("surface",), camera_distance=30.0),
             ),
+            panel_grid=(("morphology-host", "surface-host"),),
         ),
     )
     return AppSpec(scene=scene, title="Multi 3D View Demo")

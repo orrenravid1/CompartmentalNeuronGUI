@@ -7,6 +7,10 @@ summary: Deferred features, infrastructure ideas, and cleanup items. Freely edit
 
 Deferred work items. Add new ideas here with a `Phase:` tag. For active priorities and what's in flight, see [Roadmap](roadmap.md). For the reasoning behind architectural choices, see [Design Decisions](decisions.md).
 
+Large, multi-step feature plans should not live only as oversized backlog
+entries. Put the detailed plan under `docs/architecture/design/proposals/` and
+link it here so the backlog stays scannable.
+
 **Phase tags:** `Phase: 2` · `Phase: 3` · `Phase: infrastructure` · `Phase: indefinite`
 
 ---
@@ -82,25 +86,34 @@ Phase: 2/3
 
 Current layout is intentionally simple and should be treated as transitional. Future work may need:
 
+- richer nested panel arrangements beyond the current row-major grid
+- explicit row/column sizing policy and persistence
 - dockable panels
 - collapsible panels
-- multiple 3D views
-- multiple plot panels
 - persistent saved layouts
+
+Detailed proposal:
+[Layout Workbench Proposal](proposals/layout-workbench-proposal.md)
 
 #### Implemented: `panel_grid` on `LayoutSpec`
 
-`panel_grid: tuple[tuple[str, ...], ...]` is live on `LayoutSpec`. Each inner tuple is a row; each string is a view ID or the sentinel `"controls"`. Empty tuple falls through to `_auto_panel_grid()` which derives a default single-row layout from `view_3d_ids` + `line_plot_view_ids` (backward compatible).
+`panel_grid: tuple[tuple[str, ...], ...]` is live on `LayoutSpec`. Each inner
+tuple is a row of panel ids. Empty tuple falls through to `_auto_panel_grid()`,
+which derives a default row-major layout from the current `PanelSpec`
+inventory.
 
 Example in use (`kenngott_marder_vis_refactor.py`):
 ```python
 panel_grid=(
-    (VOLTAGE_VIEW_ID, GATE_VIEW_ID, CURRENT_VIEW_ID),  # all 3 side-by-side
-    ("controls",),
+    (VOLTAGE_PANEL_ID, GATE_PANEL_ID, CURRENT_PANEL_ID),  # all 3 side-by-side
+    (CONTROLS_PANEL_ID,),
 )
 ```
 
-Frontend builds nested `QSplitter`s from the grid: vertical outer over rows, horizontal per row. All named splitters removed; `panel_grid` is the single layout authority. Panel dispatch is fully generic — any view ID resolves to its panel type via `_make_panel_for_cell`.
+Frontend builds nested `QSplitter`s from the grid: vertical outer over rows,
+horizontal per row. All named splitters removed; `panel_grid` is the single
+layout authority. Panel dispatch is fully generic because every cell is a
+`PanelSpec.id`.
 
 **Known limitation — row-major only.** The flat rows-of-cells model cannot express column-spanning layouts. For example, morphology spanning full height on the left with trace and controls stacked on the right:
 
@@ -111,17 +124,62 @@ Frontend builds nested `QSplitter`s from the grid: vertical outer over rows, hor
 
 This requires nesting a vertical splitter inside a horizontal one — a topology the flat grid can't represent.
 
-**Next step: `SplitSpec` tree.** Full flexibility requires a recursive split-tree spec, e.g.:
+**Next step: explicit `PanelSpec` + `SplitSpec`.** Full flexibility requires
+one explicit panel model plus a recursive split-tree layout, e.g.:
 
 ```python
 # future direction — not yet implemented
-panel_layout=HSplit(
-    "morphology",
-    VSplit("trace", "controls"),
+LayoutSpec(
+    panels=(
+        View3DPanelSpec(id="morph_panel", view_ids=("morphology",)),
+        LinePlotPanelSpec(id="trace_panel", view_id="trace"),
+        ControlsPanelSpec(id="controls_panel"),
+    ),
+    panel_layout=HSplit(
+        "morph_panel",
+        VSplit("trace_panel", "controls_panel"),
+    ),
 )
 ```
 
-`panel_grid` stays as the current interface; `SplitSpec` would be an additive replacement. Existing examples are all backward-compatible via `_auto_panel_grid()`.
+`panel_grid` is the current transitional interface. An explicit
+`PanelSpec`-plus-`SplitSpec` model should replace it once the recursive layout
+refactor lands.
+
+---
+
+### Controls Panel Density and Layout Policy
+
+Phase: 2
+
+The controls region now supports scrolling and basic automatic multi-column packing, but the current behavior is still a frontend heuristic rather than a first-class layout policy. Real apps with many sliders and actions need a more explicit way to trade density against discoverability without ad hoc per-example tuning.
+
+Future work may include:
+
+- an explicit controls-layout policy on `LayoutSpec` or a frontend config object so apps can choose `single_column`, `auto_columns`, or fixed `n` columns instead of relying only on width heuristics
+- a controls host sizing policy so apps can declare preferred placement and height behavior such as compact scrollable strip vs larger always-visible control area
+- a dense or compact controls mode with tighter row spacing and value-label treatment for parameter-heavy scientific dashboards
+- optional grouped or collapsible control sections so related parameters stay readable even when the total control count is large
+- better coordination between control density and panel layout so line plots and 3-D views remain visually dominant while controls stay accessible
+
+Deferral reason: the current scrollable host plus auto two-column behavior addresses the most immediate screen-height problem, but a high-quality live-plotting library should expose control-density tradeoffs intentionally rather than hiding them behind frontend-only heuristics.
+
+---
+
+### Cloned Views and Mirrored Presentations
+
+Phase: 2
+
+The current layout model does not support mounting the exact same 3-D `view_id` in multiple hosts. Repeated view ids are normalized away, and the frontend assumes a one-view-to-one-host mapping. The more important product question is whether apps need literal duplicate view instances, or whether they really need low-friction duplicate presentations over the same underlying data.
+
+Current investigation suggests the higher-value direction is:
+
+- make it easy to define two or more views over the same field and geometry without repetitive boilerplate
+- support optional synchronization of camera or other presentation state across sibling views when authors want mirrored or linked panels
+- treat "mirror this panel" as a convenience built on cloned views rather than as a special-case host rule
+- revisit true same-`view_id` multi-host mounting only if real apps prove cloned views and optional synchronization are insufficient
+
+Deferral reason: duplicate presentation seems useful, but literal duplicate mounting of one `ViewSpec` is probably less important than better authoring support for cloned views over shared data. That should be investigated and proven with real app cases before the host/view contract is widened.
 
 ---
 

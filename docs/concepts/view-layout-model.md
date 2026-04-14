@@ -93,25 +93,18 @@ It decides things such as:
 - whether controls are present
 - the order of panels
 
-`LayoutSpec.line_plot_view_ids` is plural on purpose. A scene may expose zero, one,
-or many line-plot panels, and their order is part of the layout contract.
+Today `LayoutSpec` already uses explicit `PanelSpec` entries for all visible
+panel kinds, including 3-D, line plots, and controls. That means visible panel
+identity is already explicit and uniform at the panel-spec level.
 
-For 3-D panels there is one more layer:
+Within that panel model, 3-D panels currently carry extra host-level settings
+such as camera distance, azimuth, elevation, host kind, and projected operator
+ids. That is because 3-D hosting currently has more policy than the other built
+in panel kinds, not because only 3-D panels have real identities.
 
-- `View3DHostSpec` answers "how are one or more 3-D views mounted?"
+Today the built-in 3-D host behavior is:
 
-That is separate from `ViewSpec` on purpose.
-
-`ViewSpec` should describe the rendered content. `View3DHostSpec` should describe hosting strategy.
-
-That includes host-level camera policy such as the initial turntable distance,
-azimuth, and elevation. If a surface or morphology example should start closer
-or from a different angle, that belongs on `View3DHostSpec`, not on the view
-spec that describes the rendered data.
-
-Today the built-in host is:
-
-- one independent canvas per 3-D view
+- one independent canvas per hosted 3-D view
 
 But the architecture is intended to allow future alternatives such as:
 
@@ -167,8 +160,8 @@ When adding or reviewing a visualization change:
 - add a new `Geometry` only when the spatial embedding is truly different
 - add a new `OperatorSpec` when the derived operation is new but the underlying data is not
 - add a new `ViewSpec` when the rendering intent is new
-- change `LayoutSpec` when panel composition changes
-- change `View3DHostSpec` when 3-D hosting strategy changes
+- change `LayoutSpec` or `PanelSpec` when panel composition changes
+- change 3-D panel host properties when 3-D hosting strategy changes
 
 If you are changing how something is shown, that is usually a view or layout problem, not a data-model problem.
 

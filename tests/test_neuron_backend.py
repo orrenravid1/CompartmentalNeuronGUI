@@ -29,8 +29,8 @@ def _geometry() -> MorphologyGeometry:
     )
 
 
-def test_neuron_document_builder_splits_display_and_trace_fields():
-    document = NeuronSceneBuilder.build_scene(
+def test_neuron_scene_builder_splits_display_and_trace_fields():
+    scene = NeuronSceneBuilder.build_scene(
         geometry=_geometry(),
         display_values=np.array([1.0, 2.0], dtype=np.float32),
         trace_values=np.array([[1.0, 2.0]], dtype=np.float32),
@@ -39,15 +39,15 @@ def test_neuron_document_builder_splits_display_and_trace_fields():
         title="Neuron split fields",
     )
 
-    assert set(document.fields.keys()) == {
+    assert set(scene.fields.keys()) == {
         NeuronSceneBuilder.DISPLAY_FIELD_ID,
         NeuronSceneBuilder.HISTORY_FIELD_ID,
     }
 
-    display_field = document.fields[NeuronSceneBuilder.DISPLAY_FIELD_ID]
-    trace_field = document.fields[NeuronSceneBuilder.HISTORY_FIELD_ID]
-    morphology_view = document.views["morphology"]
-    trace_view = document.views["trace"]
+    display_field = scene.fields[NeuronSceneBuilder.DISPLAY_FIELD_ID]
+    trace_field = scene.fields[NeuronSceneBuilder.HISTORY_FIELD_ID]
+    morphology_view = scene.views["morphology"]
+    trace_view = scene.views["trace"]
 
     assert display_field.dims == ("segment",)
     assert np.allclose(display_field.values, np.array([1.0, 2.0], dtype=np.float32))
@@ -128,32 +128,34 @@ def test_neuron_session_prefers_selected_trace_entity_ids_when_reinitializing_tr
     assert np.allclose(values, np.array([[2.0], [1.0]], dtype=np.float32))
 
 
-def test_neuron_session_default_document_uses_fixed_morphology_color_limits():
+def test_neuron_session_default_scene_uses_fixed_morphology_color_limits():
     session = DummyNeuronSession()
     geometry = _geometry()
 
-    document = session.build_scene(
+    scene = session.build_scene(
         geometry=geometry,
         display_values=np.array([1.0, 2.0], dtype=np.float32),
         time_value=0.0,
     )
 
-    assert document.views["morphology"].color_map == "scalar"
-    assert document.views["morphology"].color_limits == (-80.0, 50.0)
-    assert document.views["morphology"].color_norm == "auto"
+    assert scene.views["morphology"].color_map == "scalar"
+    assert scene.views["morphology"].color_limits == (-80.0, 50.0)
+    assert scene.views["morphology"].color_norm == "auto"
 
 
-def test_neuron_session_default_document_exposes_reset_action():
+def test_neuron_session_default_scene_exposes_reset_action():
     session = DummyNeuronSession()
     geometry = _geometry()
 
-    document = session.build_scene(
+    scene = session.build_scene(
         geometry=geometry,
         display_values=np.array([1.0, 2.0], dtype=np.float32),
         time_value=0.0,
     )
 
-    assert "reset" in document.actions
-    assert document.actions["reset"].label == "Reset"
-    assert document.actions["reset"].shortcuts == ("Space",)
-    assert document.layout.action_ids == ("reset",)
+    assert "reset" in scene.actions
+    assert scene.actions["reset"].label == "Reset"
+    assert scene.actions["reset"].shortcuts == ("Space",)
+    controls_panel = scene.layout.panel("controls-panel")
+    assert controls_panel is not None
+    assert controls_panel.action_ids == ("reset",)
