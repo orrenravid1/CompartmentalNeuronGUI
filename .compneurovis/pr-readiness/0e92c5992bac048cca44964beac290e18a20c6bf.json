@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "tool": "scripts/pr_readiness.py",
+  "workflow": "pr-readiness",
+  "generated_at_utc": "2026-04-14T03:02:59.399343+00:00",
+  "attestation_path": ".compneurovis/pr-readiness/0e92c5992bac048cca44964beac290e18a20c6bf.json",
+  "candidate_commit": "0e92c5992bac048cca44964beac290e18a20c6bf",
+  "candidate_tree": "1b6c60b2ee64367186b3bc50c15cda739a7119bf",
+  "candidate_subject": "Added architectural quality skills and updated tests for generic layout refactor",
+  "expected_final_commit": {
+    "subject": "chore(pr-readiness): attest 0e92c5992bac",
+    "trailers": {
+      "PR-Readiness-For": "0e92c5992bac048cca44964beac290e18a20c6bf",
+      "PR-Readiness-Tree": "1b6c60b2ee64367186b3bc50c15cda739a7119bf"
+    },
+    "changed_paths": [
+      ".compneurovis/pr-readiness/0e92c5992bac048cca44964beac290e18a20c6bf.json"
+    ]
+  },
+  "verification_commands": [
+    {
+      "argv": [
+        "python",
+        "scripts/check_architecture_invariants.py"
+      ],
+      "duration_seconds": 6.402
+    },
+    {
+      "argv": [
+        "python",
+        "scripts/check_packaging_metadata.py"
+      ],
+      "duration_seconds": 0.301
+    },
+    {
+      "argv": [
+        "python",
+        "scripts/generate_mcp_configs.py",
+        "--check"
+      ],
+      "duration_seconds": 0.169
+    },
+    {
+      "argv": [
+        "pytest"
+      ],
+      "duration_seconds": 37.13
+    },
+    {
+      "argv": [
+        "python",
+        "-m",
+        "compileall",
+        "src",
+        "examples",
+        "tests"
+      ],
+      "duration_seconds": 0.226
+    },
+    {
+      "argv": [
+        "python",
+        "scripts/generate_indexes.py",
+        "--check"
+      ],
+      "duration_seconds": 2.701
+    },
+    {
+      "argv": [
+        "python",
+        "-m",
+        "mkdocs",
+        "build",
+        "--strict"
+      ],
+      "duration_seconds": 6.336
+    }
+  ]
+}
