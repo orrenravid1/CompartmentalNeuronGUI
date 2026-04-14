@@ -112,7 +112,7 @@ See `src/compneurovis/backends/neuron/scene.py` for the default scene constructi
 ## Loading from SWC
 
 ```python
-from compneurovis.neuronutils.swc_utils import load_swc_neuron
+from compneurovis.neuronutils import load_swc_neuron
 
 class MyCellSession(NeuronSession):
     def build_sections(self):

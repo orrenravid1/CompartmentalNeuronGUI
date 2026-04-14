@@ -1,10 +1,11 @@
 ---
 name: audit-code-smells
 description: Detect architectural drift patterns in CompNeuroVis that pass compilation and tests but violate the intended layering model. Use after a change touches core, session, backends, or frontend code when design violations may have crept in.
-kind: coverage
-surface: cross-cutting
-stage: verify
-trust: general
+metadata:
+  kind: coverage
+  surface: cross-cutting
+  stage: verify
+  trust: general
 ---
 
 # Audit Code Smells
@@ -15,7 +16,7 @@ Check each of the following patterns. Report findings with file and line number.
 
 ## 1. Import Layer Violations
 
-The intended import direction is: `core` ← `session` ← `builders`/`backends` ← `frontends`.
+The intended import direction is: `core` <- `session` <- `builders`/`backends` <- `frontends`.
 
 - Does any `core` module import from `session`, `builders`, `backends`, or `frontends`?
 - Does any `session` module import from `builders`, `backends`, or `frontends`?
@@ -25,7 +26,7 @@ Use `python -m compileall src` first to confirm syntax is clean, then grep impor
 
 ## 2. `isinstance` Dispatch on ViewSpec/Geometry Types Outside Frontend
 
-`isinstance` checks on `ViewSpec` or `Geometry` subclasses should only appear in the frontend panel dispatch (`_make_panel_for_cell` or equivalent). If found in `core` or `session`, that is a smell — the logic belongs in the frontend or should be expressed as a polymorphic method.
+`isinstance` checks on `ViewSpec` or `Geometry` subclasses should only appear in the frontend panel dispatch (`_make_panel_for_cell` or equivalent). If found in `core` or `session`, that is a smell - the logic belongs in the frontend or should be expressed as a polymorphic method.
 
 Search: `isinstance.*ViewSpec`, `isinstance.*Geometry` in `src/compneurovis/core/` and `src/compneurovis/session/`.
 

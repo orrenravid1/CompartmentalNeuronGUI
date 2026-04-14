@@ -1,7 +1,7 @@
 import io
 import os
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -16,7 +16,7 @@ from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
 from compneurovis.frontends.vispy.panels import ControlsHostPanel, LinePlotHostPanel, LinePlotPanel, Viewport3DPanel
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer
-from compneurovis.session import BufferedSession, Error, FieldAppend, Reset, StatePatch, resolve_interaction_target_source
+from compneurovis.session import BufferedSession, Error, FieldAppend, FieldReplace, Reset, StatePatch, resolve_interaction_target_source
 
 
 def test_line_plot_panel_resolves_selected_entity_binding():
@@ -1974,14 +1974,97 @@ def test_frontend_batches_multiple_field_appends_into_one_refresh_pass():
         ),
     ]
 
-    window._poll_transport()
+    with patch.object(Field, "append", autospec=True, side_effect=Field.append) as append_spy:
+        window._poll_transport()
 
     updated = window.scene.fields["voltage"]
     assert updated.coord("time").tolist() == [0.0, 1.0, 2.0]
     assert np.allclose(updated.values, np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32))
+    append_spy.assert_called_once()
     window._refresh_morphology.assert_called_once()
     window._refresh_line_plot.assert_called_once()
     window.viewport.commit.assert_called_once()
+
+    window.close()
+    app.quit()
+
+
+def test_frontend_flushes_buffered_field_appends_before_field_replace():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    field = Field(
+        id="voltage",
+        values=np.array([[1.0], [10.0]], dtype=np.float32),
+        dims=("segment", "time"),
+        coords={
+            "segment": np.array(["seg-a", "seg-b"]),
+            "time": np.array([0.0], dtype=np.float32),
+        },
+    )
+    geometry = MorphologyGeometry(
+        id="morphology",
+        positions=np.zeros((2, 3), dtype=np.float32),
+        orientations=np.repeat(np.eye(3, dtype=np.float32)[None, :, :], 2, axis=0),
+        radii=np.ones(2, dtype=np.float32),
+        lengths=np.ones(2, dtype=np.float32),
+        entity_ids=("seg-a", "seg-b"),
+        section_names=("sec-a", "sec-b"),
+        xlocs=np.array([0.1, 0.9], dtype=np.float32),
+        labels=("sec-a@0.1", "sec-b@0.9"),
+    )
+    document = Scene(
+        fields={field.id: field},
+        geometries={geometry.id: geometry},
+        views={
+            "morphology": MorphologyViewSpec(
+                id="morphology",
+                geometry_id=geometry.id,
+                color_field_id=field.id,
+                entity_dim="segment",
+                sample_dim="time",
+            ),
+            "trace": LinePlotViewSpec(
+                id="trace",
+                field_id=field.id,
+                x_dim="time",
+                selectors={"segment": StateBinding("selected_entity_id")},
+            ),
+        },
+        layout=LayoutSpec(title="Append replace order test", main_3d_view_id="morphology", line_plot_view_ids=("trace",)),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=document, title="Append replace order test"))
+    window.timer.stop()
+    window.state["selected_entity_id"] = "seg-a"
+    window.transport = Mock()
+    window.transport.poll_updates.return_value = [
+        FieldAppend(
+            field_id="voltage",
+            append_dim="time",
+            values=np.array([[2.0], [20.0]], dtype=np.float32),
+            coord_values=np.array([1.0], dtype=np.float32),
+            max_length=4,
+        ),
+        FieldReplace(
+            field_id="voltage",
+            values=np.array([[100.0], [200.0]], dtype=np.float32),
+            coords={
+                "segment": np.array(["seg-a", "seg-b"]),
+                "time": np.array([5.0], dtype=np.float32),
+            },
+        ),
+        FieldAppend(
+            field_id="voltage",
+            append_dim="time",
+            values=np.array([[300.0], [400.0]], dtype=np.float32),
+            coord_values=np.array([6.0], dtype=np.float32),
+            max_length=4,
+        ),
+    ]
+
+    window._poll_transport()
+
+    updated = window.scene.fields["voltage"]
+    assert updated.coord("time").tolist() == [5.0, 6.0]
+    assert np.allclose(updated.values, np.array([[100.0, 300.0], [200.0, 400.0]], dtype=np.float32))
 
     window.close()
     app.quit()

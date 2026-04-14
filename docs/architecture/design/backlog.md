@@ -70,6 +70,8 @@ Phase: 2
 - independent y-axes or stacked plots
 - frontend-side ring buffers for very large live fields if simple append-and-trim becomes a bottleneck
 - richer incremental plot update paths when reslicing whole fields becomes too expensive for dense multi-trace live plots
+- a true bounded live-history storage path so high-frequency `FieldAppend` traffic does not require full `np.concatenate` growth work on every frontend poll
+- viewport-aware decimation or other draw-throttling for dense live traces once the visible rolling window still contains more points than pyqtgraph can redraw smoothly at target frame rates
 - an explicit history-capture policy so plots can choose between current-state streaming plus selected-trace buffering vs full all-entity history capture for retrospective selection and replay
 
 ---
@@ -182,6 +184,24 @@ Near-term priority: simplify the public authoring layer so real apps like the ex
 ---
 
 ## Infrastructure
+
+### Live Update Backpressure and Coalescing
+
+Phase: infrastructure
+
+The current live-update path can still build UI latency when a worker emits incremental updates faster than the frontend can consume and redraw them. Narrow typed updates exist, but the transport and frontend still need stronger throughput controls for a library that aims to support high-performance live plotting.
+
+Future work may include:
+
+- explicit backpressure or bounded pending-update queues so the worker cannot build unbounded GUI lag
+- transport-level coalescing of repetitive update bursts beyond simple per-poll batching
+- field-level append aggregation policies for live trace fields before they reach frontend mutation
+- drop/merge policies for superseded display-only updates where freshness matters more than replaying every intermediate sample
+- instrumentation hooks so apps can inspect queue depth, poll cost, redraw cost, and dropped/coalesced update counts during performance tuning
+
+Deferral reason: app-level trimming and current frontend batching remove the worst visible stalls for now, but they do not yet make the live pipeline robust under sustained overload.
+
+---
 
 ### Remote Frontend / Alternate Transport
 

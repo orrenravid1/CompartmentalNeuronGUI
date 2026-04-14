@@ -1,10 +1,11 @@
 ---
 name: breaking-rename-sweep
 description: Apply a deliberate breaking rename or taxonomy cleanup across CompNeuroVis code, docs, generated references, and skills, then verify no banned legacy terms remain. Use when a canonical architectural term changes and compatibility aliases are not desired.
-kind: meta
-surface: cross-cutting
-stage: implement
-trust: maintainer-only
+metadata:
+  kind: meta
+  surface: cross-cutting
+  stage: implement
+  trust: maintainer-only
 ---
 
 # Breaking Rename Sweep

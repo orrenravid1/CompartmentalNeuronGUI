@@ -13,6 +13,7 @@ CompNeuroVis is a neuroscience visualization toolkit with a core data model buil
 - `src/compneurovis/backends/jaxley`: live Jaxley session and morphology scene builder
 - `src/compneurovis/builders`: high-level app builders for neuron, surface, and replay workflows
 - `src/compneurovis/jaxleyutils`: Jaxley-specific SWC, cache, and geometry helpers
+- `src/compneurovis/neuronutils`: NEURON-specific SWC import, JSON round-trip, and layout helpers
 
 Read the package-local `README.md` in those directories before making structural changes there.
 
@@ -138,13 +139,15 @@ the canonical source plus all regenerated outputs together.
 ## Skill Usage
 
 - Repo-local skills live under `skills/<name>/SKILL.md` and are the canonical workflow instructions for recurring repo tasks.
+- Repo-local `SKILL.md` files should keep agent-compatible top-level frontmatter (`name`, `description`, optional `metadata`) and store repo taxonomy under `metadata.kind`, `metadata.surface`, `metadata.stage`, and `metadata.trust`.
+- Write repo-owned skills in agent-neutral terms so the same instructions work out of the box for Codex, Gemini, Perplexity, Claude, and similar agents.
 - Any agent working in this repo should consult the relevant `SKILL.md` before executing a task that matches the skill description.
 - Mandatory trigger: if you touch authored docs under `docs/`, `AGENTS.md`, package-local `README.md` files, or generated reference indexes, consult `update-docs-and-indexes` even when those edits are incidental to another code change.
 - Mandatory trigger: if code or terminology changes imply doc drift but the docs are not updated yet, consult `check-change-impact` first and then `update-docs-and-indexes` as required follow-through.
 - Use `docs/reference/skill-index.md` to discover the right skill by kind, surface, workflow stage, or trust level.
 - The current catalog is organized conceptually as:
   - authoring and exploration: `add-example`, `add-field-visualization`, `add-simulator-backend`, `add-view-panel`, `scratch-exploration`
-  - coverage and verification: `check-change-impact`, `check-docs-coverage`, `check-tutorial-coverage`, `check-concept-coverage`, `check-test-coverage-drift`, `audit-skill-coverage`, `pr-readiness`
+  - coverage and verification: `check-change-impact`, `check-docs-coverage`, `check-tutorial-coverage`, `check-concept-coverage`, `check-test-coverage-drift`, `audit-skill-coverage`, `audit-skill-freshness`, `pr-readiness`
   - architectural quality: `audit-code-smells`, `audit-layer-boundaries`, `plan-refactor`
   - debugging: `debug-protocol-dataflow`, `debug-rendering`
   - repo maintenance: `breaking-rename-sweep`, `register-skill`, `update-docs-and-indexes`

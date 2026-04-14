@@ -33,8 +33,9 @@ def _session_process(session_source: SessionSource, update_pipe, command_pipe) -
             else:
                 time.sleep(session.idle_sleep())
 
-            for update in session.read_updates():
-                update_pipe.send(update)
+            updates = session.read_updates()
+            if updates:
+                update_pipe.send(updates if len(updates) > 1 else updates[0])
     except Exception as exc:  # pragma: no cover - safety net for worker errors
         detail = "".join(traceback.format_exception(exc))
         update_pipe.send(Error(detail))
@@ -72,8 +73,9 @@ def _session_process_queue(session_source: SessionSource, update_queue, command_
             else:
                 time.sleep(session.idle_sleep())
 
-            for update in session.read_updates():
-                update_queue.put(update)
+            updates = session.read_updates()
+            if updates:
+                update_queue.put(updates if len(updates) > 1 else updates[0])
     except Exception as exc:  # pragma: no cover - safety net for worker errors
         detail = "".join(traceback.format_exception(exc))
         update_queue.put(Error(detail))
@@ -127,19 +129,26 @@ class PipeTransport(QtCore.QObject):
 
     def poll_updates(self) -> list[SessionUpdate]:
         updates: list[SessionUpdate] = []
+
+        def append_payload(payload) -> None:
+            if isinstance(payload, list):
+                updates.extend(payload)
+            else:
+                updates.append(payload)
+
         if self._mode == "pipe":
             if self._dead:
                 return updates
             try:
                 while self.update_parent.poll():
-                    updates.append(self.update_parent.recv())
+                    append_payload(self.update_parent.recv())
             except (BrokenPipeError, EOFError, OSError) as exc:
                 self._dead = True
                 updates.append(Error(f"Worker process ended unexpectedly: {exc}"))
         else:
             while True:
                 try:
-                    updates.append(self.update_parent.get_nowait())
+                    append_payload(self.update_parent.get_nowait())
                 except queue.Empty:
                     break
         return updates

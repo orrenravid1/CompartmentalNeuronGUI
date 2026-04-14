@@ -1,10 +1,11 @@
 ---
 name: check-test-coverage-drift
 description: Audit whether a CompNeuroVis change set is still covered by the current tests and add or update tests when behavior, protocol contracts, builders, docs validations, or examples change. Use before merging code when test expectations may have drifted from the implementation.
-kind: coverage
-surface: cross-cutting
-stage: verify
-trust: general
+metadata:
+  kind: coverage
+  surface: cross-cutting
+  stage: verify
+  trust: general
 ---
 
 # Check Test Coverage Drift
@@ -12,12 +13,15 @@ trust: general
 Run this workflow after implementation changes and before calling a change PR-ready.
 
 1. Identify the touched code paths and the user-visible behavior or invariants they changed.
-2. Map each change to the closest existing test area:
+2. Map each change to the closest existing test area. Common anchors include:
    - `tests/test_field.py`
    - `tests/test_geometry.py`
    - `tests/test_pipe_transport.py`
    - `tests/test_frontend_bindings.py`
    - `tests/test_docs_and_indexes.py`
+   - backend and builder suites such as `tests/test_neuron_backend.py`, `tests/test_jaxley_backend.py`, and `tests/test_replay_builder.py`
+   - repo-quality gates such as `tests/test_pr_readiness.py`, `tests/test_packaging_metadata.py`, and `tests/test_generate_mcp_configs.py`
+   - If no current module fits cleanly, call that out and add the nearest new test file instead of forcing coverage into the wrong area.
 3. Decide whether the current tests still cover:
    - validation rules
    - serialization/protocol behavior

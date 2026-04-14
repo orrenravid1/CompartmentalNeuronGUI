@@ -1,10 +1,11 @@
 ---
 name: plan-refactor
 description: Plan a multi-file CompNeuroVis refactor by mapping all touch points before executing. Use when a rename, protocol contract change, layout model change, or structural edit spans more than 3 files and execution order matters.
-kind: coverage
-surface: cross-cutting
-stage: verify
-trust: general
+metadata:
+  kind: coverage
+  surface: cross-cutting
+  stage: verify
+  trust: general
 ---
 
 # Plan Refactor
@@ -21,19 +22,19 @@ Write one sentence: what type, name, field, method, or contract is changing and 
 
 Scan these surfaces in order:
 
-- **`src/`** — definition site, all call sites, re-exports in `__init__.py`
-- **`tests/`** — assertions that reference the old name or behavior
-- **`examples/`** — imports and usage patterns
-- **`docs/`** — authored docs, concept docs, tutorials, architecture docs that mention the name or describe the behavior
-- **`skills/`** — any skill whose instructions reference the old pattern
-- **Generated indexes** — `docs/reference/api-index.md`, `docs/reference/repo-map.md`, `docs/reference/example-index.md`
-- **`AGENTS.md`** — package map, public API map, non-obvious invariants
-- **`docs/architecture/invariants.json`** — banned terms or enforced vocabulary
+- **`src/`** - definition site, all call sites, re-exports in `__init__.py`
+- **`tests/`** - assertions that reference the old name or behavior
+- **`examples/`** - imports and usage patterns
+- **`docs/`** - authored docs, concept docs, tutorials, architecture docs that mention the name or describe the behavior
+- **`skills/`** - any skill whose instructions reference the old pattern
+- **Generated indexes** - `docs/reference/api-index.md`, `docs/reference/repo-map.md`, `docs/reference/example-index.md`
+- **`AGENTS.md`** - package map, public API map, non-obvious invariants
+- **`docs/architecture/invariants.json`** - banned terms or enforced vocabulary
 
 Classify each touch as:
-- `must change` — broken or wrong without the update
-- `should update` — not broken but misleading or stale
-- `verify only` — confirm behavior is still correct, no edit expected
+- `must change` - broken or wrong without the update
+- `should update` - not broken but misleading or stale
+- `verify only` - confirm behavior is still correct, no edit expected
 
 ### 3. Order execution steps
 

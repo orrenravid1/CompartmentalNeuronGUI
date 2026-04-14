@@ -1,10 +1,11 @@
 ---
 name: add-example
 description: Add a new runnable example to CompNeuroVis. Use when demonstrating a new workflow, builder pattern, or visualization type that is not already covered by an existing example.
-kind: authoring
-surface: examples
-stage: implement
-trust: general
+metadata:
+  kind: authoring
+  surface: examples
+  stage: implement
+  trust: general
 ---
 
 # Add an Example
@@ -21,7 +22,7 @@ Reference implementations: `examples/surface_plot/static_surface_visualizer.py` 
    - imports from `compneurovis`
    - data or model setup
    - Scene / AppSpec assembly
-   - `run_app(app)` at the bottom, unguarded — `run_app()` handles spawn-mode multiprocessing internally
+   - `run_app(app)` at the bottom, unguarded - `run_app()` handles spawn-mode multiprocessing internally
 
 3. Keep module-level code free of expensive NEURON initialization. Any NEURON setup that runs at import time will repeat in every spawned worker process on Windows. Put it inside `build_sections()` or `setup_model()`.
 

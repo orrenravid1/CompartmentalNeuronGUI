@@ -1,0 +1,3 @@
+interface:
+  display_name: "Audit Skill Freshness"
+  short_description: "Audit repo skill instructions for stale codebase references"

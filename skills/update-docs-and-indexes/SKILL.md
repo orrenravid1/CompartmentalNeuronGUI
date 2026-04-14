@@ -1,10 +1,11 @@
 ---
 name: update-docs-and-indexes
 description: Update CompNeuroVis documentation, AGENTS metadata, package READMEs, and generated reference indexes after code or workflow changes. Mandatory when touching authored docs, AGENTS metadata, package READMEs, or generated indexes, even if those edits are incidental to another change.
-kind: meta
-surface: docs
-stage: implement
-trust: general
+metadata:
+  kind: meta
+  surface: docs
+  stage: implement
+  trust: general
 ---
 
 # Update Docs and Indexes

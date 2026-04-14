@@ -16,7 +16,7 @@ import os
 from neuron import h
 
 from compneurovis import ControlSpec, NeuronSession, build_neuron_app, run_app
-from compneurovis.neuronutils.swc_utils import load_swc_neuron
+from compneurovis.neuronutils import load_swc_neuron
 
 
 class ComplexCellSession(NeuronSession):

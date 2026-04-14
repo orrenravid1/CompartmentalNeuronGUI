@@ -5,6 +5,7 @@ import multiprocessing as mp
 import sys
 from typing import Any
 
+import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt
 from vispy import app as vispy_app, use
@@ -807,7 +808,52 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             return
         pending_targets: set[RefreshTarget] = set()
         pending_status: str | None = None
+        pending_field_appends: dict[str, FieldAppend] = {}
+
+        def flush_pending_field_appends() -> None:
+            nonlocal pending_targets
+            if not pending_field_appends:
+                return
+            if self.scene is None:
+                pending_field_appends.clear()
+                return
+            for field_id, update in pending_field_appends.items():
+                current = self.scene.fields[field_id]
+                self.scene.fields[field_id] = current.append(
+                    update.append_dim,
+                    update.values,
+                    update.coord_values,
+                    max_length=update.max_length,
+                    attrs_update=update.attrs_update,
+                )
+                if self.refresh_planner is not None:
+                    pending_targets.update(self.refresh_planner.targets_for_field_replace(field_id))
+            pending_field_appends.clear()
+
         for update in self.transport.poll_updates():
+            if isinstance(update, FieldAppend):
+                if self.scene is None:
+                    continue
+                pending = pending_field_appends.get(update.field_id)
+                if pending is None:
+                    pending_field_appends[update.field_id] = update
+                    continue
+                if pending.append_dim != update.append_dim or pending.max_length != update.max_length:
+                    flush_pending_field_appends()
+                    pending_field_appends[update.field_id] = update
+                    continue
+                axis = self.scene.fields[update.field_id].axis_index(update.append_dim)
+                pending_field_appends[update.field_id] = FieldAppend(
+                    field_id=update.field_id,
+                    append_dim=update.append_dim,
+                    values=np.concatenate([pending.values, update.values], axis=axis),
+                    coord_values=np.concatenate([pending.coord_values, update.coord_values], axis=0),
+                    max_length=update.max_length,
+                    attrs_update={**pending.attrs_update, **update.attrs_update},
+                )
+                continue
+
+            flush_pending_field_appends()
             if isinstance(update, SceneReady):
                 self._set_scene(update.scene)
                 pending_targets.clear()
@@ -821,19 +867,6 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 self.scene.fields[update.field_id] = current.with_values(update.values, coords=coords, attrs_update=update.attrs_update)
                 if self.refresh_planner is not None:
                     pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id, coords_changed=coords_changed))
-            elif isinstance(update, FieldAppend):
-                if self.scene is None:
-                    continue
-                current = self.scene.fields[update.field_id]
-                self.scene.fields[update.field_id] = current.append(
-                    update.append_dim,
-                    update.values,
-                    update.coord_values,
-                    max_length=update.max_length,
-                    attrs_update=update.attrs_update,
-                )
-                if self.refresh_planner is not None:
-                    pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id))
             elif isinstance(update, ScenePatch):
                 if self.scene is None:
                     continue
@@ -876,6 +909,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     sys.stderr.flush()
                     QtWidgets.QMessageBox.critical(self, "Session error", msg)
                     return
+        flush_pending_field_appends()
         if pending_targets:
             self._apply_refresh_targets(pending_targets)
         if pending_status is not None:

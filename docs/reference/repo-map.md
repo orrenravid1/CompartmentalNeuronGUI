@@ -36,6 +36,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/jaxleyutils/__init__.py`
 - `src/compneurovis/jaxleyutils/layout.py`
 - `src/compneurovis/jaxleyutils/swc_utils.py`
+- `src/compneurovis/neuronutils/__init__.py`
 - `src/compneurovis/neuronutils/json_utils.py`
 - `src/compneurovis/neuronutils/layout.py`
 - `src/compneurovis/neuronutils/swc_utils.py`
@@ -68,6 +69,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `audit-code-smells`: `skills/audit-code-smells/SKILL.md`
 - `audit-layer-boundaries`: `skills/audit-layer-boundaries/SKILL.md`
 - `audit-skill-coverage`: `skills/audit-skill-coverage/SKILL.md`
+- `audit-skill-freshness`: `skills/audit-skill-freshness/SKILL.md`
 - `breaking-rename-sweep`: `skills/breaking-rename-sweep/SKILL.md`
 - `check-change-impact`: `skills/check-change-impact/SKILL.md`
 - `check-concept-coverage`: `skills/check-concept-coverage/SKILL.md`

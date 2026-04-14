@@ -1,10 +1,11 @@
 ---
 name: debug-protocol-dataflow
 description: Debug dataflow, transport, and session/frontend integration issues in CompNeuroVis. Use when SceneReady, FieldReplace, FieldAppend, or ScenePatch messages are missing, malformed, stale, or not producing the expected frontend behavior.
-kind: debug
-surface: cross-cutting
-stage: debug
-trust: general
+metadata:
+  kind: debug
+  surface: cross-cutting
+  stage: debug
+  trust: general
 ---
 
 # Debug Protocol Dataflow

@@ -17,16 +17,23 @@ CONTRIB_INSTALL_DOCS = (
     ROOT / "README.md",
     ROOT / "docs" / "getting-started.md",
 )
-SKILL_REQUIRED_FRONTMATTER_KEYS = ("name", "description", "kind", "surface", "stage", "trust")
+SKILL_REQUIRED_TOP_LEVEL_FRONTMATTER_KEYS = ("name", "description", "metadata")
+SKILL_REQUIRED_TAXONOMY_METADATA_KEYS = ("kind", "surface", "stage", "trust")
+SKILL_ALLOWED_TOP_LEVEL_FRONTMATTER_KEYS = {"name", "description", "license", "allowed-tools", "metadata"}
 SKILL_KIND_VALUES = {"authoring", "coverage", "debug", "orchestration", "meta"}
 SKILL_SURFACE_VALUES = {"backend", "cross-cutting", "docs", "examples", "frontend", "repo-infra"}
 SKILL_STAGE_VALUES = {"debug", "explore", "implement", "release", "verify"}
 SKILL_TRUST_VALUES = {"general", "maintainer-only", "proposal-only"}
+SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9-]+$")
+MAX_SKILL_NAME_LENGTH = 64
+AGENT_PRODUCT_NAMES = ("codex", "claude", "gemini", "perplexity")
 FORBIDDEN_BARE_MKDOCS_COMMAND_PATTERNS = (
     re.compile(r"(?<!python -m )mkdocs serve\b"),
     re.compile(r"(?<!python -m )mkdocs build --strict\b"),
 )
 README_PUBLIC_API_SECTION_PATTERN = re.compile(r"^## Public API\n(?P<body>.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL)
+AGENTS_STABLE_PACKAGE_MAP_PATTERN = re.compile(r"^## Stable Package Map\n(?P<body>.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL)
+AGENTS_STABLE_PACKAGE_ENTRY_PATTERN = re.compile(r"^- `(?P<path>src/compneurovis/[^`]+)`:", re.MULTILINE)
 README_PUBLIC_API_REQUIRED_NAMES = (
     "NeuronSession",
     "JaxleySession",
@@ -68,20 +75,40 @@ def markdown_files() -> list[Path]:
     return files
 
 
-def parse_frontmatter(text: str) -> dict[str, str]:
-    metadata: dict[str, str] = {}
-    in_frontmatter = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped == "---":
-            if in_frontmatter:
-                break
-            in_frontmatter = True
+def parse_frontmatter(text: str) -> dict[str, object]:
+    match = re.match(r"^---\n(?P<body>.*?)\n---(?:\n|$)", text, re.DOTALL)
+    if match is None:
+        return {}
+
+    metadata: dict[str, object] = {}
+    current_parent: str | None = None
+    for raw_line in match.group("body").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        if not in_frontmatter or ":" not in stripped:
+
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        if indent == 0:
+            current_parent = None
+            if ":" not in stripped:
+                continue
+            key, value = stripped.split(":", 1)
+            value = value.strip()
+            if value:
+                metadata[key.strip()] = value
+            else:
+                metadata[key.strip()] = {}
+                current_parent = key.strip()
             continue
+
+        if current_parent is None or ":" not in stripped:
+            continue
+        container = metadata.get(current_parent)
+        if not isinstance(container, dict):
+            container = {}
+            metadata[current_parent] = container
         key, value = stripped.split(":", 1)
-        metadata[key.strip()] = value.strip()
+        container[key.strip()] = value.strip()
     return metadata
 
 
@@ -173,19 +200,78 @@ def test_skill_frontmatter_includes_required_taxonomy_metadata():
     names: list[str] = []
     for path in skill_files:
         metadata = parse_frontmatter(path.read_text(encoding="utf-8"))
-        missing = [key for key in SKILL_REQUIRED_FRONTMATTER_KEYS if not metadata.get(key)]
-        assert not missing, f"{path.relative_to(ROOT).as_posix()} missing skill metadata: {', '.join(missing)}"
+        missing_top_level = [key for key in SKILL_REQUIRED_TOP_LEVEL_FRONTMATTER_KEYS if not metadata.get(key)]
+        assert not missing_top_level, (
+            f"{path.relative_to(ROOT).as_posix()} missing skill frontmatter keys: {', '.join(missing_top_level)}"
+        )
 
-        assert metadata["name"] == path.parent.name, (
+        unexpected_keys = sorted(set(metadata) - SKILL_ALLOWED_TOP_LEVEL_FRONTMATTER_KEYS)
+        assert not unexpected_keys, (
+            f"{path.relative_to(ROOT).as_posix()} has unsupported top-level skill frontmatter keys: "
+            + ", ".join(unexpected_keys)
+        )
+
+        taxonomy = metadata["metadata"]
+        assert isinstance(taxonomy, dict), f"{path.relative_to(ROOT).as_posix()} metadata must be a mapping"
+        missing_taxonomy = [key for key in SKILL_REQUIRED_TAXONOMY_METADATA_KEYS if not taxonomy.get(key)]
+        assert not missing_taxonomy, (
+            f"{path.relative_to(ROOT).as_posix()} missing skill taxonomy metadata: {', '.join(missing_taxonomy)}"
+        )
+
+        name = str(metadata["name"]).strip()
+        description = str(metadata["description"]).strip()
+
+        assert name == path.parent.name, (
             f"{path.relative_to(ROOT).as_posix()} should use its folder name as the skill name"
         )
-        assert metadata["kind"] in SKILL_KIND_VALUES
-        assert metadata["surface"] in SKILL_SURFACE_VALUES
-        assert metadata["stage"] in SKILL_STAGE_VALUES
-        assert metadata["trust"] in SKILL_TRUST_VALUES
-        names.append(metadata["name"])
+        assert SKILL_NAME_PATTERN.match(name), f"{path.relative_to(ROOT).as_posix()} skill name must be hyphen-case"
+        assert not (name.startswith("-") or name.endswith("-") or "--" in name)
+        assert len(name) <= MAX_SKILL_NAME_LENGTH
+        assert "<" not in description and ">" not in description
+        assert len(description) <= 1024
+
+        assert taxonomy["kind"] in SKILL_KIND_VALUES
+        assert taxonomy["surface"] in SKILL_SURFACE_VALUES
+        assert taxonomy["stage"] in SKILL_STAGE_VALUES
+        assert taxonomy["trust"] in SKILL_TRUST_VALUES
+        names.append(name)
 
     assert len(names) == len(set(names)), "skill names must be unique"
+
+
+def test_skill_markdown_is_ascii_only():
+    skill_files = sorted((ROOT / "skills").rglob("SKILL.md"))
+    assert skill_files
+
+    violations: list[str] = []
+    for path in skill_files:
+        text = path.read_text(encoding="utf-8")
+        for index, char in enumerate(text):
+            if ord(char) <= 127:
+                continue
+            line = text.count("\n", 0, index) + 1
+            violations.append(
+                f"{path.relative_to(ROOT).as_posix()}:{line}: non-ASCII character {ascii(char)}"
+            )
+            break
+
+    assert not violations, "skills must stay ASCII-only for cross-agent validator compatibility:\n" + "\n".join(violations)
+
+
+def test_skill_markdown_stays_agent_neutral():
+    skill_files = sorted((ROOT / "skills").rglob("SKILL.md"))
+    assert skill_files
+
+    violations: list[str] = []
+    for path in skill_files:
+        text = path.read_text(encoding="utf-8").lower()
+        for product in AGENT_PRODUCT_NAMES:
+            if product in text:
+                violations.append(
+                    f"{path.relative_to(ROOT).as_posix()}: avoid agent-specific product name '{product}' in repo-owned skill text"
+                )
+
+    assert not violations, "repo-owned skills should stay agent-neutral:\n" + "\n".join(violations)
 
 
 def test_markdown_paths_resolve():
@@ -218,6 +304,24 @@ def test_readme_public_api_mentions_backend_and_builder_entrypoints():
     public_api_section = match.group("body")
     missing = [name for name in README_PUBLIC_API_REQUIRED_NAMES if name not in public_api_section]
     assert not missing, "README.md Public API section is missing: " + ", ".join(missing)
+
+
+def test_stable_package_map_entries_have_package_readmes():
+    text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    match = AGENTS_STABLE_PACKAGE_MAP_PATTERN.search(text)
+    assert match is not None, "AGENTS.md is missing a Stable Package Map section"
+
+    package_paths = [entry.group("path") for entry in AGENTS_STABLE_PACKAGE_ENTRY_PATTERN.finditer(match.group("body"))]
+    assert package_paths, "AGENTS.md Stable Package Map should list at least one package path"
+
+    missing: list[str] = []
+    for relative_path in package_paths:
+        package_dir = ROOT.joinpath(*relative_path.split("/"))
+        assert package_dir.is_dir(), f"Stable Package Map entry does not exist: {relative_path}"
+        if not (package_dir / "README.md").exists():
+            missing.append(relative_path)
+
+    assert not missing, "Stable Package Map packages missing README.md:\n" + "\n".join(missing)
 
 
 def test_generated_skill_index_is_grouped_by_taxonomy():

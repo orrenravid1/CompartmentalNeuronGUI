@@ -3,6 +3,15 @@ import numpy as np
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.backends.neuron.session import NeuronSession
 from compneurovis.core import MorphologyGeometry
+from compneurovis.neuronutils import (
+    define_shape_layout,
+    export_section_json,
+    generate_layout,
+    import_section_json,
+    load_swc_multi,
+    load_swc_neuron,
+    parse_swc,
+)
 from compneurovis.session import EntityClicked, FieldReplace
 
 
@@ -49,6 +58,16 @@ def test_neuron_document_builder_splits_display_and_trace_fields():
     assert morphology_view.color_map == "scalar"
     assert morphology_view.color_norm == "auto"
     assert trace_view.field_id == NeuronSceneBuilder.HISTORY_FIELD_ID
+
+
+def test_neuronutils_package_exports_expected_helpers():
+    assert define_shape_layout is not None
+    assert export_section_json is not None
+    assert generate_layout is not None
+    assert import_section_json is not None
+    assert load_swc_multi is not None
+    assert load_swc_neuron is not None
+    assert parse_swc is not None
 
 
 class DummyNeuronSession(NeuronSession):

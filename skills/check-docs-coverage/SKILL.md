@@ -1,10 +1,11 @@
 ---
 name: check-docs-coverage
 description: Audit whether every name exported in compneurovis.__all__ appears in at least one authored doc. Use in the pr-readiness pipeline whenever public API is added or changed, and whenever a suspected doc gap needs surfacing.
-kind: coverage
-surface: docs
-stage: verify
-trust: general
+metadata:
+  kind: coverage
+  surface: docs
+  stage: verify
+  trust: general
 ---
 
 # Check Docs Coverage
@@ -22,12 +23,12 @@ A name is considered covered if it appears in any `.md` file under `docs/` **exc
 2. For each name, search `docs/` (excluding `api-index.md` and `repo-map.md`) for any mention.
 
 3. Classify each name as one of:
-   - **Covered** — appears in at least one authored doc.
-   - **Uncovered** — appears only in generated files or not at all. Requires action.
+   - **Covered** - appears in at least one authored doc.
+   - **Uncovered** - appears only in generated files or not at all. Requires action.
 
 4. For each **Uncovered** name, also check whether it appears in any file under `examples/` or `src/`. This determines the right action:
-   - Used in examples or source but undocumented → **add authored doc coverage** (tutorial, architecture note, or concept doc).
-   - Not used anywhere outside its definition and `__init__.py` → **consider removing from `__all__`** (likely prematurely exported).
+   - Used in examples or source but undocumented -> **add authored doc coverage** (tutorial, architecture note, or concept doc).
+   - Not used anywhere outside its definition and `__init__.py` -> **consider removing from `__all__`** (likely prematurely exported).
 
 5. Report results grouped by classification. For each uncovered name state: what it is (one sentence from reading its definition), where it is used, and the recommended action.
 

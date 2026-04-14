@@ -41,6 +41,7 @@ SKILL_TRUST_LABELS = {
     "maintainer-only": "Maintainer Only",
     "proposal-only": "Proposal Only",
 }
+SKILL_TAXONOMY_KEYS = ("kind", "surface", "stage", "trust")
 EXAMPLE_GROUPS = (
     ("Live Simulation Backends", ("NEURON", "Jaxley")),
     ("Field and Surface Workflows", ("Static / Interactive", "Live", "Replay")),
@@ -69,22 +70,54 @@ class ExampleEntry:
     path: Path
 
 
-def parse_frontmatter(path: Path) -> dict[str, str]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    metadata: dict[str, str] = {}
-    in_frontmatter = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped == "---":
-            if in_frontmatter:
-                break
-            in_frontmatter = True
+def parse_frontmatter(path: Path) -> dict[str, object]:
+    text = path.read_text(encoding="utf-8")
+    match = re.match(r"^---\n(?P<body>.*?)\n---(?:\n|$)", text, re.DOTALL)
+    if match is None:
+        return {}
+
+    metadata: dict[str, object] = {}
+    current_parent: str | None = None
+    for raw_line in match.group("body").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        if not in_frontmatter or ":" not in stripped:
+
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        if indent == 0:
+            current_parent = None
+            if ":" not in stripped:
+                continue
+            key, value = stripped.split(":", 1)
+            value = value.strip()
+            if value:
+                metadata[key.strip()] = value
+            else:
+                metadata[key.strip()] = {}
+                current_parent = key.strip()
             continue
+
+        if current_parent is None or ":" not in stripped:
+            continue
+        container = metadata.get(current_parent)
+        if not isinstance(container, dict):
+            container = {}
+            metadata[current_parent] = container
         key, value = stripped.split(":", 1)
-        metadata[key.strip()] = value.strip()
+        container[key.strip()] = value.strip()
     return metadata
+
+
+def skill_frontmatter_value(frontmatter: dict[str, object], key: str) -> str:
+    direct = frontmatter.get(key)
+    if isinstance(direct, str) and direct:
+        return direct
+    nested = frontmatter.get("metadata")
+    if isinstance(nested, dict):
+        nested_value = nested.get(key)
+        if isinstance(nested_value, str) and nested_value:
+            return nested_value
+    return ""
 
 
 def write(path: Path, content: str) -> None:
@@ -203,37 +236,34 @@ def skill_entries() -> list[SkillEntry]:
     entries: list[SkillEntry] = []
     for skill_md in sorted(SKILLS.glob("*/SKILL.md")):
         metadata = parse_frontmatter(skill_md)
-        missing = [
-            key
-            for key in ("name", "description", "kind", "surface", "stage", "trust")
-            if not metadata.get(key)
-        ]
+        resolved = {key: skill_frontmatter_value(metadata, key) for key in ("name", "description", *SKILL_TAXONOMY_KEYS)}
+        missing = [key for key, value in resolved.items() if not value]
         if missing:
             raise SystemExit(
                 f"{relative(skill_md)} is missing skill frontmatter fields: {', '.join(missing)}"
             )
-        if metadata["kind"] not in SKILL_KIND_LABELS:
-            raise SystemExit(f"{relative(skill_md)} has unsupported skill kind: {metadata['kind']}")
-        if metadata["surface"] not in SKILL_SURFACE_LABELS:
+        if resolved["kind"] not in SKILL_KIND_LABELS:
+            raise SystemExit(f"{relative(skill_md)} has unsupported skill kind: {resolved['kind']}")
+        if resolved["surface"] not in SKILL_SURFACE_LABELS:
             raise SystemExit(
-                f"{relative(skill_md)} has unsupported skill surface: {metadata['surface']}"
+                f"{relative(skill_md)} has unsupported skill surface: {resolved['surface']}"
             )
-        if metadata["stage"] not in SKILL_STAGE_LABELS:
+        if resolved["stage"] not in SKILL_STAGE_LABELS:
             raise SystemExit(
-                f"{relative(skill_md)} has unsupported skill stage: {metadata['stage']}"
+                f"{relative(skill_md)} has unsupported skill stage: {resolved['stage']}"
             )
-        if metadata["trust"] not in SKILL_TRUST_LABELS:
+        if resolved["trust"] not in SKILL_TRUST_LABELS:
             raise SystemExit(
-                f"{relative(skill_md)} has unsupported skill trust: {metadata['trust']}"
+                f"{relative(skill_md)} has unsupported skill trust: {resolved['trust']}"
             )
         entries.append(
             SkillEntry(
-                name=metadata["name"],
-                description=metadata["description"],
-                kind=metadata["kind"],
-                surface=metadata["surface"],
-                stage=metadata["stage"],
-                trust=metadata["trust"],
+                name=resolved["name"],
+                description=resolved["description"],
+                kind=resolved["kind"],
+                surface=resolved["surface"],
+                stage=resolved["stage"],
+                trust=resolved["trust"],
                 path=skill_md,
             )
         )

@@ -16,7 +16,7 @@ import random
 from neuron import h
 
 from compneurovis import NeuronSession, build_neuron_app, run_app
-from compneurovis.neuronutils.swc_utils import load_swc_multi
+from compneurovis.neuronutils import load_swc_multi
 
 
 class CElegansSession(NeuronSession):
@@ -31,7 +31,7 @@ class CElegansSession(NeuronSession):
             print(f"Loading cell {swc_file}")
             cell_name = swc_file.split(".")[0]
             # load_swc_multi handles SWC files with multiple disconnected trees (e.g. separate
-            # axon and dendrite trees). Returns a dict of tree_id → section list; we flatten all.
+            # axon and dendrite trees). Returns a dict of tree_id -> section list; we flatten all.
             trees = load_swc_multi(os.path.join(swc_path, swc_file), cell_name)
             for section_list in trees.values():
                 sections.extend(section_list)

@@ -21,7 +21,7 @@ class NeuronSceneBuilder:
         t0 = time.perf_counter()
 
         if any(int(sec.n3d()) < 2 for sec in sections):
-            from compneurovis.neuronutils.layout import generate_layout
+            from compneurovis.neuronutils import generate_layout
 
             generate_layout(sections)
 

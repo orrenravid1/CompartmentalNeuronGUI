@@ -1,10 +1,11 @@
 ---
 name: audit-layer-boundaries
 description: Check the CompNeuroVis import graph for structural layer violations across core, session, builders/backends, and frontends. Use when a refactor or new module may have introduced a cross-layer import that bypasses the intended dependency direction.
-kind: coverage
-surface: cross-cutting
-stage: verify
-trust: general
+metadata:
+  kind: coverage
+  surface: cross-cutting
+  stage: verify
+  trust: general
 ---
 
 # Audit Layer Boundaries
@@ -14,7 +15,7 @@ Read `AGENTS.md` package map first.
 The four layers and their allowed import direction:
 
 ```
-core  ←  session  ←  builders / backends  ←  frontends
+core  <-  session  <-  builders / backends  <-  frontends
 ```
 
 A layer may import from layers to its left. It must not import from layers to its right.
@@ -46,7 +47,7 @@ grep -r "from compneurovis\.frontends" src/compneurovis/backends/ src/compneurov
 
 ## Allowed exceptions
 
-- `src/compneurovis/__init__.py` re-exports across layers by design — skip it.
+- `src/compneurovis/__init__.py` re-exports across layers by design - skip it.
 - Test files under `tests/` are exempt.
 - Type-checking-only imports under `TYPE_CHECKING` guards are low-risk but worth flagging if they touch a disallowed layer.
 
