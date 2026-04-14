@@ -145,6 +145,7 @@ the canonical source plus all regenerated outputs together.
 - The current catalog is organized conceptually as:
   - authoring and exploration: `add-example`, `add-field-visualization`, `add-simulator-backend`, `add-view-panel`, `scratch-exploration`
   - coverage and verification: `check-change-impact`, `check-docs-coverage`, `check-tutorial-coverage`, `check-concept-coverage`, `check-test-coverage-drift`, `audit-skill-coverage`, `pr-readiness`
+  - architectural quality: `audit-code-smells`, `audit-layer-boundaries`, `plan-refactor`
   - debugging: `debug-protocol-dataflow`, `debug-rendering`
   - repo maintenance: `breaking-rename-sweep`, `register-skill`, `update-docs-and-indexes`
 - Read the generated skill index at `docs/reference/skill-index.md` for descriptions and canonical paths.

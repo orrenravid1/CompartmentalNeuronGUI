@@ -583,7 +583,7 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
     assert window.transport.session is BootstrapSession
     assert window.scene is not None
     assert window.scene.layout.line_plot_view_ids == ("bootstrap-view",)
-    assert window._stack.currentWidget() is window._horizontal_splitter
+    assert window._stack.currentWidget() is window._layout_splitter
 
     window.close()
     app.quit()
@@ -1209,14 +1209,11 @@ def test_frontend_hides_viewport_when_document_has_no_3d_view():
     window.timer.stop()
 
     assert window.viewport is None
-    assert window._viewport_splitter.isHidden()
-    assert not window._right_splitter.isHidden()
-    assert not window._plot_splitter.isHidden()
     assert window.controls_host.isHidden()
     assert isinstance(window.centralWidget(), QtWidgets.QStackedWidget)
-    assert window._stack.currentWidget() is window._horizontal_splitter
-    assert window._horizontal_splitter.orientation() == QtCore.Qt.Orientation.Horizontal
-    assert window._right_splitter.orientation() == QtCore.Qt.Orientation.Vertical
+    assert window._stack.currentWidget() is window._layout_splitter
+    assert window._layout_splitter.orientation() == QtCore.Qt.Orientation.Vertical
+    assert "cascade-plot" in window.line_plot_panels
 
     window.close()
     app.quit()
@@ -1228,25 +1225,24 @@ def test_frontend_uses_splitters_for_draggable_panel_resize():
     window.timer.stop()
 
     assert isinstance(window.centralWidget(), QtWidgets.QStackedWidget)
-    assert window._stack.currentWidget() is window._horizontal_splitter
-    assert window._horizontal_splitter.widget(0) is window._viewport_splitter
-    assert window._horizontal_splitter.widget(1) is window._right_splitter
-    assert window._right_splitter.widget(0) is window._plot_splitter
-    assert isinstance(window._right_splitter.widget(1), ControlsHostPanel)
-    assert window._right_splitter.widget(1) is window.controls_host
+    assert window._stack.currentWidget() is window._layout_splitter
+    assert window._layout_splitter.orientation() == QtCore.Qt.Orientation.Vertical
+    row = window._layout_splitter.widget(0)
+    assert isinstance(row, QtWidgets.QSplitter)
+    assert row.orientation() == QtCore.Qt.Orientation.Horizontal
+    assert row.widget(0) is window.view_hosts["surface-host"]
+    assert isinstance(row.widget(1), LinePlotHostPanel)
+    assert row.widget(1).line_plot_panel is window.line_plot_panels["surface-line"]
+    assert window._layout_splitter.widget(1) is window.controls_host
     assert window.controls_host.controls_panel is window.controls_panel
-    assert isinstance(window._plot_splitter.widget(0), LinePlotHostPanel)
-    assert window._plot_splitter.widget(0).line_plot_panel is window.line_plot_panels["surface-line"]
     assert not hasattr(window, "controls")
     assert not hasattr(window, "control_host")
     assert not hasattr(window, "line_plot")
     assert not hasattr(window, "line_plots")
     assert not hasattr(window, "line_plot_for")
     assert not hasattr(window.controls_host, "controls")
-    assert not hasattr(window._plot_splitter.widget(0), "line_plot")
-    assert not window._horizontal_splitter.opaqueResize()
-    assert not window._right_splitter.opaqueResize()
-    assert not window._plot_splitter.opaqueResize()
+    assert not window._layout_splitter.opaqueResize()
+    assert not row.opaqueResize()
 
     window.close()
     app.quit()
@@ -1290,11 +1286,11 @@ def test_frontend_supports_multiple_3d_viewports():
     window.timer.stop()
 
     assert set(window.viewports.keys()) == {"morphology", "surface-view"}
-    assert window._viewport_splitter.count() == 2
     assert window.viewport_for("morphology") is not None
     assert window.viewport_for("surface-view") is not None
-    assert not window._viewport_splitter.isHidden()
-    assert window._right_splitter.isHidden()
+    row = window._layout_splitter.widget(0)
+    assert isinstance(row, QtWidgets.QSplitter)
+    assert row.count() == 2
     assert window.controls_host.isHidden()
 
     window.close()
@@ -1391,6 +1387,7 @@ def test_controls_panel_renders_and_dispatches_document_actions():
     window = VispyFrontendWindow(AppSpec(scene=document, title="Action test"))
     window.timer.stop()
     window.transport = Mock()
+    window.state["selected_entity_id"] = "seg-a"
 
     action_button = window.controls_panel.widgets["mark_selected"]
     action_button.click()
@@ -1825,6 +1822,7 @@ def test_frontend_applies_field_append_updates_incrementally():
     )
     window = VispyFrontendWindow(AppSpec(scene=document, title="Append test"))
     window.timer.stop()
+    window.state["selected_entity_id"] = "seg-a"
     window.transport = Mock()
     window.transport.poll_updates.return_value = [
         FieldAppend(

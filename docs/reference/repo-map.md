@@ -65,6 +65,8 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `add-field-visualization`: `skills/add-field-visualization/SKILL.md`
 - `add-simulator-backend`: `skills/add-simulator-backend/SKILL.md`
 - `add-view-panel`: `skills/add-view-panel/SKILL.md`
+- `audit-code-smells`: `skills/audit-code-smells/SKILL.md`
+- `audit-layer-boundaries`: `skills/audit-layer-boundaries/SKILL.md`
 - `audit-skill-coverage`: `skills/audit-skill-coverage/SKILL.md`
 - `breaking-rename-sweep`: `skills/breaking-rename-sweep/SKILL.md`
 - `check-change-impact`: `skills/check-change-impact/SKILL.md`
@@ -74,6 +76,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `check-tutorial-coverage`: `skills/check-tutorial-coverage/SKILL.md`
 - `debug-protocol-dataflow`: `skills/debug-protocol-dataflow/SKILL.md`
 - `debug-rendering`: `skills/debug-rendering/SKILL.md`
+- `plan-refactor`: `skills/plan-refactor/SKILL.md`
 - `pr-readiness`: `skills/pr-readiness/SKILL.md`
 - `register-skill`: `skills/register-skill/SKILL.md`
 - `scratch-exploration`: `skills/scratch-exploration/SKILL.md`
