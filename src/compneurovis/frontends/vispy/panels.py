@@ -581,7 +581,6 @@ class LinePlotPanel(pg.PlotWidget):
         if self.plotItem.legend is not None:
             self.plotItem.legend.clear()
         self._legend_signature = None
-        self._clear_render_caches()
 
     def _clear_render_caches(self) -> None:
         self._cache_structural_signature = None
