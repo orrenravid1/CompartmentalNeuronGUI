@@ -120,6 +120,11 @@ Build the docs site in strict mode:
 python -m mkdocs build --strict
 ```
 
+Published docs deploy through GitHub Pages from `.github/workflows/docs-pages.yml`.
+After a repo admin sets `Settings > Pages > Build and deployment > Source` to `GitHub Actions`,
+pushes to `main` publish the strict MkDocs build at
+`https://orrenravid1.github.io/CompartmentalNeuronGUI/`.
+
 ## Mental Model
 
 You do not need the full architecture to run an example, but the core model is small:

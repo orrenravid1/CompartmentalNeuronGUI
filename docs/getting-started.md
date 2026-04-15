@@ -126,6 +126,10 @@ Build the docs site in strict mode:
 python -m mkdocs build --strict
 ```
 
+Published docs deploy through GitHub Pages from the repo's Actions workflow.
+After GitHub Pages is configured to use `GitHub Actions`, pushes to `main`
+publish the strict MkDocs build automatically.
+
 ## Contributor PR Flow
 
 1. Run `python scripts/pr_readiness.py check` while iterating locally.

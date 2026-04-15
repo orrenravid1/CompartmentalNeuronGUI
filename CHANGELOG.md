@@ -10,9 +10,13 @@ Use it together with:
 
 ## Unreleased
 
-### Changed
+### Added
 
-- Ongoing work since `0.2.0` should be summarized here before the next release.
+- Added a GitHub Pages workflow that validates docs on pull requests and deploys the strict MkDocs site from `main`.
+
+### Docs
+
+- Documented the GitHub Pages publishing path and required one-time repo Pages configuration.
 
 ## 0.2.0 - 2026-04-11
 

@@ -100,6 +100,7 @@ the canonical source plus all regenerated outputs together.
 - Fail on docs vocabulary warnings in stricter CI: `python scripts/check_docs_vocabulary.py --fail-on-warnings`
 - Serve docs locally: `python -m mkdocs serve`
 - Build docs site: `python -m mkdocs build --strict`
+- Publish docs site from CI: GitHub Pages via `.github/workflows/docs-pages.yml` after repo Pages source is set to `GitHub Actions`
 - Regenerate reference indexes: `python scripts/generate_indexes.py`
 - Check generated indexes: `python scripts/generate_indexes.py --check`
 - Regenerate agent MCP configs: `python scripts/generate_mcp_configs.py`
@@ -118,6 +119,7 @@ the canonical source plus all regenerated outputs together.
 - Generated reference files in `docs/reference/` do not count as authored coverage.
 - Required concept docs under `docs/concepts/` are a hard gate, not optional cleanup.
 - The MkDocs site must build with `python -m mkdocs build --strict` before a branch is considered doc-complete.
+- GitHub Pages publishes the MkDocs site from `.github/workflows/docs-pages.yml` on pushes to `main`; keep that workflow green when docs or API reference inputs change.
 - `pyproject.toml` and `poetry.lock` must stay in sync, and every published Poetry extra must resolve to a declared optional dependency.
 - Do not mark a change PR-ready while docs coverage or concept coverage is knowingly incomplete.
 - Human contributors should prefer `python scripts/pr_readiness.py check` during iteration and `python scripts/pr_readiness.py seal --commit` once the final implementation commit is in place.
