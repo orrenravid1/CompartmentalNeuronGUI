@@ -128,7 +128,8 @@ python -m mkdocs build --strict
 
 Published docs deploy through GitHub Pages from the repo's Actions workflow.
 After GitHub Pages is configured to use `GitHub Actions`, pushes to `main`
-publish the strict MkDocs build automatically.
+publish the strict MkDocs build automatically at
+`https://orrenravid1.github.io/CompNeuroVis/`.
 
 ## Contributor PR Flow
 

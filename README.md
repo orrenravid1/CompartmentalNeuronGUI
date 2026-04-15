@@ -123,7 +123,7 @@ python -m mkdocs build --strict
 Published docs deploy through GitHub Pages from `.github/workflows/docs-pages.yml`.
 After a repo admin sets `Settings > Pages > Build and deployment > Source` to `GitHub Actions`,
 pushes to `main` publish the strict MkDocs build at
-`https://orrenravid1.github.io/CompartmentalNeuronGUI/`.
+`https://orrenravid1.github.io/CompNeuroVis/`.
 
 ## Mental Model
 
