@@ -66,9 +66,11 @@ Explored in `scratch/vispy_graph_exploration.py`. `vispy.visuals.graphs.GraphVis
 
 Phase: 2
 
-`LinePlotViewSpec` now supports rolling windows and fixed y-ranges. Future work may need:
+`LinePlotViewSpec` now supports multiple line-plot panels, rolling windows, and
+fixed y-ranges. Remaining work is more about synchronization, grouping, and
+high-volume live history behavior than basic multi-plot support:
 
-- multiple synchronized plot panels
+- shared x-range, cursor, or playback synchronization across multiple plot panels
 - selectable traces
 - plot grouping
 - independent y-axes or stacked plots
@@ -84,7 +86,10 @@ Phase: 2
 
 Phase: 2/3
 
-Current layout is intentionally simple and should be treated as transitional. Future work may need:
+Current layout already uses explicit `PanelSpec` hosts plus a simple row-major
+`panel_grid`. The remaining layout work is about richer topology and sizing,
+not about introducing explicit panel inventory from scratch. Future work may
+need:
 
 - richer nested panel arrangements beyond the current row-major grid
 - explicit row/column sizing policy and persistence
@@ -95,7 +100,7 @@ Current layout is intentionally simple and should be treated as transitional. Fu
 Detailed proposal:
 [Layout Workbench Proposal](proposals/layout-workbench-proposal.md)
 
-#### Implemented: `panel_grid` on `LayoutSpec`
+#### Implemented: explicit `PanelSpec` hosts plus `panel_grid` on `LayoutSpec`
 
 `panel_grid: tuple[tuple[str, ...], ...]` is live on `LayoutSpec`. Each inner
 tuple is a row of panel ids. Empty tuple falls through to `_auto_panel_grid()`,
@@ -124,16 +129,17 @@ layout authority. Panel dispatch is fully generic because every cell is a
 
 This requires nesting a vertical splitter inside a horizontal one — a topology the flat grid can't represent.
 
-**Next step: explicit `PanelSpec` + `SplitSpec`.** Full flexibility requires
-one explicit panel model plus a recursive split-tree layout, e.g.:
+**Next step: recursive `SplitSpec` over the current explicit panel model.**
+Full flexibility now requires keeping `PanelSpec` and adding a recursive
+split-tree topology layer, e.g.:
 
 ```python
 # future direction — not yet implemented
 LayoutSpec(
     panels=(
-        View3DPanelSpec(id="morph_panel", view_ids=("morphology",)),
-        LinePlotPanelSpec(id="trace_panel", view_id="trace"),
-        ControlsPanelSpec(id="controls_panel"),
+        PanelSpec(id="morph_panel", kind="view_3d", view_ids=("morphology",)),
+        PanelSpec(id="trace_panel", kind="line_plot", view_ids=("trace",)),
+        PanelSpec(id="controls_panel", kind="controls"),
     ),
     panel_layout=HSplit(
         "morph_panel",
@@ -142,9 +148,9 @@ LayoutSpec(
 )
 ```
 
-`panel_grid` is the current transitional interface. An explicit
-`PanelSpec`-plus-`SplitSpec` model should replace it once the recursive layout
-refactor lands.
+`panel_grid` is the current transitional topology interface. A recursive
+`SplitSpec` model should replace it once the layout refactor lands, while the
+explicit `PanelSpec` inventory remains the panel seam.
 
 ---
 
@@ -183,13 +189,20 @@ Deferral reason: duplicate presentation seems useful, but literal duplicate moun
 
 ---
 
-### Default NeuronSession Layout Always Includes a Trace Plot
+### Default Simulator Scene Builders Always Include a Trace Plot
 
 Phase: 2
 
-`NeuronSceneBuilder.build_scene` always produces both a morphology view and a trace/line-plot view, with no opt-out. For apps that do not use the plot (e.g. debug examples), the unused plot panel is visible and confusing.
+`NeuronSceneBuilder.build_scene` and `JaxleySceneBuilder.build_scene` both
+produce a morphology view plus a trace/line-plot view, with no opt-out. For
+apps that do not use the plot (for example morphology-first debug views), the
+unused plot panel is visible and confusing.
 
-The default should be opt-in: morphology-only apps should not have to suppress or work around an empty plot panel they did not ask for. The right fix belongs in Phase 2 alongside the broader feature-composable authoring layer — declaring a plot should mean adding a feature, not inheriting one unconditionally from the default builder.
+The default should be opt-in: morphology-only apps should not have to suppress
+or work around a plot panel they did not ask for. The right fix belongs in
+Phase 2 alongside the broader feature-composable authoring layer - declaring a
+plot should mean adding a feature, not inheriting one unconditionally from the
+default simulator builders.
 
 ---
 
@@ -215,7 +228,11 @@ Current workaround: subclass `BufferedSession` directly, as in `examples/surface
 
 Phase: 2
 
-Examples currently expose reset/pause through a mix of protocol commands, session defaults, frontend special-casing, and direct `ActionSpec` wiring. Built-in behaviors such as reset, pause/resume, and future step/capture/export actions should become declarative capabilities rather than hand-wired actions.
+Reset already exists as a default action in replay and simulator sessions, but
+common behaviors still reach the UI through a mix of protocol commands, session
+defaults, frontend special-casing, and direct `ActionSpec` wiring. Built-in
+behaviors such as reset, pause/resume, and future step/capture/export actions
+should become declarative capabilities rather than hand-wired actions.
 
 Intended direction:
 - apps or builders opt into capabilities
@@ -330,7 +347,9 @@ The current docs site should stay on `MkDocs + Material + mkdocstrings` until th
 
 Phase: infrastructure
 
-Skill for detecting architectural drift patterns specific to this codebase. Intended as a QoL check agents and contributors can run before or after a change to catch design violations that compile and test clean but violate the intended model.
+Skill for detecting architectural drift patterns specific to this codebase.
+Base skill already implemented at `skills/audit-code-smells/SKILL.md`. The
+remaining backlog is about stronger automation and broader mechanical coverage.
 
 Checks to include:
 - **Import layer violations** — `core` importing from `frontends` or `backends`; `session` importing from `frontends`; `backends` importing from `frontends`
@@ -344,6 +363,10 @@ Checks to include:
 ### `audit-layer-boundaries`
 
 Phase: infrastructure
+
+Base skill already implemented at `skills/audit-layer-boundaries/SKILL.md`.
+The remaining backlog is about turning parts of that audit into a more
+mechanical repo check.
 
 Mechanical import-structure check across the 4 layers: `core` → `session` → `builders`/`backends` → `frontends`. More binary than `audit-code-smells` — either the import exists or it doesn't.
 
@@ -360,6 +383,10 @@ Complements `audit-code-smells`; where smells are pattern-based, this is purely 
 ### `plan-refactor`
 
 Phase: infrastructure
+
+Base skill already implemented at `skills/plan-refactor/SKILL.md`. The
+remaining backlog is about richer automation or templated plan generation, not
+the existence of the workflow itself.
 
 QoL skill for planning multi-file refactors before executing them. Given a target change, the skill identifies all touch points and produces an ordered plan.
 

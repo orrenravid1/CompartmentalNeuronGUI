@@ -27,6 +27,11 @@ Audit in this order:
    - Grep related docs for the same capability words and neighboring terms.
    - Include backlog, roadmap, decisions, concept docs, package `README.md`
      files, and relevant skill docs when they describe the same behavior.
+   - When touching `docs/architecture/**` or `docs/concepts/**`, explicitly
+     inspect `docs/architecture/design/backlog.md` and
+     `docs/architecture/design/roadmap.md` for the same capability nouns
+     before concluding the wording is current. Do not treat backlog drift as
+     optional cleanup.
 
 3. Verify against repo truth, not only other prose.
    - Read the current code seams, examples, and tests that define the behavior.
