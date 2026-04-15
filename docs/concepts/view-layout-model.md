@@ -5,6 +5,11 @@ summary: Mental model for ViewSpec, StateBinding, 3-D hosts, and how scenes comp
 
 # View and Layout Model
 
+Use this page when you want the composition model for rendering: what a view
+means, what a panel means, and how layout is kept separate from data and
+geometry. If you need a runnable build path first, start with
+[Build a static surface](../tutorials/build-a-static-surface.md).
+
 CompNeuroVis separates six things that are easy to blur together:
 
 - data
@@ -190,3 +195,8 @@ It allows:
 - future alternate frontends and host strategies
 
 without changing the underlying data model each time.
+
+Next steps:
+
+- Read [Field Model](field-model.md) and [Geometry Types](geometry-types.md) for the underlying data/structure split.
+- Read [Core Model](../architecture/core-model.md) for the architecture-level overview that places views, panels, layout, sessions, and frontend in one stack.

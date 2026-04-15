@@ -5,7 +5,16 @@ summary: Generated and curated API reference pages for the public authoring surf
 
 # API Reference
 
-This section is reference material for the public and semi-public authoring surface of CompNeuroVis.
+This section is reference material for the public and semi-public authoring
+surface of CompNeuroVis.
+
+Do not start here if you are still choosing a workflow or trying to get your
+first app running. Start with:
+
+- [Getting Started](../getting-started.md) for first-run paths
+- [Tutorials](../tutorials/build-a-static-surface.md) for guided build flows
+- [Concepts](../concepts/field-model.md) for the mental model
+- [Architecture](../architecture/core-model.md) for implementation boundaries
 
 The generated pages here are intentionally narrower than the full source tree. They focus on the modules humans are expected to use directly:
 
@@ -15,9 +24,8 @@ The generated pages here are intentionally narrower than the full source tree. T
 
 Use these pages when you already know roughly what you want and need signatures, types, or hook names.
 
-For explanations and workflows, start with:
+Good entry pages inside this section:
 
-- [Getting Started](../getting-started.md)
-- [Tutorials](../tutorials/build-a-static-surface.md)
-- [Concepts](../concepts/field-model.md)
-- [Architecture](../architecture/core-model.md)
+- [Public API](public-api.md) for top-level exports
+- [Builders](builders.md) for high-level app construction helpers
+- [Backend Sessions](backends.md) for `NeuronSession`, `JaxleySession`, and scene-builder hooks

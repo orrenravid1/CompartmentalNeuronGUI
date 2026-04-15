@@ -7,6 +7,9 @@ summary: Mental model for MorphologyGeometry and GridGeometry, and how geometry 
 
 Geometry tells the frontend where data lives in space.
 
+Use this page when you want the structural half of the CompNeuroVis data model.
+If you need the value side first, read [Field Model](field-model.md).
+
 The simplest rule in the repo is:
 
 - `Field` answers "what are the values?"
@@ -93,3 +96,8 @@ When adding a new visualization:
 - if neither fits, add a new geometry type only when the spatial model is truly different
 
 Do not add a new geometry type just because the values or the renderer are different.
+
+Next steps:
+
+- Read [Field Model](field-model.md) for the value-carrying half of the model.
+- Read [View and Layout Model](view-layout-model.md) for how geometry is consumed by views and visible panels.

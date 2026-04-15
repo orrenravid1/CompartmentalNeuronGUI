@@ -7,6 +7,12 @@ summary: Step-by-step guide to turning saved frames into a runnable CompNeuroVis
 
 Use replay when you already have frames and want the frontend to play them back like a normal app.
 
+Use this tutorial when:
+
+- the data is already computed
+- you want the normal CompNeuroVis frontend and layout system
+- you do not need a live simulator in the loop
+
 The key public pieces are:
 
 - `ReplaySession`
@@ -111,3 +117,8 @@ Use replay when:
 - you want the same frontend/layout system without a live simulator in the loop
 
 Use a live backend session instead when the model should be computed during the run.
+
+Next steps:
+
+- Read [Build a static surface](build-a-static-surface.md) if you want to author a non-replay scene from direct field data.
+- Read [Session Update Model](../concepts/session-update-model.md) if you want the common session architecture behind replay and live backends.

@@ -13,6 +13,10 @@ CompNeuroVis separates three things that are easy to mix together:
 
 That separation is what keeps the frontend flexible without leaking transport details into user code.
 
+Use this page when you want the mental model for semantic UI wiring. If you
+only want to make something runnable first, go back to
+[Getting Started](../getting-started.md) or one of the [Tutorials](../tutorials/build-a-static-surface.md).
+
 ## Controls
 
 A `ControlSpec` describes a persistent UI value such as:
@@ -120,3 +124,8 @@ Use this rule when authoring app behavior:
 - use `AttributeRef` and `SeriesSpec` when you want a declarative mapping onto model attributes
 
 If a user has to think about pipes, widget objects, or frontend-only bookkeeping just to wire a slider or trace, the abstraction is still too low-level.
+
+Next steps:
+
+- Read [View and Layout Model](view-layout-model.md) for how state bindings reach visible views and panels.
+- Read [Session and Update Model](session-update-model.md) for how sessions send `StatePatch` and receive semantic commands.

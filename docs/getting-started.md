@@ -5,7 +5,9 @@ summary: Installation and first-run guide for scientists and contributors using 
 
 # Getting Started
 
-The fastest way to understand CompNeuroVis is to run one of the example apps.
+The fastest way to understand CompNeuroVis is to run one example, then
+continue with the matching tutorial or concept docs. If you only need one
+recommendation, start with **Static Surface First Look**.
 
 ## Install
 
@@ -50,6 +52,7 @@ python examples/surface_plot/static_surface_visualizer.py
 ```
 
 Use this if you want the lowest-friction first run. It renders a 3-D sinc surface with appearance controls and requires no simulator backend.
+Then continue with [Build a static surface](tutorials/build-a-static-surface.md).
 
 ### Surface Plus Linked Cross-Section
 
@@ -61,6 +64,7 @@ python examples/surface_plot/surface_cross_section_visualizer.py
 
 Use this if you want a 3-D surface linked to a line plot through shared controls.
 It uses a reusable `GridSliceOperatorSpec` so the slice logic is not owned by the surface view itself.
+Then continue with [Build a static surface](tutorials/build-a-static-surface.md) and the generated [Example Index](reference/example-index.md) for adjacent variants.
 
 ### Live NEURON Morphology Viewer
 
@@ -77,6 +81,7 @@ pip install -e ".[neuron]"
 ```
 
 Use this if you want a live SWC-backed morphology view with traces.
+Then continue with [Build a NEURON session](tutorials/build-a-neuron-session.md).
 
 ### Live Jaxley Multicell Example
 
@@ -93,6 +98,7 @@ pip install -e ".[jaxley]"
 ```
 
 Use this if you want a live procedurally built multicell simulation with synaptic connectivity.
+Then continue with [Build a Jaxley session](tutorials/build-a-jaxley-session.md).
 
 ### Replay a Precomputed Animation
 
@@ -103,14 +109,16 @@ python examples/surface_plot/animated_surface_replay.py
 ```
 
 Use this if your data already exists as frames and you want to play them back through the same frontend.
+Then continue with [Build a replay app](tutorials/build-a-replay-app.md).
 
-## Next Steps
+## After Your First Run
 
-- Read [Build a static surface](tutorials/build-a-static-surface.md) if you want to adapt the static surface example.
-- Read [Build a NEURON session](tutorials/build-a-neuron-session.md) if you want to create a live backend by subclassing `NeuronSession`.
-- Read [Build a Jaxley session](tutorials/build-a-jaxley-session.md) if you want to subclass `JaxleySession`.
-- Read [Build a replay app](tutorials/build-a-replay-app.md) if you already have computed frames.
-- Browse the generated [Example Index](reference/example-index.md) for the current runnable examples.
+- Read [Build a static surface](tutorials/build-a-static-surface.md) if you started with static or grid-based field examples.
+- Read [Build a NEURON session](tutorials/build-a-neuron-session.md) if you started with the NEURON workflow.
+- Read [Build a Jaxley session](tutorials/build-a-jaxley-session.md) if you started with the Jaxley workflow.
+- Read [Build a replay app](tutorials/build-a-replay-app.md) if you started from precomputed frames.
+- Browse the generated [Example Index](reference/example-index.md) if you want more runnable entrypoints.
+- Return to [Docs home](index.md) if you want the broader docs map.
 
 ## Local Docs Commands
 

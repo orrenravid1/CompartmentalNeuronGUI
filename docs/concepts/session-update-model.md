@@ -7,6 +7,12 @@ summary: Mental model for live sessions, replay sessions, typed updates, and his
 
 A `Session` is the backend side of the app. It owns model execution. The frontend owns UI state and rendering.
 
+Use this page when you want the mental model for live backends, replay
+backends, and typed updates. If you want a concrete build path first, start
+with [Build a replay app](../tutorials/build-a-replay-app.md),
+[Build a NEURON session](../tutorials/build-a-neuron-session.md), or
+[Build a Jaxley session](../tutorials/build-a-jaxley-session.md).
+
 The important mental model is:
 
 - the frontend does not call simulator internals directly
@@ -129,3 +135,8 @@ Use this rule when writing or reviewing a session:
 - if the whole field truly changed, use `FieldReplace`
 
 If a change cannot be described clearly in those terms, the model probably needs clarification before more code is added.
+
+Next steps:
+
+- Read [Controls, Actions, and State](controls-actions-state.md) for the semantic UI side of the same command/update loop.
+- Read [Session Protocol](../architecture/session-protocol.md) if you want the architecture-level message taxonomy.

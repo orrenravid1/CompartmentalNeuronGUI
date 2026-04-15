@@ -5,7 +5,17 @@ summary: Step-by-step guide to building a live Jaxley-backed visualization by su
 
 # Build a Jaxley Session
 
-This tutorial shows the minimal pattern for a live Jaxley simulation. See `examples/jaxley/multicell_example.py` and the [Example Index](../reference/example-index.md) for a fuller runnable example.
+This tutorial shows the minimal pattern for a live Jaxley-backed simulation.
+Use it when you want CompNeuroVis to drive a Jaxley model directly instead of
+displaying static or replayed data.
+
+Before you start, install the Jaxley extra:
+
+```bash
+pip install -e ".[jaxley]"
+```
+
+See `examples/jaxley/multicell_example.py` and the [Example Index](../reference/example-index.md) for fuller runnable examples.
 
 ## 1. Subclass JaxleySession
 
@@ -104,3 +114,8 @@ def build_scene(self, *, geometry, display_values, time_value):
 ```
 
 This is usually the right layer for adjusting the default views without redoing the whole backend integration.
+
+Next steps:
+
+- Read [Build a NEURON session](build-a-neuron-session.md) if you want the same live-session pattern with NEURON instead of Jaxley.
+- Read [Session Update Model](../concepts/session-update-model.md) if you want the live backend/update contract behind `initialize()`, `advance()`, and emitted updates.

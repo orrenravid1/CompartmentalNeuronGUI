@@ -5,7 +5,17 @@ summary: Step-by-step guide to building a live NEURON-backed visualization by su
 
 # Build a NEURON Session
 
-This tutorial shows the minimal pattern for a live simulation. See `examples/neuron/visualizer_example.py` for a full working example.
+This tutorial shows the minimal pattern for a live NEURON-backed simulation.
+Use it when you want CompNeuroVis to drive a real simulator session rather than
+display static or replayed data.
+
+Before you start, install the NEURON extra:
+
+```bash
+pip install -e ".[neuron]"
+```
+
+See `examples/neuron/visualizer_example.py` for a fuller runnable example.
 
 This is a backend-specific tutorial, not the conceptual boundary of the library. A NEURON-backed app may expose morphology, traces, surfaces, controls, or any combination of those features. Using `build_neuron_app(...)` today means "use NEURON as the backend with current default wiring," not "build a morphology-first app."
 
@@ -120,3 +130,8 @@ class MyCellSession(NeuronSession):
 ```
 
 `load_swc_neuron()` imports the SWC via NEURON's `Import3d` tool and returns a list of sections with 3-D coordinates already set.
+
+Next steps:
+
+- Read [Build a Jaxley session](build-a-jaxley-session.md) if you want the same live-session pattern with Jaxley instead of NEURON.
+- Read [Session Update Model](../concepts/session-update-model.md) if you want the live backend/update contract behind `initialize()`, `advance()`, and emitted updates.

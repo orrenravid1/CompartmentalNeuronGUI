@@ -7,6 +7,10 @@ summary: How to create, read, and update Field objects — the primary data prim
 
 `Field` is the primary data primitive. It is a frozen, labeled numpy array with named axes (`dims`) and coordinate metadata (`coords`).
 
+Use this page when you want the mental model for data in CompNeuroVis. If you
+are still choosing a workflow, go back to [Getting Started](../getting-started.md)
+or [Docs home](../index.md).
+
 ## Anatomy of a Field
 
 ```python
@@ -71,3 +75,8 @@ Use `Field` for any dense measured, simulated, or replayed data:
 - calcium concentration by compartment by trial
 
 Do not introduce new foundational types (`Timeseries`, `SurfaceData`, etc.) when a `Field` plus a `ViewSpec` is sufficient. "Trace", "surface", and "heatmap" are rendering choices, not data types.
+
+Next steps:
+
+- Read [Geometry Types](geometry-types.md) for the structural side of the data model.
+- Read [View and Layout Model](view-layout-model.md) for how fields are consumed by views and visible panels.

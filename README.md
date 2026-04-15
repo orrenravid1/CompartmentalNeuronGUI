@@ -9,7 +9,11 @@ Use it to:
 - view live NEURON or Jaxley compartment activity on morphology and traces
 - replay precomputed frames through the same frontend and layout system
 
-If you just want to see something working with no simulator backend, start with the static surface example after install:
+Start with [CompNeuroVis Docs](https://orrenravid1.github.io/CompNeuroVis/)
+and especially
+[Getting Started](https://orrenravid1.github.io/CompNeuroVis/getting-started/).
+If you only want the fastest local first run, install the package and launch
+the static surface example:
 
 ```bash
 pip install -e .
@@ -50,63 +54,34 @@ pip install -e ".[contrib,jaxley]"
 pip install -e ".[all]"
 ```
 
-## Start Here
+## First Runs
 
-Choose the example that matches what you want to do first:
+Choose the path that matches what you want to do first:
 
-- First look, no simulator required:
-
-```bash
-python examples/surface_plot/static_surface_visualizer.py
-```
-
-Interactive 3-D sinc surface with appearance controls.
-
-- Surface plus linked cross-section plot:
-
-```bash
-python examples/surface_plot/surface_cross_section_visualizer.py
-```
-
-Static field with a moveable slice plane and matching line plot.
-
-- Live NEURON morphology viewer:
-
-```bash
-python examples/neuron/visualizer_example.py
-```
-
-Single-cell live session loaded from an SWC morphology. Requires `pip install -e ".[neuron]"`.
-
-- Live Jaxley multicell example:
-
-```bash
-python examples/jaxley/multicell_example.py
-```
-
-Three procedurally built cells with synaptic connectivity. Requires `pip install -e ".[jaxley]"`.
-
-- Replay a precomputed animation:
-
-```bash
-python examples/surface_plot/animated_surface_replay.py
-```
-
-Precomputed frames played through the same frontend model as live sessions.
+- `python examples/surface_plot/static_surface_visualizer.py` for the lowest-friction first look with no simulator backend.
+- `python examples/surface_plot/surface_cross_section_visualizer.py` for a linked surface and line-slice workflow.
+- `python examples/neuron/visualizer_example.py` for a live SWC-backed morphology session. Requires `pip install -e ".[neuron]"`.
+- `python examples/jaxley/multicell_example.py` for a live procedurally built multicell example. Requires `pip install -e ".[jaxley]"`.
+- `python examples/surface_plot/animated_surface_replay.py` for replaying precomputed frames through the same frontend model.
 
 On Windows, live session entrypoints use `multiprocessing` with `spawn`. `run_app(...)` handles the spawned-child import case internally so shared scripts can keep the same top-level launch pattern across Windows, Linux, and macOS.
 
-## Learn the Toolkit
+## Docs Map
 
-If you want to adapt an example rather than just run it:
+Use the published docs for the guided path:
 
-- [Build a static surface](docs/tutorials/build-a-static-surface.md)
-- [Build a NEURON session](docs/tutorials/build-a-neuron-session.md)
-- [Build a Jaxley session](docs/tutorials/build-a-jaxley-session.md)
-- [Build a replay app](docs/tutorials/build-a-replay-app.md)
-- [Browse all runnable examples](docs/reference/example-index.md)
+- [Docs home](https://orrenravid1.github.io/CompNeuroVis/)
+- [Getting started](https://orrenravid1.github.io/CompNeuroVis/getting-started/) for installation and first-run paths
+- [Tutorials](https://orrenravid1.github.io/CompNeuroVis/tutorials/build-a-static-surface/) for adapting examples into your own code
+- [Concept docs](https://orrenravid1.github.io/CompNeuroVis/concepts/field-model/) for the stable mental model
+- [Architecture docs](https://orrenravid1.github.io/CompNeuroVis/architecture/core-model/) for implementation detail and protocol structure
+- [API reference](https://orrenravid1.github.io/CompNeuroVis/api/) for the public authoring surface
+- [Example index](https://orrenravid1.github.io/CompNeuroVis/reference/example-index/) for runnable examples
 
-## Local Docs Site
+If you are browsing the repo directly instead of the published site, the same
+material also lives under `docs/`.
+
+## Local Docs Authoring
 
 Serve the docs site locally:
 
@@ -120,10 +95,8 @@ Build the docs site in strict mode:
 python -m mkdocs build --strict
 ```
 
-Published docs deploy through GitHub Pages from `.github/workflows/docs-pages.yml`.
-After a repo admin sets `Settings > Pages > Build and deployment > Source` to `GitHub Actions`,
-pushes to `main` publish the strict MkDocs build at
-`https://orrenravid1.github.io/CompNeuroVis/`.
+Published docs deploy from `.github/workflows/docs-pages.yml` to
+[CompNeuroVis Docs](https://orrenravid1.github.io/CompNeuroVis/).
 
 ## Mental Model
 
@@ -150,6 +123,8 @@ Backend-specific session classes and builders are conditional exports: install t
 `build_neuron_app(...)` and `build_jaxley_app(...)` are current convenience helpers for backend-backed workflows, not the intended long-term conceptual boundary of the library. The long-term direction is a feature-composable public API over the same shared core model.
 
 ## Repository Docs
+
+If you are editing the repo rather than consuming the published docs:
 
 - `AGENTS.md` is the canonical machine-readable entrypoint for humans and tools
 - `docs/architecture/` contains architecture and protocol notes

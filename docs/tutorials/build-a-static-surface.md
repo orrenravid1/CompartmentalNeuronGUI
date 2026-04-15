@@ -5,7 +5,18 @@ summary: Step-by-step guide to building an interactive surface visualization fro
 
 # Build a Static Surface
 
-This tutorial builds the `examples/surface_plot/static_surface_visualizer.py` pattern from scratch.
+This tutorial builds the `examples/surface_plot/static_surface_visualizer.py`
+pattern from scratch. Use it as the default first authoring tutorial when you
+want to understand the `Field` + `ViewSpec` + `PanelSpec` model without adding a
+live backend.
+
+By the end, you will have:
+
+- one `Field`
+- one `GridGeometry`
+- one `SurfaceViewSpec`
+- optional controls bound through `StateBinding`
+- an explicit `LayoutSpec` and `PanelSpec` setup for the visible panels
 
 ## 1. Create a Field and Geometry
 
@@ -168,3 +179,8 @@ app = build_surface_app(
 ```
 
 See `examples/surface_plot/surface_cross_section_visualizer.py` for the full pattern.
+
+Next steps:
+
+- Read [Build a replay app](build-a-replay-app.md) if your data already exists as frames.
+- Read [View and Layout Model](../concepts/view-layout-model.md) if you want the composition model behind `ViewSpec`, `PanelSpec`, and `LayoutSpec`.

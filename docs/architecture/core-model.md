@@ -5,6 +5,11 @@ summary: Architecture overview - how Field, Geometry, Scene, Session, and Fronte
 
 # Core Model
 
+Use this page when you want the architectural overview of how the main
+CompNeuroVis pieces fit together. If you are still trying to get a first app
+running, start with [Getting Started](../getting-started.md) or the
+[Tutorials](../tutorials/build-a-static-surface.md) first.
+
 CompNeuroVis is built around five orthogonal primitives that compose cleanly and can be tested independently.
 
 ```
@@ -156,3 +161,9 @@ So the architecture should treat "display" and "history" as field roles, not as 
 **Higher-level authoring should compose by feature, not by app type.** Convenience builders may exist for common workflows, but they should assemble the same core model. A user should be able to add traces, morphology, surfaces, and controls to one app by combining declarations, not by switching to a different top-level app abstraction.
 
 **Backend choice is orthogonal to feature choice.** Helpers such as `build_neuron_app(...)` are current convenience APIs, not the intended long-term architectural boundary. "Uses NEURON" should not imply "shows morphology," and "shows morphology" should not imply one backend-specific app type.
+
+Next steps:
+
+- Read [View and Layout Model](../concepts/view-layout-model.md) for the user-facing composition model behind views, panels, and layout.
+- Read [Session Protocol](session-protocol.md) if you want the concrete command/update contract.
+- Read [VisPy Frontend](vispy-frontend.md) if you want the current renderer and panel-host implementation details.
