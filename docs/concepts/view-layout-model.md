@@ -5,13 +5,14 @@ summary: Mental model for ViewSpec, StateBinding, 3-D hosts, and how scenes comp
 
 # View and Layout Model
 
-CompNeuroVis separates five things that are easy to blur together:
+CompNeuroVis separates six things that are easy to blur together:
 
 - data
 - geometry
 - operators
 - views
-- layout
+- visible panels
+- layout topology
 
 If those are kept distinct, the library stays composable. If they are mixed together, every new example starts inventing its own UI model.
 
@@ -23,7 +24,8 @@ Use this rule first:
 - `Geometry` answers "where do those values live?"
 - `OperatorSpec` answers "what derived operation should run over existing data?"
 - `ViewSpec` answers "how should those values be rendered?"
-- `LayoutSpec` answers "which views are visible, and how are panels arranged?"
+- `PanelSpec` answers "which visible panel host exists, and what does it contain?"
+- `LayoutSpec` answers "how are those panel ids arranged?"
 
 That split is the reason one app can combine:
 
@@ -84,7 +86,12 @@ If you need another perspective on the same data, add another view. Do not dupli
 
 ## Layout vs Hosting
 
-`LayoutSpec` controls panel composition.
+`PanelSpec` is the current visible-panel seam. It declares one visible host
+region, such as a 3-D panel, a line-plot panel, or a controls panel, and names
+the hosted view, control, action, and overlay ids for that region.
+
+`LayoutSpec` controls panel composition and topology over those `PanelSpec`
+entries.
 
 It decides things such as:
 
