@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -173,6 +174,72 @@ def test_architecture_invariants_hold():
         cwd=ROOT,
         check=True,
     )
+
+
+def test_public_api_index_generation_is_stable_without_optional_neuron_dependency():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        sitecustomize = Path(temp_dir) / "sitecustomize.py"
+        sitecustomize.write_text(
+            (
+                "import importlib.abc\n"
+                "import importlib\n"
+                "import sys\n"
+                "\n"
+                "class _BlockNeuron(importlib.abc.MetaPathFinder):\n"
+                "    def find_spec(self, fullname, path=None, target=None):\n"
+                "        if fullname == 'neuron' or fullname.startswith('neuron.'):\n"
+                "            raise ModuleNotFoundError(\"No module named 'neuron'\")\n"
+                "        if fullname == 'jaxley' or fullname.startswith('jaxley.'):\n"
+                "            raise ModuleNotFoundError(\"No module named 'jaxley'\")\n"
+                "        return None\n"
+                "\n"
+                "sys.meta_path.insert(0, _BlockNeuron())\n"
+                "\n"
+                "_import_module = importlib.import_module\n"
+                "\n"
+                "def _guarded_import_module(name, package=None):\n"
+                "    if name == 'compneurovis':\n"
+                "        raise AssertionError('generate_indexes.py should not import compneurovis at runtime')\n"
+                "    return _import_module(name, package)\n"
+                "\n"
+                "importlib.import_module = _guarded_import_module\n"
+            ),
+            encoding="utf-8",
+        )
+        env = os.environ | {"PYTHONPATH": temp_dir}
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import runpy, sys; "
+                    "sys.argv=['generate_indexes.py','--check']; "
+                    "runpy.run_path('scripts/generate_indexes.py', run_name='__main__')"
+                ),
+            ],
+            cwd=ROOT,
+            env=env,
+            check=True,
+        )
+
+
+def test_public_api_module_exposes_optional_backend_names_without_eager_import():
+    sys.path.insert(0, str(ROOT / "src"))
+    try:
+        import compneurovis
+
+        expected = {
+            "NeuronSceneBuilder",
+            "NeuronSession",
+            "build_neuron_app",
+            "JaxleySceneBuilder",
+            "JaxleySession",
+            "build_jaxley_app",
+        }
+        assert expected.issubset(set(compneurovis.__all__))
+        assert expected.issubset(set(dir(compneurovis)))
+    finally:
+        sys.path.pop(0)
 
 
 def test_mkdocs_builds_in_strict_mode():

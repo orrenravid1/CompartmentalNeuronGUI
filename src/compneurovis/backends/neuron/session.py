@@ -5,7 +5,6 @@ import math
 from typing import Any
 
 import numpy as np
-from neuron import h
 
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.scene import Scene
@@ -223,6 +222,8 @@ class NeuronSession(BufferedSession, ABC):
     def initialize(self):
         """Initialize the NEURON model, sample it once, and return the first Scene."""
 
+        from neuron import h
+
         self.sections = self.build_sections()
         self._runtime_handles = self.setup_model(self.sections)
         self.geometry = NeuronSceneBuilder.build_morphology_geometry(self.sections)
@@ -253,6 +254,8 @@ class NeuronSession(BufferedSession, ABC):
         return scene
 
     def _prepare_recorders(self):
+        from neuron import h
+
         idx_by_name = {}
         for index, sec in enumerate(self.sections):
             idx_by_name.setdefault(sec.name(), []).append(index)
@@ -278,6 +281,8 @@ class NeuronSession(BufferedSession, ABC):
         return self._read_display_values()
 
     def _sample(self) -> tuple[float, np.ndarray]:
+        from neuron import h
+
         return float(h.t), self._read_display_values()
 
     def _initialize_trace_history(self, time_value: float, display_values: np.ndarray) -> None:
@@ -401,6 +406,8 @@ class NeuronSession(BufferedSession, ABC):
     def advance(self) -> None:
         """Advance the simulation and emit incremental frontend updates."""
 
+        from neuron import h
+
         samples: list[np.ndarray] = []
         times: list[float] = []
         for _ in range(self.steps_per_update()):
@@ -454,6 +461,8 @@ class NeuronSession(BufferedSession, ABC):
 
     def handle(self, command) -> None:
         if isinstance(command, Reset):
+            from neuron import h
+
             h.finitialize(self.v_init)
             time_value, display_values = self._sample()
             self._initialize_trace_history(time_value, display_values)

@@ -1,12 +1,15 @@
 """Public authoring surface for CompNeuroVis."""
 
+from __future__ import annotations
+
+from importlib import import_module
+
 from compneurovis.builders import ReplaySession, build_replay_app, build_surface_app, grid_field
 from compneurovis.core import (
     ActionSpec,
     AttributeRef,
     AppSpec,
     ControlSpec,
-    Scene,
     Field,
     Geometry,
     GridGeometry,
@@ -17,6 +20,7 @@ from compneurovis.core import (
     MorphologyViewSpec,
     OperatorSpec,
     PanelSpec,
+    Scene,
     SeriesSpec,
     StateBinding,
     SurfaceViewSpec,
@@ -52,24 +56,42 @@ __all__ = [
     "build_surface_app",
     "grid_field",
     "run_app",
+    "NeuronSceneBuilder",
+    "NeuronSession",
+    "build_neuron_app",
+    "JaxleySceneBuilder",
+    "JaxleySession",
+    "build_jaxley_app",
 ]
 
-try:  # optional backend dependency
-    from compneurovis.backends.neuron import NeuronSceneBuilder, NeuronSession
-    from compneurovis.builders.neuron import build_neuron_app
-except Exception:  # pragma: no cover - optional import
-    NeuronSceneBuilder = None
-    NeuronSession = None
-    build_neuron_app = None
-else:
-    __all__.extend(["NeuronSceneBuilder", "NeuronSession", "build_neuron_app"])
+_OPTIONAL_EXPORTS = {
+    "NeuronSceneBuilder": ("compneurovis.backends.neuron", "NeuronSceneBuilder", "neuron"),
+    "NeuronSession": ("compneurovis.backends.neuron", "NeuronSession", "neuron"),
+    "build_neuron_app": ("compneurovis.builders.neuron", "build_neuron_app", "neuron"),
+    "JaxleySceneBuilder": ("compneurovis.backends.jaxley", "JaxleySceneBuilder", "jaxley"),
+    "JaxleySession": ("compneurovis.backends.jaxley", "JaxleySession", "jaxley"),
+    "build_jaxley_app": ("compneurovis.builders.jaxley", "build_jaxley_app", "jaxley"),
+}
 
-try:  # optional backend dependency
-    from compneurovis.backends.jaxley import JaxleySceneBuilder, JaxleySession
-    from compneurovis.builders.jaxley import build_jaxley_app
-except Exception:  # pragma: no cover - optional import
-    JaxleySceneBuilder = None
-    JaxleySession = None
-    build_jaxley_app = None
-else:
-    __all__.extend(["JaxleySceneBuilder", "JaxleySession", "build_jaxley_app"])
+
+def __getattr__(name: str):
+    target = _OPTIONAL_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module_name, attr_name, extra_name = target
+    try:
+        module = import_module(module_name)
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            f"Optional CompNeuroVis export {name!r} requires extra {extra_name!r}. "
+            f'Install it with `pip install -e ".[{extra_name}]"`.'
+        ) from exc
+
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

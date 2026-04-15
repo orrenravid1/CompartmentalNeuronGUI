@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ast
-import importlib
 import re
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -133,13 +131,22 @@ def list_python_modules() -> list[Path]:
     return sorted(p for p in SRC.rglob("*.py") if "__pycache__" not in p.parts)
 
 
+def parse_module_all(path: Path) -> list[str]:
+    module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in module.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                value = ast.literal_eval(node.value)
+                if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                    raise SystemExit(f"{relative(path)} must define __all__ as a list of strings")
+                return value
+    raise SystemExit(f"{relative(path)} is missing __all__")
+
+
 def public_api_names() -> list[str]:
-    sys.path.insert(0, str(ROOT / "src"))
-    try:
-        module = importlib.import_module("compneurovis")
-        return list(getattr(module, "__all__", []))
-    finally:
-        sys.path.pop(0)
+    return parse_module_all(SRC / "__init__.py")
 
 
 def humanize_identifier(value: str) -> str:
