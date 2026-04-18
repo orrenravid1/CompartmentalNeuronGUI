@@ -7,6 +7,7 @@ Use it to:
 - render a 2-D field as an interactive 3-D surface
 - link a surface view to a line-plot slice and controls
 - view live NEURON or Jaxley compartment activity on morphology and traces
+- build a complete custom session with your own solver, controls, and plots
 - replay precomputed frames through the same frontend and layout system
 
 Start with [CompNeuroVis Docs](https://orrenravid1.github.io/CompNeuroVis/)
@@ -60,11 +61,17 @@ Choose the path that matches what you want to do first:
 
 - `python examples/surface_plot/static_surface_visualizer.py` for the lowest-friction first look with no simulator backend.
 - `python examples/surface_plot/surface_cross_section_visualizer.py` for a linked surface and line-slice workflow.
+- `python examples/custom/fitzhugh_nagumo_backend.py` for a pure custom `BufferedSession` backend with its own RK4 solver and explicit scene assembly.
 - `python examples/neuron/visualizer_example.py` for a live SWC-backed morphology session. Requires `pip install -e ".[neuron]"`.
 - `python examples/jaxley/multicell_example.py` for a live procedurally built multicell example. Requires `pip install -e ".[jaxley]"`.
 - `python examples/surface_plot/animated_surface_replay.py` for replaying precomputed frames through the same frontend model.
 
 On Windows, live session entrypoints use `multiprocessing` with `spawn`. `run_app(...)` handles the spawned-child import case internally so shared scripts can keep the same top-level launch pattern across Windows, Linux, and macOS.
+
+App-scoped diagnostics now live on `AppSpec(diagnostics=DiagnosticsSpec(...))`.
+That is the preferred cross-platform way to turn on timestamped perf logs.
+Environment variables remain available as fallback overrides when you are
+debugging without touching code.
 
 ## Docs Map
 
@@ -105,6 +112,7 @@ You do not need the full architecture to run an example, but the core model is s
 - `Field`: labeled numeric data with named axes and coordinates
 - `Scene`: the fields, geometries, views, controls, and layout shown in the app
 - `Session`: an optional live or replay backend that emits updates over time
+- `DiagnosticsSpec`: optional app-scoped diagnostics such as perf logging
 - `run_app(...)`: launches the current VisPy frontend for an `AppSpec`
 
 ## Public API
@@ -113,6 +121,7 @@ The main package exports the core types, builders, and frontend entrypoint:
 
 - `Field`, `Scene`, `MorphologyGeometry`, `GridGeometry`
 - `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
+- `AppSpec`, `DiagnosticsSpec`
 - `NeuronSession`, `JaxleySession`, `ReplaySession`
 - `HistoryCaptureMode`, `grid_field`
 - `build_neuron_app`, `build_jaxley_app`, `build_surface_app`, `build_replay_app`

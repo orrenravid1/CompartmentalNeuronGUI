@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any
 
 from compneurovis.core.controls import ActionSpec, ControlSpec
@@ -55,6 +56,30 @@ class LayoutSpec:
             if view_id in panel.view_ids:
                 return panel
         return None
+
+    def patch_panel(self, panel_id: str, **changes) -> bool:
+        """Apply ``dataclasses.replace`` changes to one panel in the panels tuple.
+
+        Returns ``True`` if the panel was found and patched, ``False`` if not found.
+        """
+        for i, panel in enumerate(self.panels):
+            if panel.id == panel_id:
+                self.panels = (
+                    *self.panels[:i],
+                    replace(panel, **changes),
+                    *self.panels[i + 1 :],
+                )
+                return True
+        return False
+
+    def replace_panels(
+        self,
+        panels: "tuple[PanelSpec, ...]",
+        panel_grid: "tuple[tuple[str, ...], ...]" = (),
+    ) -> None:
+        """Replace the full panel inventory and optional grid. Does not re-normalize."""
+        self.panels = panels
+        self.panel_grid = panel_grid
 
     def normalize_panels(
         self,
@@ -252,3 +277,11 @@ class AppSpec:
     session: Any = None
     interaction_target: Any = None
     title: str | None = None
+    diagnostics: "DiagnosticsSpec | None" = None
+
+
+@dataclass(slots=True)
+class DiagnosticsSpec:
+    perf_log_enabled: bool = False
+    perf_log_dir: str | Path | None = None
+    perf_echo_stderr: bool = False

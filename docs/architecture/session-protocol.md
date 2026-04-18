@@ -66,6 +66,8 @@ def handle(self, command):
 | `FieldReplace` | `field_id`, `values`, `coords?`, `attrs_update?` | Replace a field wholesale |
 | `FieldAppend` | `field_id`, `append_dim`, `values`, `coord_values`, `max_length?`, `attrs_update?` | Append new samples along one dimension |
 | `ScenePatch` | `view_updates`, `control_updates`, `metadata_updates` | When view properties or control definitions change |
+| `PanelPatch` | `panel_id`, `control_ids?`, `action_ids?`, `view_ids?`, `title?` | Update one panel's contents without touching other panels or scene data |
+| `LayoutReplace` | `panels`, `panel_grid?` | Replace the full panel arrangement without rebuilding scene data |
 | `StatePatch` | `updates: dict[str, Any]` | Synchronize frontend state keys used by `StateBinding` |
 | `Status` | `message: str`, `timeout_ms?` | Progress or info messages shown in the status bar |
 | `Error` | `message: str` | Non-fatal errors shown in the status bar |
@@ -76,6 +78,8 @@ The protocol should default to the narrowest typed update that correctly describ
 
 - Use append-style updates when data is extending along an axis.
 - Use patch-style updates when metadata or view/control properties changed.
+- Use `PanelPatch` when one panel's control or action list changes (e.g. model variant switch).
+- Use `LayoutReplace` when panels are added, removed, or rearranged.
 - Use wholesale replacement only when the change is genuinely full-field/full-object or when a narrower update would be misleading.
 
 This is not just an optimization. It is the intended cost model for high-throughput rendering:
@@ -144,6 +148,30 @@ self.emit(ScenePatch(view_updates={"main": {"title": "updated title"}}))
 ```
 
 Do not use `ScenePatch` for value updates. Do not rebuild and re-emit `SceneReady` just to change a view title.
+
+Use `PanelPatch` when only one panel's contents change — most commonly to swap a controls panel's `control_ids` when the user switches between model variants:
+
+```python
+self.emit(PanelPatch(panel_id="controls-panel", control_ids=("variant_b_speed", "variant_b_gain")))
+```
+
+Fields set to `None` (the default) are left unchanged. Use an empty tuple to explicitly clear a list. `PanelPatch` is not appropriate for structural panel changes (changing `kind`, camera properties, adding or removing panels); use `LayoutReplace` for those.
+
+Use `LayoutReplace` when the full panel arrangement changes — panels are added, removed, or rearranged:
+
+```python
+self.emit(LayoutReplace(
+    panels=(
+        PanelSpec(id="plot", kind="line_plot", view_ids=("trace",)),
+        PanelSpec(id="controls-panel", kind="controls", control_ids=("gain",), action_ids=("reset",)),
+        PanelSpec(id="extra-controls", kind="controls", control_ids=("noise",)),
+    ),
+))
+```
+
+`LayoutReplace` rebuilds the panel widget tree but does not touch fields, geometries, views, operators, controls, or actions. It is much cheaper than a full `SceneReady`.
+
+See [Panel Layout Updates Proposal](design/proposals/panel-layout-updates.md) for the full design rationale and frontend reconciliation rules.
 
 Use `StatePatch` when the session needs to synchronize semantic UI state such as selected traces or other state keys consumed by `StateBinding`:
 

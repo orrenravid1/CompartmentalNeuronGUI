@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import multiprocessing as mp
 import sys
+import time
 from typing import Any
 
 import numpy as np
@@ -12,10 +13,11 @@ from vispy import app as vispy_app, use
 
 use(app="pyqt6", gl="gl+")
 
+from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
 from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec
 from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
 from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, IndependentCanvas3DHostPanel, LinePlotHostPanel, LinePlotPanel, Viewport3DPanel
-from compneurovis.session import ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
+from compneurovis.session import LayoutReplace, PanelPatch, ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
 from compneurovis.session.base import resolve_startup_scene_source
 
 
@@ -58,6 +60,21 @@ class RefreshTarget:
 
 
 RefreshTarget.CONTROLS = RefreshTarget.controls()
+
+
+def _update_type_counts(updates: list[Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for update in updates:
+        name = type(update).__name__
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def _target_kind_counts(targets: set[RefreshTarget]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for target in targets:
+        counts[target.kind] = counts.get(target.kind, 0) + 1
+    return counts
 
 
 class RefreshPlanner:
@@ -303,6 +320,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def __init__(self, app_spec: AppSpec):
         super().__init__()
         self.app_spec = app_spec
+        if app_spec.diagnostics is None:
+            clear_perf_logging_configuration()
+        else:
+            configure_perf_logging(app_spec.diagnostics)
         initial_scene = app_spec.scene
         if initial_scene is None and app_spec.session is not None:
             initial_scene = resolve_startup_scene_source(app_spec.session)
@@ -342,7 +363,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
         if app_spec.session is not None:
             configure_multiprocessing()
-            self.transport = PipeTransport(app_spec.session, parent=self)
+            self.transport = PipeTransport(app_spec.session, diagnostics=app_spec.diagnostics, parent=self)
             self.transport.start()
 
         self.timer = QtCore.QTimer(self)
@@ -768,6 +789,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _apply_refresh_targets(self, targets: set[RefreshTarget]) -> None:
         if not targets:
             return
+        started = time.monotonic()
 
         if RefreshTarget.CONTROLS in targets:
             self._refresh_controls()
@@ -816,22 +838,36 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             host = self.view_hosts.get(panel_id)
             if host is not None:
                 host.commit()
+        perf_log(
+            "frontend",
+            "apply_refresh_targets",
+            target_count=len(targets),
+            target_kinds=_target_kind_counts(targets),
+            dirty_host_count=len(dirty_hosts),
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
     def _poll_transport(self) -> None:
         if self.transport is None:
             return
+        poll_started = time.monotonic()
         pending_targets: set[RefreshTarget] = set()
         pending_status: str | None = None
         pending_field_appends: dict[str, FieldAppend] = {}
+        flushed_field_appends = 0
+        appended_samples_by_field: dict[str, int] = {}
+        updates = self.transport.poll_updates()
 
         def flush_pending_field_appends() -> None:
-            nonlocal pending_targets
+            nonlocal pending_targets, flushed_field_appends
             if not pending_field_appends:
                 return
             if self.scene is None:
                 pending_field_appends.clear()
                 return
             for field_id, update in pending_field_appends.items():
+                flushed_field_appends += 1
+                appended_samples_by_field[field_id] = appended_samples_by_field.get(field_id, 0) + int(len(update.coord_values))
                 current = self.scene.fields[field_id]
                 self.scene.fields[field_id] = current.append(
                     update.append_dim,
@@ -844,7 +880,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     pending_targets.update(self.refresh_planner.targets_for_field_replace(field_id))
             pending_field_appends.clear()
 
-        for update in self.transport.poll_updates():
+        for update in updates:
             if isinstance(update, FieldAppend):
                 if self.scene is None:
                     continue
@@ -896,6 +932,28 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     self.scene.replace_control(control_id, patch)
                     pending_targets.add(RefreshTarget.CONTROLS)
                 self.scene.metadata.update(update.metadata_updates)
+            elif isinstance(update, PanelPatch):
+                if self.scene is None:
+                    continue
+                changes: dict[str, Any] = {}
+                if update.control_ids is not None:
+                    changes["control_ids"] = update.control_ids
+                if update.action_ids is not None:
+                    changes["action_ids"] = update.action_ids
+                if update.view_ids is not None:
+                    changes["view_ids"] = update.view_ids
+                if update.title is not None:
+                    changes["title"] = update.title
+                if changes and self.scene.layout.patch_panel(update.panel_id, **changes):
+                    pending_targets.add(RefreshTarget.CONTROLS)
+            elif isinstance(update, LayoutReplace):
+                if self.scene is None:
+                    continue
+                self.scene.layout.replace_panels(update.panels, update.panel_grid)
+                self._rebuild_panels()
+                self._update_panel_visibility()
+                if self.refresh_planner is not None:
+                    pending_targets.update(self.refresh_planner.full_refresh_targets())
             elif isinstance(update, StatePatch):
                 if self.refresh_planner is None:
                     continue
@@ -928,6 +986,18 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             self._apply_refresh_targets(pending_targets)
         if pending_status is not None:
             self.statusBar().showMessage(pending_status)
+        perf_log(
+            "frontend",
+            "poll_transport",
+            transport_mode=getattr(self.transport, "_mode", None),
+            update_count=len(updates),
+            update_types=_update_type_counts(updates),
+            coalesced_field_append_count=flushed_field_appends,
+            appended_samples_by_field=appended_samples_by_field,
+            pending_target_count=len(pending_targets),
+            pending_target_kinds=_target_kind_counts(pending_targets),
+            duration_ms=round((time.monotonic() - poll_started) * 1000.0, 3),
+        )
 
     def _on_entity_selected(self, entity_id: str) -> None:
         self.state["selected_entity_id"] = entity_id
@@ -953,6 +1023,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
     def _on_control_changed(self, control, value) -> None:
         self.state[control.resolved_state_key()] = value
+        perf_log(
+            "frontend",
+            "control_changed",
+            control_id=control.id,
+            state_key=control.resolved_state_key(),
+            value=value,
+            send_to_session=control.send_to_session,
+        )
         if self.transport is not None and control.send_to_session:
             self.transport.send_command(SetControl(control.id, value))
         if self.refresh_planner is not None:

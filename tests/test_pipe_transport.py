@@ -5,6 +5,7 @@ import pytest
 
 from compneurovis.core import Field, LayoutSpec, Scene
 from compneurovis.session import BufferedSession, EntityClicked, Error, FieldReplace, PipeTransport, SetControl, StatePatch, Status
+from compneurovis.session.pipe import _sleep_to_session_cadence
 
 
 class DummySession(BufferedSession):
@@ -67,6 +68,25 @@ class FailingInitializeSession(BufferedSession):
 
     def handle(self, command) -> None:
         del command
+
+
+class FastLiveSession(BufferedSession):
+    def __init__(self):
+        super().__init__()
+        self.tick_count = 0
+
+    def initialize(self):
+        return None
+
+    def advance(self) -> None:
+        self.tick_count += 1
+        self.emit(Status(f"tick:{self.tick_count}", 0))
+
+    def handle(self, command) -> None:
+        del command
+
+    def idle_sleep(self) -> float:
+        return 0.05
 
 
 def make_dummy_session() -> DummySession:
@@ -180,5 +200,27 @@ def test_pipe_transport_surfaces_worker_initialize_errors():
         assert error is not None
         assert "RuntimeError" in error.message
         assert "intentional session init failure" in error.message
+    finally:
+        transport.stop()
+
+
+def test_sleep_to_session_cadence_waits_out_remaining_tick_time():
+    session = FastLiveSession()
+    started = time.monotonic()
+    _sleep_to_session_cadence(session, started)
+    elapsed = time.monotonic() - started
+    assert elapsed >= 0.04
+
+
+def test_live_pipe_transport_respects_idle_sleep_cadence():
+    transport = PipeTransport(FastLiveSession)
+    transport.start()
+    try:
+        time.sleep(0.25)
+        updates = transport.poll_updates()
+        statuses = [update for update in updates if isinstance(update, Status)]
+        assert statuses, "expected paced live status updates"
+        last_tick = max(int(status.message.split(":")[1]) for status in statuses)
+        assert last_tick < 20
     finally:
         transport.stop()

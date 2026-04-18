@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+import time
 from typing import Any
 
 import numpy as np
@@ -11,6 +12,7 @@ from PyQt6.QtCore import Qt
 from vispy import scene
 from vispy.scene.cameras import TurntableCamera
 
+from compneurovis._perf import perf_log
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
@@ -850,12 +852,24 @@ class LinePlotHostPanel(QtWidgets.QGroupBox):
         geometry_lookup: dict[str, MorphologyGeometry],
         operator_lookup: dict[str, OperatorSpec] | None = None,
     ) -> None:
+        started = time.monotonic()
         self.line_plot_panel.refresh(view, field, state, geometry_lookup, operator_lookup)
         if view is None:
             self.setTitle("")
             return
         title = self.line_plot_panel.resolved_title or view.title or view.id
         self.setTitle(title)
+        duration_ms = round((time.monotonic() - started) * 1000.0, 3)
+        if duration_ms >= 5.0:
+            perf_log(
+                "line_plot",
+                "refresh",
+                panel_id=self.panel_id,
+                view_id=self.view_id,
+                field_id=getattr(view, "field_id", None),
+                duration_ms=duration_ms,
+                field_shape=getattr(getattr(field, "values", None), "shape", None),
+            )
 
 
 class ControlsPanel(QtWidgets.QWidget):

@@ -20,6 +20,12 @@ extracts a short summary from each example when available.
 
 - **Multi-cell Jaxley visualizer**: three procedurally-built cells connected by synapses. `python examples/jaxley/multicell_example.py` (`examples/jaxley/multicell_example.py`)
 
+## Custom Sessions and Solvers
+
+### Custom
+
+- **Custom FitzHugh-Nagumo backend**: complete example of a pure BufferedSession backend with its own fixed-step RK4 solver, explicit scene assembly, and bound controls/actions. No NEURON or Jaxley helper is involved. `python examples/custom/fitzhugh_nagumo_backend.py` (`examples/custom/fitzhugh_nagumo_backend.py`)
+
 ## Field and Surface Workflows
 
 ### Static / Interactive

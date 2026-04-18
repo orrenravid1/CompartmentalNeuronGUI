@@ -10,12 +10,15 @@ from compneurovis.session.protocol import (
     FieldReplace,
     InvokeAction,
     KeyPressed,
+    LayoutReplace,
+    PanelPatch,
     Reset,
     SessionCommand,
     SessionUpdate,
     SetControl,
     StatePatch,
     Status,
+    StopSession,
 )
 
 __all__ = [
@@ -29,6 +32,8 @@ __all__ = [
     "HistoryCaptureMode",
     "InvokeAction",
     "KeyPressed",
+    "LayoutReplace",
+    "PanelPatch",
     "PipeTransport",
     "Reset",
     "Session",
@@ -38,6 +43,7 @@ __all__ = [
     "SetControl",
     "StatePatch",
     "Status",
+    "StopSession",
     "configure_multiprocessing",
     "resolve_interaction_target_source",
     "resolve_session_source",

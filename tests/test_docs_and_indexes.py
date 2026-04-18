@@ -407,10 +407,12 @@ def test_generated_example_index_is_grouped_by_backend_and_workflow():
     text = (ROOT / "docs" / "reference" / "example-index.md").read_text(encoding="utf-8")
     for heading in (
         "## Live Simulation Backends",
+        "## Custom Sessions and Solvers",
         "## Field and Surface Workflows",
         "## Debug and Architecture Probes",
         "### NEURON",
         "### Jaxley",
+        "### Custom",
     ):
         assert heading in text, f"example index should include {heading}"
 

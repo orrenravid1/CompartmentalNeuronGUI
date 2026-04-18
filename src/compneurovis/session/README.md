@@ -11,3 +11,7 @@ summary: Session base classes, typed protocol, and local pipe transport.
 - protocol commands and updates
 - `PipeTransport`
 
+`PipeTransport` mirrors app-scoped diagnostics into spawned worker processes so
+frontend and session perf logging can be configured explicitly rather than only
+through inherited shell environment.
+

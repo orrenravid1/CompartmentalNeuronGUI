@@ -9,35 +9,106 @@ from multiprocessing import Pipe, Process
 
 from PyQt6 import QtCore
 
+from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
+from compneurovis.core.scene import DiagnosticsSpec
 from compneurovis.session.base import Session, SessionSource, resolve_session_source
 from compneurovis.session.protocol import SceneReady, Error, SessionCommand, SessionUpdate, StopSession
 
 
-def _session_process(session_source: SessionSource, update_pipe, command_pipe) -> None:
+def _update_type_counts(updates: list[SessionUpdate]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for update in updates:
+        name = type(update).__name__
+        counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def _update_sample_counts(updates: list[SessionUpdate]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for update in updates:
+        coord_values = getattr(update, "coord_values", None)
+        field_id = getattr(update, "field_id", None)
+        if coord_values is None or field_id is None:
+            continue
+        counts[str(field_id)] = int(getattr(coord_values, "shape", [len(coord_values)])[0])
+    return counts
+
+
+def _sleep_to_session_cadence(session: Session, started_at: float) -> None:
+    delay = float(session.idle_sleep())
+    if delay <= 0:
+        return
+    remaining = delay - (time.monotonic() - started_at)
+    if remaining > 0:
+        time.sleep(remaining)
+
+
+def _apply_perf_logging_configuration(diagnostics: DiagnosticsSpec | None) -> None:
+    if diagnostics is None:
+        clear_perf_logging_configuration()
+    else:
+        configure_perf_logging(diagnostics)
+
+
+def _session_process(session_source: SessionSource, diagnostics: DiagnosticsSpec | None, update_pipe, command_pipe) -> None:
     session: Session | None = None
     try:
+        _apply_perf_logging_configuration(diagnostics)
         session = resolve_session_source(session_source)
         scene = session.initialize()
+        perf_log(
+            "session_worker",
+            "initialize",
+            session_type=type(session).__name__,
+            has_scene=scene is not None,
+            is_live=session.is_live(),
+            idle_sleep_s=session.idle_sleep(),
+        )
         if scene is not None:
             update_pipe.send(SceneReady(scene))
 
         while True:
+            tick_started = time.monotonic()
             while command_pipe.poll():
                 command = command_pipe.recv()
                 if isinstance(command, StopSession):
                     return
+                command_started = time.monotonic()
                 session.handle(command)
+                perf_log(
+                    "session_worker",
+                    "handle_command",
+                    command_type=type(command).__name__,
+                    control_id=getattr(command, "control_id", None),
+                    action_id=getattr(command, "action_id", None),
+                    key=getattr(command, "key", None),
+                    entity_id=getattr(command, "entity_id", None),
+                    value=getattr(command, "value", None),
+                    duration_ms=round((time.monotonic() - command_started) * 1000.0, 3),
+                )
 
+            advance_started = time.monotonic()
             if session.is_live():
                 session.advance()
-            else:
-                time.sleep(session.idle_sleep())
+            advance_ms = round((time.monotonic() - advance_started) * 1000.0, 3)
 
             updates = session.read_updates()
             if updates:
                 update_pipe.send(updates if len(updates) > 1 else updates[0])
+            perf_log(
+                "session_worker",
+                "tick",
+                session_type=type(session).__name__,
+                is_live=session.is_live(),
+                advance_ms=advance_ms,
+                emitted_update_count=len(updates),
+                emitted_update_types=_update_type_counts(updates),
+                emitted_field_append_samples=_update_sample_counts(updates),
+            )
+            _sleep_to_session_cadence(session, tick_started)
     except Exception as exc:  # pragma: no cover - safety net for worker errors
         detail = "".join(traceback.format_exception(exc))
+        perf_log("session_worker", "error", error_type=type(exc).__name__, message=str(exc))
         update_pipe.send(Error(detail))
     finally:
         try:
@@ -48,15 +119,32 @@ def _session_process(session_source: SessionSource, update_pipe, command_pipe) -
             command_pipe.close()
 
 
-def _session_process_queue(session_source: SessionSource, update_queue, command_queue, stop_event=None) -> None:
+def _session_process_queue(
+    session_source: SessionSource,
+    diagnostics: DiagnosticsSpec | None,
+    update_queue,
+    command_queue,
+    stop_event=None,
+) -> None:
     session: Session | None = None
     try:
+        _apply_perf_logging_configuration(diagnostics)
         session = resolve_session_source(session_source)
         scene = session.initialize()
+        perf_log(
+            "session_worker",
+            "initialize",
+            session_type=type(session).__name__,
+            has_scene=scene is not None,
+            is_live=session.is_live(),
+            idle_sleep_s=session.idle_sleep(),
+            transport_mode="thread",
+        )
         if scene is not None:
             update_queue.put(SceneReady(scene))
 
         while True:
+            tick_started = time.monotonic()
             if stop_event is not None and stop_event.is_set():
                 return
             try:
@@ -66,18 +154,44 @@ def _session_process_queue(session_source: SessionSource, update_queue, command_
             if command is not None:
                 if isinstance(command, StopSession):
                     return
+                command_started = time.monotonic()
                 session.handle(command)
+                perf_log(
+                    "session_worker",
+                    "handle_command",
+                    transport_mode="thread",
+                    command_type=type(command).__name__,
+                    control_id=getattr(command, "control_id", None),
+                    action_id=getattr(command, "action_id", None),
+                    key=getattr(command, "key", None),
+                    entity_id=getattr(command, "entity_id", None),
+                    value=getattr(command, "value", None),
+                    duration_ms=round((time.monotonic() - command_started) * 1000.0, 3),
+                )
 
+            advance_started = time.monotonic()
             if session.is_live():
                 session.advance()
-            else:
-                time.sleep(session.idle_sleep())
+            advance_ms = round((time.monotonic() - advance_started) * 1000.0, 3)
 
             updates = session.read_updates()
             if updates:
                 update_queue.put(updates if len(updates) > 1 else updates[0])
+            perf_log(
+                "session_worker",
+                "tick",
+                session_type=type(session).__name__,
+                is_live=session.is_live(),
+                transport_mode="thread",
+                advance_ms=advance_ms,
+                emitted_update_count=len(updates),
+                emitted_update_types=_update_type_counts(updates),
+                emitted_field_append_samples=_update_sample_counts(updates),
+            )
+            _sleep_to_session_cadence(session, tick_started)
     except Exception as exc:  # pragma: no cover - safety net for worker errors
         detail = "".join(traceback.format_exception(exc))
+        perf_log("session_worker", "error", transport_mode="thread", error_type=type(exc).__name__, message=str(exc))
         update_queue.put(Error(detail))
     finally:
         if session is not None:
@@ -85,7 +199,7 @@ def _session_process_queue(session_source: SessionSource, update_queue, command_
 
 
 class PipeTransport(QtCore.QObject):
-    def __init__(self, session: SessionSource, parent=None) -> None:
+    def __init__(self, session: SessionSource, diagnostics: DiagnosticsSpec | None = None, parent=None) -> None:
         super().__init__(parent)
         if isinstance(session, Session):
             raise TypeError(
@@ -93,6 +207,7 @@ class PipeTransport(QtCore.QObject):
                 "Do not pass an already-created session instance."
             )
         self.session = session
+        self.diagnostics = diagnostics
         self._mode = "pipe"
         self._dead = False
         self._children = ()
@@ -104,7 +219,7 @@ class PipeTransport(QtCore.QObject):
             self.command_parent = command_parent
             self.process = Process(
                 target=_session_process,
-                args=(session, update_child, self.command_child),
+                args=(session, diagnostics, update_child, self.command_child),
             )
             self._children = (update_child, self.command_child)
         except PermissionError:
@@ -115,7 +230,7 @@ class PipeTransport(QtCore.QObject):
             self._stop_event = threading.Event()
             self.thread = threading.Thread(
                 target=_session_process_queue,
-                args=(session, self.update_parent, self.command_parent, self._stop_event),
+                args=(session, diagnostics, self.update_parent, self.command_parent, self._stop_event),
                 daemon=True,
             )
 
@@ -151,9 +266,28 @@ class PipeTransport(QtCore.QObject):
                     append_payload(self.update_parent.get_nowait())
                 except queue.Empty:
                     break
+        perf_log(
+            "transport",
+            "poll_updates",
+            mode=self._mode,
+            update_count=len(updates),
+            update_types=_update_type_counts(updates),
+            field_append_samples=_update_sample_counts(updates),
+        )
         return updates
 
     def send_command(self, command: SessionCommand) -> None:
+        perf_log(
+            "transport",
+            "send_command",
+            mode=self._mode,
+            command_type=type(command).__name__,
+            control_id=getattr(command, "control_id", None),
+            action_id=getattr(command, "action_id", None),
+            key=getattr(command, "key", None),
+            entity_id=getattr(command, "entity_id", None),
+            value=getattr(command, "value", None),
+        )
         if self._mode == "pipe":
             self.command_parent.send(command)
         else:

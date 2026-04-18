@@ -208,6 +208,25 @@ default simulator builders.
 
 ## API / Authoring
 
+### Runtime Panel Layout Updates — `PanelPatch` and `LayoutReplace`
+
+Phase: 2
+
+Sessions need to change which controls are visible (e.g. when the user switches between model variants) or add/remove panels at runtime, without triggering a full `SceneReady` that reinitializes all scene data. Two new `SessionUpdate` types address this:
+
+- `PanelPatch(panel_id, control_ids, action_ids, ...)` — surgical update to one panel's contents. Frontend updates the controls widget in place; no panel widget rebuild.
+- `LayoutReplace(panels, panel_grid)` — swaps the full panel arrangement. Frontend rebuilds the widget tree but preserves all fields, views, operators, controls, and geometry.
+
+The frontend uses panel id as the stability key. `PanelPatch` patches in place; `LayoutReplace` reconciles by id (stable panels keep their widgets, new panels are created, gone panels are destroyed).
+
+**Enables:** model-variant control switching, multiple controls panels, runtime panel add/remove.
+
+**Does not enable:** adding new controls/actions to the scene (those require `ScenePatch` or a new `SceneReady`).
+
+Detailed design: [Panel Layout Updates Proposal](proposals/panel-layout-updates.md)
+
+---
+
 ### Callable-Based Animated Surface Builder
 
 Phase: 2

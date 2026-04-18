@@ -42,6 +42,7 @@ SKILL_TRUST_LABELS = {
 SKILL_TAXONOMY_KEYS = ("kind", "surface", "stage", "trust")
 EXAMPLE_GROUPS = (
     ("Live Simulation Backends", ("NEURON", "Jaxley")),
+    ("Custom Sessions and Solvers", ("Custom",)),
     ("Field and Surface Workflows", ("Static / Interactive", "Live", "Replay")),
     ("Debug and Architecture Probes", ("Debug",)),
 )
@@ -198,6 +199,8 @@ def infer_example_group(path: Path) -> tuple[str, str]:
         return "Live Simulation Backends", "NEURON"
     if folder == "jaxley":
         return "Live Simulation Backends", "Jaxley"
+    if folder == "custom":
+        return "Custom Sessions and Solvers", "Custom"
     if folder == "surface_plot":
         if "replay" in stem:
             return "Field and Surface Workflows", "Replay"
@@ -211,6 +214,8 @@ def default_example_summary(path: Path) -> str:
     folder = path.parent.name
     if folder == "debug":
         return "Debug-oriented example for probing layout, session, or rendering behavior"
+    if folder == "custom":
+        return "Runnable custom session example with an example-owned solver and scene assembly"
     if folder in {"neuron", "jaxley"}:
         return "Runnable live session example"
     return "Runnable field or surface visualization example"

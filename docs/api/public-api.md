@@ -6,6 +6,8 @@ summary: Generated reference for the top-level compneurovis package exports.
 # Public API
 
 The top-level package gathers the most important public types and entrypoints in one place.
+Use `DiagnosticsSpec` when you want app-scoped perf logging config on
+`AppSpec(...)` instead of relying on environment variables alone.
 
 ::: compneurovis
     options:
@@ -14,6 +16,7 @@ The top-level package gathers the most important public types and entrypoints in
         - AttributeRef
         - AppSpec
         - ControlSpec
+        - DiagnosticsSpec
         - Scene
         - Field
         - Geometry

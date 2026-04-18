@@ -399,6 +399,9 @@ class JaxleySession(BufferedSession, ABC):
             raise ValueError("JaxleySession display_dt must be positive or None")
         return max(1, int(math.ceil(float(self.display_dt) / float(self.dt))))
 
+    def idle_sleep(self) -> float:
+        return 0.0
+
     def _resolved_field_max_samples(self, scene: Scene, *, field_id: str, append_dim: str) -> int:
         required = int(self.max_samples)
         if self.dt <= 0:

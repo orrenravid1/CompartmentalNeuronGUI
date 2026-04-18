@@ -7,6 +7,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 
 ## Packages
 - `src/compneurovis/__init__.py`
+- `src/compneurovis/_perf.py`
 - `src/compneurovis/backends/__init__.py`
 - `src/compneurovis/backends/jaxley/__init__.py`
 - `src/compneurovis/backends/jaxley/scene.py`
@@ -48,6 +49,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/vispyutils/cappedcylindercollection.py`
 
 ## Examples
+- `examples/custom/fitzhugh_nagumo_backend.py`
 - `examples/debug/multi_3d_views.py`
 - `examples/debug/session_error_after_open.py`
 - `examples/debug/two_line_plots.py`

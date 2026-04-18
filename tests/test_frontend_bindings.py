@@ -9,7 +9,7 @@ import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 import pytest
 
-from compneurovis import ActionSpec, AppSpec, ControlSpec, Field, GridSliceOperatorSpec, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
+from compneurovis import ActionSpec, AppSpec, ControlSpec, DiagnosticsSpec, Field, GridSliceOperatorSpec, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
 from compneurovis.backends.neuron import NeuronSession
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
@@ -608,8 +608,9 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
             return None
 
     class FakeTransport:
-        def __init__(self, session, parent=None):
+        def __init__(self, session, diagnostics=None, parent=None):
             self.session = session
+            self.diagnostics = diagnostics
             self.parent = parent
             self._dead = False
 
@@ -624,11 +625,13 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
 
     monkeypatch.setattr(frontend_module, "PipeTransport", FakeTransport)
 
-    window = VispyFrontendWindow(AppSpec(session=BootstrapSession, title="Bootstrap test"))
+    diagnostics = DiagnosticsSpec(perf_log_enabled=True)
+    window = VispyFrontendWindow(AppSpec(session=BootstrapSession, title="Bootstrap test", diagnostics=diagnostics))
     window.timer.stop()
 
     assert isinstance(window.transport, FakeTransport)
     assert window.transport.session is BootstrapSession
+    assert window.transport.diagnostics == diagnostics
     assert window.scene is not None
     assert window.scene.layout.panel("bootstrap-view-panel") is not None
     assert window._stack.currentWidget() is window._layout_splitter

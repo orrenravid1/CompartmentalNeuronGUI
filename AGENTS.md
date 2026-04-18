@@ -24,6 +24,7 @@ Primary exports live in `src/compneurovis/__init__.py`.
 Key names:
 
 - Core types: `Field`, `Scene`, `LayoutSpec`, `MorphologyGeometry`, `GridGeometry`
+- App config: `AppSpec`, `DiagnosticsSpec`
 - Operator types: `OperatorSpec`, `GridSliceOperatorSpec`
 - View types: `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
 - Backend/session: `NeuronSession`, `JaxleySession`, `ReplaySession`

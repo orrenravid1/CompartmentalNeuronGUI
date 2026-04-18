@@ -9,6 +9,7 @@ summary: Generated list of names exported by compneurovis.__init__.
 - `AttributeRef`
 - `AppSpec`
 - `ControlSpec`
+- `DiagnosticsSpec`
 - `Scene`
 - `Field`
 - `Geometry`

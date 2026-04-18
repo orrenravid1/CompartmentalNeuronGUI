@@ -66,6 +66,23 @@ Use this if you want a 3-D surface linked to a line plot through shared controls
 It uses a reusable `GridSliceOperatorSpec` so the slice logic is not owned by the surface view itself.
 Then continue with [Build a static surface](tutorials/build-a-static-surface.md) and the generated [Example Index](reference/example-index.md) for adjacent variants.
 
+### Custom Backend With Your Own Solver
+
+Run:
+
+```bash
+python examples/custom/fitzhugh_nagumo_backend.py
+```
+
+Use this if you want the closest runnable reference for "I have my own model and solver."
+This example subclasses `BufferedSession` directly, owns a small RK4 integrator, builds
+`Scene` / `Field` / `LinePlotViewSpec` / `PanelSpec` manually, and handles controls and actions
+without using the NEURON or Jaxley helpers.
+When you need timestamped perf logs for debugging, prefer
+`AppSpec(diagnostics=DiagnosticsSpec(perf_log_enabled=True))` over shell-only
+environment variables.
+Then continue with [Session/update model](concepts/session-update-model.md) and the generated [Example Index](reference/example-index.md).
+
 ### Live NEURON Morphology Viewer
 
 Run:
