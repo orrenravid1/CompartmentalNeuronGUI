@@ -25,6 +25,7 @@ class MorphologyViewSpec(ViewSpec):
     color_limits: ValueOrBinding = None
     color_norm: str = "auto"
     background_color: ValueOrBinding = "white"
+    max_refresh_hz: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +49,7 @@ class SurfaceViewSpec(ViewSpec):
     text_color: ValueOrBinding = "black"
     axis_alpha: ValueOrBinding = 1.0
     axis_labels: tuple[str, str, str] | None = None
+    max_refresh_hz: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +70,7 @@ class LinePlotViewSpec(ViewSpec):
     series_palette: tuple[ValueOrBinding, ...] = ()
     rolling_window: float | None = None
     trim_to_rolling_window: bool = False
+    max_refresh_hz: float | None = None
     y_min: float | None = None
     y_max: float | None = None
     x_major_tick_spacing: float | None = None

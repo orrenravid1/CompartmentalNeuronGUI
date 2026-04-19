@@ -285,6 +285,16 @@ Phase: infrastructure
 
 The current live-update path can still build UI latency when a worker emits incremental updates faster than the frontend can consume and redraw them. Narrow typed updates exist, but the transport and frontend still need stronger throughput controls for a library that aims to support high-performance live plotting.
 
+Frontend-owned presentation cadence is now partially implemented for both
+line plots and live 3-D views. Dirty line plots and dirty 3-D views are
+presented on capped schedules by default, with `LinePlotViewSpec.max_refresh_hz`,
+`MorphologyViewSpec.max_refresh_hz`, and `SurfaceViewSpec.max_refresh_hz` as
+the current per-view override seams. The frontend also now budgets how many
+dirty views it presents in one flush so one hot live panel does not monopolize
+the UI thread. That removes one major app-author burden, but it does not yet
+solve transport-level backpressure or generalized drop/merge policy for all
+update classes.
+
 Future work may include:
 
 - explicit backpressure or bounded pending-update queues so the worker cannot build unbounded GUI lag

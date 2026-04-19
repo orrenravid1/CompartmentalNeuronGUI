@@ -14,6 +14,9 @@ from compneurovis.core.scene import DiagnosticsSpec
 from compneurovis.session.base import Session, SessionSource, resolve_session_source
 from compneurovis.session.protocol import SceneReady, Error, SessionCommand, SessionUpdate, StopSession
 
+DEFAULT_MAX_UPDATE_PAYLOADS_PER_POLL = 16
+DEFAULT_MAX_POLL_DURATION_S = 0.004
+
 
 def _update_type_counts(updates: list[SessionUpdate]) -> dict[str, int]:
     counts: dict[str, int] = {}
@@ -213,6 +216,12 @@ class PipeTransport(QtCore.QObject):
         self._children = ()
         self.thread = None
         self._stop_event = None
+        self._max_update_payloads_per_poll = DEFAULT_MAX_UPDATE_PAYLOADS_PER_POLL
+        self._max_poll_duration_s = DEFAULT_MAX_POLL_DURATION_S
+        self._last_poll_payload_count = 0
+        self._last_poll_truncated = False
+        self._last_poll_more_pending = False
+        self._last_poll_duration_ms = 0.0
         try:
             self.update_parent, update_child = Pipe()
             self.command_child, command_parent = Pipe()
@@ -243,7 +252,11 @@ class PipeTransport(QtCore.QObject):
                 child.close()
 
     def poll_updates(self) -> list[SessionUpdate]:
+        poll_started = time.monotonic()
         updates: list[SessionUpdate] = []
+        payload_count = 0
+        truncated = False
+        more_pending = False
 
         def append_payload(payload) -> None:
             if isinstance(payload, list):
@@ -252,27 +265,46 @@ class PipeTransport(QtCore.QObject):
                 updates.append(payload)
 
         if self._mode == "pipe":
-            if self._dead:
-                return updates
             try:
-                while self.update_parent.poll():
+                while not self._dead:
+                    if payload_count >= self._max_update_payloads_per_poll or time.monotonic() - poll_started >= self._max_poll_duration_s:
+                        truncated = True
+                        more_pending = self.update_parent.poll()
+                        break
+                    if not self.update_parent.poll():
+                        break
                     append_payload(self.update_parent.recv())
+                    payload_count += 1
             except (BrokenPipeError, EOFError, OSError) as exc:
                 self._dead = True
                 updates.append(Error(f"Worker process ended unexpectedly: {exc}"))
         else:
             while True:
+                if payload_count >= self._max_update_payloads_per_poll or time.monotonic() - poll_started >= self._max_poll_duration_s:
+                    truncated = True
+                    more_pending = not self.update_parent.empty()
+                    break
                 try:
                     append_payload(self.update_parent.get_nowait())
+                    payload_count += 1
                 except queue.Empty:
                     break
+        duration_ms = round((time.monotonic() - poll_started) * 1000.0, 3)
+        self._last_poll_payload_count = payload_count
+        self._last_poll_truncated = truncated
+        self._last_poll_more_pending = more_pending
+        self._last_poll_duration_ms = duration_ms
         perf_log(
             "transport",
             "poll_updates",
             mode=self._mode,
+            payload_count=payload_count,
             update_count=len(updates),
             update_types=_update_type_counts(updates),
             field_append_samples=_update_sample_counts(updates),
+            truncated=truncated,
+            more_pending=more_pending,
+            duration_ms=duration_ms,
         )
         return updates
 

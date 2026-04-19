@@ -23,6 +23,12 @@ If you want local docs authoring or PR-readiness checks:
 pip install -e ".[contrib]"
 ```
 
+If you want matplotlib-backed colormaps such as `mpl:viridis`:
+
+```bash
+pip install -e ".[matplotlib]"
+```
+
 Optional simulator backends:
 
 ```bash
@@ -36,6 +42,7 @@ pip install -e ".[jaxley]"
 If you want contributor tooling plus a simulator backend in one environment:
 
 ```bash
+pip install -e ".[matplotlib,neuron]"
 pip install -e ".[contrib,jaxley]"
 ```
 
@@ -83,12 +90,12 @@ When you need timestamped perf logs for debugging, prefer
 environment variables.
 Then continue with [Session/update model](concepts/session-update-model.md) and the generated [Example Index](reference/example-index.md).
 
-### Live NEURON Morphology Viewer
+### Complex Cell Morphology Viewer
 
 Run:
 
 ```bash
-python examples/neuron/visualizer_example.py
+python examples/neuron/complex_cell.py
 ```
 
 Requires:

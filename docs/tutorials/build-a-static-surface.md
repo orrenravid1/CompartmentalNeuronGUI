@@ -81,6 +81,9 @@ surface_view = SurfaceViewSpec(
 ```
 
 Any `ViewSpec` property that accepts a `StateBinding` will resolve to the current control value at render time. Properties without a binding use the literal value you provide.
+For `color_map`, built-in strings such as `"fire"` still work, and installs
+with `pip install -e ".[matplotlib]"` can also use names like `"mpl:viridis"`
+or explicit ramps such as `"mpl-ramp:#245aa8:#9e2a2b"`.
 
 ## 4. Assemble and Run
 

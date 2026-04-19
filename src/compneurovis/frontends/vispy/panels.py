@@ -34,6 +34,27 @@ class SurfaceSceneData:
     coords: dict[str, np.ndarray]
 
 
+class InstrumentedSceneCanvas(scene.SceneCanvas):
+    def __init__(self, *args, perf_panel_id: str | None = None, **kwargs):
+        self._perf_panel_id = perf_panel_id
+        self._perf_draw_count = 0
+        super().__init__(*args, **kwargs)
+
+    def on_draw(self, event) -> None:
+        started = time.monotonic()
+        super().on_draw(event)
+        self._perf_draw_count += 1
+        perf_log(
+            "view_3d",
+            "canvas_draw",
+            panel_id=self._perf_panel_id,
+            draw_count=self._perf_draw_count,
+            width_px=int(self.size[0]),
+            height_px=int(self.size[1]),
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
+
+
 class Viewport3DPanel(QtWidgets.QWidget):
     def __init__(
         self,
@@ -43,7 +64,13 @@ class Viewport3DPanel(QtWidgets.QWidget):
         parent=None,
     ):
         super().__init__(parent)
-        self.canvas = scene.SceneCanvas(keys="interactive", bgcolor="white", show=False)
+        self._panel_id = host_spec.id if host_spec is not None else None
+        self.canvas = InstrumentedSceneCanvas(
+            keys="interactive",
+            bgcolor="white",
+            show=False,
+            perf_panel_id=self._panel_id,
+        )
         self.view = self.canvas.central_widget.add_view()
         distance = 200.0 if host_spec is None else host_spec.camera_distance
         elevation = 30.0 if host_spec is None else host_spec.camera_elevation
@@ -75,6 +102,12 @@ class Viewport3DPanel(QtWidgets.QWidget):
 
     def _on_mouse_press(self, ev):
         self._mouse_start = ev.pos
+        perf_log(
+            "view_3d",
+            "mouse_press",
+            panel_id=self._panel_id,
+            pos=[float(ev.pos[0]), float(ev.pos[1])],
+        )
 
     def _on_mouse_release(self, ev):
         if self._active_geometry is None or self.on_entity_selected is None or self._mouse_start is None:
@@ -89,6 +122,15 @@ class Viewport3DPanel(QtWidgets.QWidget):
         ps = self.canvas.pixel_scale
         xf, yf = int(x * ps), int((h - y - 1) * ps)
         entity_id = self.renderer_morph.pick(xf, yf, self.canvas)
+        perf_log(
+            "view_3d",
+            "mouse_release",
+            panel_id=self._panel_id,
+            pos=[float(ev.pos[0]), float(ev.pos[1])],
+            drag_dx=float(dx),
+            drag_dy=float(dy),
+            picked_entity_id=entity_id,
+        )
         if entity_id:
             self.on_entity_selected(entity_id)
 
@@ -116,6 +158,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
         morphology_colors: np.ndarray | None,
         resolved_state: dict[str, Any],
     ) -> None:
+        started = time.monotonic()
         if morphology_view is None or morphology_geometry is None:
             return
 
@@ -123,15 +166,34 @@ class Viewport3DPanel(QtWidgets.QWidget):
         self.canvas.native.setVisible(True)
         self._active_geometry = morphology_geometry
         self.canvas.bgcolor = resolved_state.get(f"{morphology_view.id}:background_color", morphology_view.background_color)
-        if self.renderer_morph.geometry is not morphology_geometry:
+        geometry_changed = self.renderer_morph.geometry is not morphology_geometry
+        set_geometry_ms = 0.0
+        update_colors_ms = 0.0
+        if geometry_changed:
+            geometry_started = time.monotonic()
             self.renderer_morph.set_geometry(morphology_geometry)
+            set_geometry_ms = round((time.monotonic() - geometry_started) * 1000.0, 3)
         if morphology_colors is not None:
+            color_started = time.monotonic()
             self.renderer_morph.update_colors(
                 morphology_colors,
                 morphology_view.color_map,
                 color_limits=resolved_state.get(f"{morphology_view.id}:color_limits", morphology_view.color_limits),
                 color_norm=resolved_state.get(f"{morphology_view.id}:color_norm", morphology_view.color_norm),
             )
+            update_colors_ms = round((time.monotonic() - color_started) * 1000.0, 3)
+        perf_log(
+            "view_3d",
+            "refresh_morphology",
+            panel_id=self._panel_id,
+            view_id=morphology_view.id,
+            geometry_changed=geometry_changed,
+            segment_count=len(morphology_geometry.entity_ids),
+            has_colors=morphology_colors is not None,
+            set_geometry_ms=set_geometry_ms,
+            update_colors_ms=update_colors_ms,
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
     def refresh_surface_visual(
         self,
@@ -141,6 +203,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
         grid_geometry: GridGeometry | None,
         resolved_state: dict[str, Any],
     ) -> None:
+        started = time.monotonic()
         if surface_view is None or surface_field is None:
             return
 
@@ -188,6 +251,15 @@ class Viewport3DPanel(QtWidgets.QWidget):
             surface_alpha=resolved_state[f"{surface_view.id}:surface_alpha"],
             coords_changed=coords_changed,
         )
+        perf_log(
+            "view_3d",
+            "refresh_surface_visual",
+            panel_id=self._panel_id,
+            view_id=surface_view.id,
+            coords_changed=coords_changed,
+            field_shape=getattr(surface_field.values, "shape", None),
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
     def refresh_surface_style(
         self,
@@ -195,6 +267,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
         surface_view: SurfaceViewSpec | None,
         resolved_state: dict[str, Any],
     ) -> None:
+        started = time.monotonic()
         if surface_view is None or self._surface_scene is None:
             return
 
@@ -211,6 +284,13 @@ class Viewport3DPanel(QtWidgets.QWidget):
             surface_shading=resolved_state[f"{surface_view.id}:surface_shading"],
             surface_alpha=resolved_state[f"{surface_view.id}:surface_alpha"],
         )
+        perf_log(
+            "view_3d",
+            "refresh_surface_style",
+            panel_id=self._panel_id,
+            view_id=surface_view.id,
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
     def refresh_surface_axes_geometry(
         self,
@@ -218,6 +298,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
         surface_view: SurfaceViewSpec | None,
         resolved_state: dict[str, Any],
     ) -> None:
+        started = time.monotonic()
         if surface_view is None or self._surface_scene is None:
             self.renderer_surface.axes.clear()
             return
@@ -245,6 +326,13 @@ class Viewport3DPanel(QtWidgets.QWidget):
             text_color=resolved_state[f"{surface_view.id}:text_color"],
             axis_alpha=resolved_state[f"{surface_view.id}:axis_alpha"],
         )
+        perf_log(
+            "view_3d",
+            "refresh_surface_axes_geometry",
+            panel_id=self._panel_id,
+            view_id=surface_view.id,
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
     def refresh_surface_axes_style(
         self,
@@ -252,6 +340,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
         surface_view: SurfaceViewSpec | None,
         resolved_state: dict[str, Any],
     ) -> None:
+        started = time.monotonic()
         if surface_view is None or self._surface_scene is None:
             self.renderer_surface.axes.clear()
             return
@@ -264,6 +353,13 @@ class Viewport3DPanel(QtWidgets.QWidget):
             text_color=resolved_state[f"{surface_view.id}:text_color"],
             axis_alpha=resolved_state[f"{surface_view.id}:axis_alpha"],
         )
+        perf_log(
+            "view_3d",
+            "refresh_surface_axes_style",
+            panel_id=self._panel_id,
+            view_id=surface_view.id,
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
     def refresh_operator_overlays(
         self,
@@ -272,6 +368,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
         operators: list[GridSliceOperatorSpec],
         resolved_operator_states: dict[str, dict[str, Any]],
     ) -> None:
+        started = time.monotonic()
         if surface_view is None or self._surface_scene is None or not operators:
             self.renderer_surface.clear_operator_overlays()
             return
@@ -294,9 +391,27 @@ class Viewport3DPanel(QtWidgets.QWidget):
             y=self._surface_scene.y_grid,
             z=self._surface_scene.z,
         )
+        perf_log(
+            "view_3d",
+            "refresh_operator_overlays",
+            panel_id=self._panel_id,
+            view_id=surface_view.id,
+            overlay_count=len(overlays),
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
     def commit(self) -> None:
+        started = time.monotonic()
         self.canvas.update()
+        perf_log(
+            "view_3d",
+            "commit",
+            panel_id=self._panel_id,
+            active_mode=self._active_mode,
+            width_px=self.width(),
+            height_px=self.height(),
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
 
 class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
@@ -411,12 +526,24 @@ class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
 
 
 class LinePlotPanel(pg.PlotWidget):
-    def __init__(self, parent=None, *, show_internal_title: bool = True):
+    _DOWNSAMPLING_METHOD = "peak"
+
+    def __init__(
+        self,
+        parent=None,
+        *,
+        show_internal_title: bool = True,
+        perf_panel_id: str | None = None,
+        perf_view_id: str | None = None,
+    ):
         super().__init__(parent=parent, title="Plot" if show_internal_title else "")
         self._show_internal_title = show_internal_title
+        self._perf_panel_id = perf_panel_id
+        self._perf_view_id = perf_view_id
         self._resolved_title = ""
         self.setBackground("w")
         self._plot_item = self.plot([], [], pen="k")
+        self._configure_data_item(self._plot_item)
         self._series_items: dict[str, pg.PlotDataItem] = {}
         self._legend_signature: tuple[str, ...] | None = None
         # Per-refresh fast-path caches. Each gates one piece of work that does
@@ -428,6 +555,14 @@ class LinePlotPanel(pg.PlotWidget):
         self._cache_x_range_applied: tuple[float, float] | None = None
         self._cache_tick_signature: tuple[Any, ...] | str | None = None
         self._cache_background: Any = None
+
+    def _configure_data_item(self, item: pg.PlotDataItem) -> None:
+        # Let pyqtgraph clip and downsample to the visible viewport so line-plot
+        # redraw cost does not grow linearly with retained history or window size.
+        item.setClipToView(True)
+        item.setDownsampling(auto=True, method=self._DOWNSAMPLING_METHOD)
+        # This panel already strips non-finite samples before setData().
+        item.setSkipFiniteCheck(True)
 
     @property
     def resolved_title(self) -> str:
@@ -592,6 +727,21 @@ class LinePlotPanel(pg.PlotWidget):
         self._cache_tick_signature = None
         self._cache_background = None
 
+    def paintEvent(self, event) -> None:
+        started = time.monotonic()
+        super().paintEvent(event)
+        duration_ms = round((time.monotonic() - started) * 1000.0, 3)
+        if duration_ms >= 5.0:
+            perf_log(
+                "line_plot",
+                "paint",
+                panel_id=self._perf_panel_id,
+                view_id=self._perf_view_id,
+                width_px=self.width(),
+                height_px=self.height(),
+                duration_ms=duration_ms,
+            )
+
     def _refresh_series(self, view: LinePlotViewSpec, field: Field, x_dim: str, state: dict[str, Any]) -> None:
         series_dim = view.series_dim
         if series_dim is None:
@@ -655,6 +805,7 @@ class LinePlotPanel(pg.PlotWidget):
             item = self._series_items.get(label)
             if item is None:
                 item = self.plot([], [], pen=pen)
+                self._configure_data_item(item)
                 self._series_items[label] = item
             elif pen_changed:
                 item.setPen(pen)
@@ -839,7 +990,11 @@ class LinePlotHostPanel(QtWidgets.QGroupBox):
         super().__init__(title or view_id, parent)
         self.panel_id = panel_id
         self.view_id = view_id
-        self.line_plot_panel = LinePlotPanel(show_internal_title=False)
+        self.line_plot_panel = LinePlotPanel(
+            show_internal_title=False,
+            perf_panel_id=panel_id,
+            perf_view_id=view_id,
+        )
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 8, 4, 4)
         layout.addWidget(self.line_plot_panel)
@@ -869,6 +1024,8 @@ class LinePlotHostPanel(QtWidgets.QGroupBox):
                 field_id=getattr(view, "field_id", None),
                 duration_ms=duration_ms,
                 field_shape=getattr(getattr(field, "values", None), "shape", None),
+                panel_width_px=self.line_plot_panel.width(),
+                panel_height_px=self.line_plot_panel.height(),
             )
 
 

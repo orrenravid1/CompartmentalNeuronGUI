@@ -10,7 +10,7 @@ metadata:
 
 # Add an Example
 
-Reference implementations: `examples/surface_plot/static_surface_visualizer.py` (static) and `examples/neuron/visualizer_example.py` (live session).
+Reference implementations: `examples/surface_plot/static_surface_visualizer.py` (static) and `examples/neuron/complex_cell.py` (live session).
 
 1. Place the file under `examples/`:
    - `examples/neuron/` for NEURON-backed live examples
@@ -28,6 +28,8 @@ Reference implementations: `examples/surface_plot/static_surface_visualizer.py` 
 
 4. Verify importability: `python -m compileall examples`
 
-5. Regenerate the example index: `python scripts/generate_indexes.py`
+5. If the example is a primary entry point for a new workflow or backend, update authored docs (getting-started, README, AGENTS, relevant tutorials) using `update-docs-and-indexes`.
 
-6. Validate: `python scripts/generate_indexes.py --check`
+6. Regenerate the example index: `python scripts/generate_indexes.py`
+
+7. Validate: `python scripts/generate_indexes.py --check`

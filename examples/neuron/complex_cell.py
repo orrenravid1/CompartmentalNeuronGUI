@@ -1,5 +1,5 @@
 """
-Live NEURON visualizer — minimal example of a single-cell live session loaded from an SWC file.
+Complex cell visualizer — minimal example of a single-cell live session loaded from an SWC file.
 
 Patterns shown:
   - load_swc_neuron() to import a morphology file as NEURON sections with 3-D coordinates
@@ -8,7 +8,7 @@ Patterns shown:
   - build_neuron_app() + run_app() as the two-line launch pattern
 
 Requires: NEURON, res/Animal_2_Basal_2.CNG.swc
-Run: python examples/neuron/visualizer_example.py
+Run: python examples/neuron/complex_cell.py
 """
 
 import os

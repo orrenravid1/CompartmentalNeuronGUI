@@ -45,6 +45,8 @@ VOLTAGE_VIEW_ID = "voltage_plot"
 STATE_VIEW_ID = "state_plot"
 TERM_VIEW_ID = "term_plot"
 
+LINE_PLOT_MAX_REFRESH_HZ = 30.0
+
 
 class FitzHughNagumoModel:
     def __init__(self) -> None:
@@ -126,20 +128,20 @@ class FitzHughNagumoModel:
 
 
 VOLTAGE_SERIES = (
-    SeriesSpec("v", "Voltage", source=AttributeRef("model", "v"), color=(32, 92, 178)),
+    SeriesSpec("v", "Voltage", source=AttributeRef("model", "v"), color=(0, 210, 190)),
 )
 
 STATE_SERIES = (
-    SeriesSpec("w", "Recovery", source=AttributeRef("model", "w"), color=(214, 85, 54)),
-    SeriesSpec("g_exc", "Exc drive", source=AttributeRef("model", "g_exc"), color=(219, 164, 48)),
-    SeriesSpec("g_inh", "Inh drive", source=AttributeRef("model", "g_inh"), color=(156, 92, 196)),
+    SeriesSpec("w", "Recovery", source=AttributeRef("model", "w"), color=(255, 80, 180)),
+    SeriesSpec("g_exc", "Exc drive", source=AttributeRef("model", "g_exc"), color=(255, 140, 0)),
+    SeriesSpec("g_inh", "Inh drive", source=AttributeRef("model", "g_inh"), color=(160, 0, 255)),
 )
 
 TERM_SERIES = (
-    SeriesSpec("cubic", "v - v^3/3", source=AttributeRef("model", "cubic_term"), color=(32, 92, 178)),
-    SeriesSpec("recovery", "-w", source=AttributeRef("model", "recovery_term"), color=(214, 85, 54)),
-    SeriesSpec("drive", "drive", source=AttributeRef("model", "drive_term"), color=(84, 158, 74)),
-    SeriesSpec("dvdt", "dV/dt", source=AttributeRef("model", "dvdt"), color=(44, 164, 161)),
+    SeriesSpec("cubic", "v - v^3/3", source=AttributeRef("model", "cubic_term"), color=(0, 210, 190)),
+    SeriesSpec("recovery", "-w", source=AttributeRef("model", "recovery_term"), color=(255, 80, 180)),
+    SeriesSpec("drive", "drive", source=AttributeRef("model", "drive_term"), color=(255, 140, 0)),
+    SeriesSpec("dvdt", "dV/dt", source=AttributeRef("model", "dvdt"), color=(255, 50, 100)),
 )
 
 CONTROLS = (
@@ -284,6 +286,7 @@ def build_scene(
             y_max=2.5,
             x_major_tick_spacing=100.0,
             x_minor_tick_spacing=25.0,
+            max_refresh_hz=LINE_PLOT_MAX_REFRESH_HZ
         ),
         STATE_VIEW_ID: LinePlotViewSpec(
             id=STATE_VIEW_ID,
@@ -302,6 +305,7 @@ def build_scene(
             y_max=2.5,
             x_major_tick_spacing=100.0,
             x_minor_tick_spacing=25.0,
+            max_refresh_hz=LINE_PLOT_MAX_REFRESH_HZ
         ),
         TERM_VIEW_ID: LinePlotViewSpec(
             id=TERM_VIEW_ID,
@@ -320,6 +324,7 @@ def build_scene(
             y_max=3.0,
             x_major_tick_spacing=100.0,
             x_minor_tick_spacing=25.0,
+            max_refresh_hz=LINE_PLOT_MAX_REFRESH_HZ
         ),
     }
 

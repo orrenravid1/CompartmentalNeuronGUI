@@ -22,6 +22,9 @@ pyqtgraph     = "0.13.7"
 scipy         = "1.16.0"
 vispy         = "0.15.2"
 
+# optional visualization extras
+matplotlib    = { version = "^3.10", optional = true }
+
 # optional simulator backends
 neuron        = { version = "^8.2", optional = true }
 jaxley        = { version = "^0.1", optional = true }
@@ -35,12 +38,13 @@ mkdocs-material = { version = "^9.7.6", optional = true }
 mkdocstrings  = { version = "^1.0.3", extras = ["python"], optional = true }
 
 [tool.poetry.extras]
+matplotlib = ["matplotlib"]
 neuron  = ["neuron"]
 jaxley  = ["jaxley"]
 arbor   = ["arbor"]
 moose   = ["pymoose"]
 contrib = ["pytest", "mkdocs", "mkdocs-material", "mkdocstrings"]
-all     = ["neuron", "jaxley", "arbor", "pymoose", "pytest", "mkdocs", "mkdocs-material", "mkdocstrings"]
+all     = ["matplotlib", "neuron", "jaxley", "arbor", "pymoose", "pytest", "mkdocs", "mkdocs-material", "mkdocstrings"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

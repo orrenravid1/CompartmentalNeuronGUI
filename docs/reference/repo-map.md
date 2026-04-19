@@ -56,8 +56,9 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `examples/debug/two_morphology_views.py`
 - `examples/jaxley/multicell_example.py`
 - `examples/neuron/c_elegans_visualizer.py`
+- `examples/neuron/hh_section_inspector.py`
 - `examples/neuron/multicell_example.py`
-- `examples/neuron/visualizer_example.py`
+- `examples/neuron/complex_cell.py`
 - `examples/surface_plot/animated_surface_live.py`
 - `examples/surface_plot/animated_surface_replay.py`
 - `examples/surface_plot/static_surface_visualizer.py`

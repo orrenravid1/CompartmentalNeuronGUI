@@ -798,7 +798,7 @@ description = "Python library for calculating contours of 2D quadrilateral grids
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"jaxley\" or extra == \"all\" or extra == \"moose\""
+markers = "extra == \"matplotlib\" or extra == \"all\" or extra == \"jaxley\" or extra == \"moose\""
 files = [
     {file = "contourpy-1.3.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:ba38e3f9f330af820c4b27ceb4b9c7feee5fe0493ea53a8720f4792667465934"},
     {file = "contourpy-1.3.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:dc41ba0714aa2968d1f8674ec97504a8f7e334f48eeacebcaa6256213acb0989"},
@@ -937,7 +937,7 @@ description = "Composable style cycles"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"jaxley\" or extra == \"all\" or extra == \"moose\""
+markers = "extra == \"matplotlib\" or extra == \"all\" or extra == \"jaxley\" or extra == \"moose\""
 files = [
     {file = "cycler-0.12.1-py3-none-any.whl", hash = "sha256:85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30"},
     {file = "cycler-0.12.1.tar.gz", hash = "sha256:88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c"},
@@ -1119,7 +1119,7 @@ description = "Tools to manipulate font files"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"jaxley\" or extra == \"all\" or extra == \"moose\""
+markers = "extra == \"matplotlib\" or extra == \"all\" or extra == \"jaxley\" or extra == \"moose\""
 files = [
     {file = "fonttools-4.59.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:524133c1be38445c5c0575eacea42dbd44374b310b1ffc4b60ff01d881fabb96"},
     {file = "fonttools-4.59.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:21e606b2d38fed938dde871c5736822dd6bda7a4631b92e509a1f5cd1b90c5df"},
@@ -2530,7 +2530,7 @@ description = "Python plotting package"
 optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"jaxley\" or extra == \"all\" or extra == \"moose\""
+markers = "extra == \"matplotlib\" or extra == \"all\" or extra == \"jaxley\" or extra == \"moose\""
 files = [
     {file = "matplotlib-3.10.3-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:213fadd6348d106ca7db99e113f1bea1e65e383c3ba76e8556ba4a3054b65ae7"},
     {file = "matplotlib-3.10.3-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:d3bec61cb8221f0ca6313889308326e7bb303d0d302c5cc9e523b2f2e6c73deb"},
@@ -3722,7 +3722,7 @@ description = "Python Imaging Library (Fork)"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"jaxley\" or extra == \"all\" or extra == \"moose\""
+markers = "extra == \"matplotlib\" or extra == \"all\" or extra == \"jaxley\" or extra == \"moose\""
 files = [
     {file = "pillow-11.3.0-cp310-cp310-macosx_10_10_x86_64.whl", hash = "sha256:1b9c17fd4ace828b3003dfd1e30bff24863e0eb59b535e8f80194d9cc7ecf860"},
     {file = "pillow-11.3.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:65dc69160114cdd0ca0f35cb434633c75e8e7fad4cf855177a05bf38678f73ad"},
@@ -4384,7 +4384,7 @@ description = "pyparsing module - Classes and methods to define and execute pars
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"jaxley\" or extra == \"all\" or extra == \"moose\""
+markers = "extra == \"matplotlib\" or extra == \"all\" or extra == \"jaxley\" or extra == \"moose\""
 files = [
     {file = "pyparsing-3.2.3-py3-none-any.whl", hash = "sha256:a749938e02d6fd0b59b356ca504a24982314bb090c383e3cf201c95ef7e2bfcf"},
     {file = "pyparsing-3.2.3.tar.gz", hash = "sha256:b9c13f1ab8b3b542f72e28f634bad4de758ab3ce4546e4301970ad6fa77c38be"},
@@ -4523,7 +4523,7 @@ description = "Extensions to the standard Python datetime module"
 optional = true
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 groups = ["main"]
-markers = "extra == \"jaxley\" or extra == \"all\" or extra == \"moose\" or extra == \"contrib\""
+markers = "extra == \"matplotlib\" or extra == \"all\" or extra == \"jaxley\" or extra == \"moose\" or extra == \"contrib\""
 files = [
     {file = "python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3"},
     {file = "python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427"},
@@ -5203,7 +5203,7 @@ description = "Python 2 and 3 compatibility utilities"
 optional = true
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 groups = ["main"]
-markers = "extra == \"jaxley\" or extra == \"all\" or extra == \"moose\" or extra == \"contrib\""
+markers = "extra == \"matplotlib\" or extra == \"all\" or extra == \"jaxley\" or extra == \"moose\" or extra == \"contrib\""
 files = [
     {file = "six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274"},
     {file = "six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81"},
@@ -5855,14 +5855,15 @@ multidict = ">=4.0"
 propcache = ">=0.2.1"
 
 [extras]
-all = ["arbor", "jaxley", "mkdocs", "mkdocs-material", "mkdocstrings", "neuron", "pymoose", "pytest"]
+all = ["arbor", "jaxley", "matplotlib", "mkdocs", "mkdocs-material", "mkdocstrings", "neuron", "pymoose", "pytest"]
 arbor = ["arbor"]
 contrib = ["mkdocs", "mkdocs-material", "mkdocstrings", "pytest"]
 jaxley = ["jaxley"]
+matplotlib = ["matplotlib"]
 moose = ["pymoose"]
 neuron = ["neuron"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "b7a32f51471ead396bee5f98564afe6252aed4976a1cec286af8a6cc42f7c636"
+content-hash = "32167bbb72123f6911ac4fe675e0d6e4aa6e21dc1eb06e03f3bb860c539b9e57"

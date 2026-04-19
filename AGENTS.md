@@ -90,6 +90,7 @@ the canonical source plus all regenerated outputs together.
 
 - Install: `pip install -e .`
 - Install contributor toolchain: `pip install -e ".[contrib]"`
+- Install matplotlib colormap support: `pip install -e ".[matplotlib]"`
 - Install NEURON backend: `pip install -e ".[neuron]"`
 - Install Jaxley backend: `pip install -e ".[jaxley]"`
 - Compile check: `python -m compileall src examples`
@@ -111,7 +112,7 @@ the canonical source plus all regenerated outputs together.
 - Seal PR readiness and create the final attestation commit automatically: `python scripts/pr_readiness.py seal --commit`
 - Verify a sealed PR tip: `python scripts/pr_readiness.py verify`
 - Verify a sealed PR tip and rerun the recorded checks: `python scripts/pr_readiness.py verify --rerun-commands`
-- Run a live example: `python examples/neuron/visualizer_example.py`
+- Run a live example: `python examples/neuron/complex_cell.py`
 - Run a static example: `python examples/surface_plot/static_surface_visualizer.py`
 
 ## PR Requirements

@@ -89,6 +89,25 @@ class FastLiveSession(BufferedSession):
         return 0.05
 
 
+class FloodLiveSession(BufferedSession):
+    def __init__(self):
+        super().__init__()
+        self.tick_count = 0
+
+    def initialize(self):
+        return None
+
+    def advance(self) -> None:
+        self.tick_count += 1
+        self.emit(Status(f"tick:{self.tick_count}", 0))
+
+    def handle(self, command) -> None:
+        del command
+
+    def idle_sleep(self) -> float:
+        return 0.0
+
+
 def make_dummy_session() -> DummySession:
     return DummySession()
 
@@ -222,5 +241,23 @@ def test_live_pipe_transport_respects_idle_sleep_cadence():
         assert statuses, "expected paced live status updates"
         last_tick = max(int(status.message.split(":")[1]) for status in statuses)
         assert last_tick < 20
+    finally:
+        transport.stop()
+
+
+def test_pipe_transport_bounds_update_drain_per_poll_to_preserve_ui_responsiveness():
+    transport = PipeTransport(FloodLiveSession)
+    transport._max_update_payloads_per_poll = 8
+    transport._max_poll_duration_s = 1.0
+    transport.start()
+    try:
+        time.sleep(0.2)
+        updates = transport.poll_updates()
+        statuses = [update for update in updates if isinstance(update, Status)]
+        assert statuses, "expected flood session updates"
+        assert len(updates) <= 8
+        assert transport._last_poll_payload_count <= 8
+        assert transport._last_poll_truncated is True
+        assert transport._last_poll_more_pending is True
     finally:
         transport.stop()

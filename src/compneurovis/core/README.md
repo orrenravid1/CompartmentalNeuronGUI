@@ -22,6 +22,13 @@ summary: Field, geometry, view, control, and scene primitives.
 `AppSpec` also carries optional `DiagnosticsSpec` settings for app-scoped perf
 logging and similar cross-cutting diagnostics.
 
+`LinePlotViewSpec` carries optional presentation hints such as
+`rolling_window`, `trim_to_rolling_window`, and `max_refresh_hz`.
+`MorphologyViewSpec` and `SurfaceViewSpec` also now support
+`max_refresh_hz` as a frontend-owned presentation hint for live 3-D refresh
+cadence. These settings shape how the frontend presents updates; they do not
+require the backend to hand-tune its emit cadence for each app.
+
 `PanelSpec` is the current visible-panel seam. A 3-D `PanelSpec` owns host
 concerns such as initial camera distance, turntable orientation, and projected
 operator overlays. Those settings belong on the visible panel rather than on

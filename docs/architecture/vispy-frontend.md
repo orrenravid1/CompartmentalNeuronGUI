@@ -58,6 +58,28 @@ on plotting or control rendering. The remaining mismatch is not panel identity
 but layout topology: the frontend still arranges panels through row-major
 `panel_grid` rather than an explicit recursive split tree.
 
+Line plots now also have a frontend-owned presentation cadence layer. A
+line-plot `RefreshTarget` marks the target view dirty; the frontend redraws it
+on a capped schedule by default instead of assuming every append or bound state
+change must force an immediate pyqtgraph `setData(...)`. This keeps app authors
+on the semantic side of the boundary: sessions emit `FieldAppend` /
+`FieldReplace`, while the frontend owns how often expensive plot redraws are
+presented.
+
+3-D views now follow the same broad rule. Morphology, surface, and
+surface-overlay refresh targets mark the affected 3-D view dirty, and the
+frontend presents that view on a capped schedule by default instead of
+repainting the VisPy canvas on every live field update. This matters because
+the expensive part of a busy live morphology panel is often the actual canvas
+draw on the Qt main thread rather than the field mutation itself.
+
+The line-plot widget layer also now opts into pyqtgraph's viewport-aware
+rendering path by default. Each `PlotDataItem` enables clip-to-view and auto
+downsampling so redraw cost scales closer to the visible plot width than to the
+full retained history. That matters most when users maximize the window or keep
+multiple live plots open: backend emit cadence may stay constant, but the
+frontend still has to paint a larger surface area.
+
 For grid operators, the current pattern is:
 
 - operator semantics live on `Scene.operators`
@@ -105,6 +127,17 @@ Three trigger sources:
 - **`ScenePatch`** -> `targets_for_view_patch(view_id, changed_props)`: marks panels based on which props changed
 
 The full refresh on `SceneReady` marks every target that the current scene's layout requires.
+
+For live presentation cadence, the current policy is:
+
+- first scene load and forced full refreshes redraw immediately
+- subsequent line-plot targets mark the plot dirty
+- subsequent 3-D targets mark the owning 3-D view dirty
+- the frontend presents dirty line plots and dirty 3-D views up to default capped rates
+- the frontend also budgets how many dirty views it presents in one flush so one hot panel does not monopolize the UI thread
+- the line-plot widget itself clips/downsamples to the current viewport by default
+- `LinePlotViewSpec.max_refresh_hz`, `MorphologyViewSpec.max_refresh_hz`, and `SurfaceViewSpec.max_refresh_hz` override those caps per view
+- `max_refresh_hz <= 0` opts out and redraws immediately
 
 ## State and StateBinding
 

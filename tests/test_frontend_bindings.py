@@ -131,6 +131,46 @@ def test_line_plot_host_uses_resolved_plot_title():
     app.quit()
 
 
+def test_line_plot_panel_enables_view_clipping_and_auto_downsampling():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+
+    assert panel._plot_item.opts["clipToView"] is True
+    assert panel._plot_item.opts["autoDownsample"] is True
+    assert panel._plot_item.opts["downsampleMethod"] == "peak"
+    assert panel._plot_item.opts["skipFiniteCheck"] is True
+    app.quit()
+
+
+def test_multi_series_line_plot_items_inherit_render_optimization_defaults():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LinePlotPanel()
+    field = Field(
+        id="cascade",
+        values=np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32),
+        dims=("series", "time"),
+        coords={
+            "series": np.array(["ligand", "receptor"]),
+            "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
+        },
+    )
+    view = LinePlotViewSpec(
+        id="cascade-plot",
+        field_id=field.id,
+        x_dim="time",
+        series_dim="series",
+    )
+
+    panel.refresh(view, field, {}, {})
+
+    for item in panel._series_items.values():
+        assert item.opts["clipToView"] is True
+        assert item.opts["autoDownsample"] is True
+        assert item.opts["downsampleMethod"] == "peak"
+        assert item.opts["skipFiniteCheck"] is True
+    app.quit()
+
+
 def build_surface_cross_section_app():
     x = np.linspace(-1.0, 1.0, 8, dtype=np.float32)
     y = np.linspace(-2.0, 2.0, 6, dtype=np.float32)
@@ -257,6 +297,9 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
     window.viewport.refresh_surface_axes_style.assert_not_called()
     window.viewport.refresh_operator_overlays.assert_called_once()
     window.viewport.commit.assert_called_once()
+    assert "surface-line" in window._dirty_line_plot_views
+    window.line_plot_panel("surface-line").refresh.assert_not_called()
+    window._flush_due_line_plot_refreshes(force=True)
     window.line_plot_panel("surface-line").refresh.assert_called_once()
 
     window.close()
@@ -495,6 +538,76 @@ def test_morphology_renderer_uses_fixed_clim_without_dynamic_recaling():
     colors = renderer.collection.set_colors.call_args.args[0]
     assert np.allclose(colors[:, 0], np.array([0.5, 0.6], dtype=np.float32))
     assert np.allclose(colors[:, 2], np.array([0.5, 0.4], dtype=np.float32))
+
+
+def test_morphology_renderer_supports_single_color_ramp_maps():
+    renderer = MorphologyRenderer.__new__(MorphologyRenderer)
+    renderer.collection = Mock()
+    renderer._color_buf = np.zeros((2, 4), dtype=np.float32)
+
+    renderer.update_colors(np.array([0.0, 1.0], dtype=np.float32), "ramp:#f18f01", color_limits=(0.0, 1.0))
+
+    colors = renderer.collection.set_colors.call_args.args[0]
+    target = np.array([0xF1 / 255.0, 0x8F / 255.0, 0x01 / 255.0, 1.0], dtype=np.float32)
+    low = target.copy()
+    low[:3] = 1.0 - 0.2 * (1.0 - target[:3])
+    assert np.allclose(colors[0], low)
+    assert np.allclose(colors[1], target)
+
+
+def test_morphology_renderer_supports_two_color_ramp_maps():
+    renderer = MorphologyRenderer.__new__(MorphologyRenderer)
+    renderer.collection = Mock()
+    renderer._color_buf = np.zeros((2, 4), dtype=np.float32)
+
+    renderer.update_colors(
+        np.array([0.0, 1.0], dtype=np.float32),
+        "ramp:#245aa8:#9e2a2b",
+        color_limits=(0.0, 1.0),
+    )
+
+    colors = renderer.collection.set_colors.call_args.args[0]
+    low = np.array([0x24 / 255.0, 0x5A / 255.0, 0xA8 / 255.0, 1.0], dtype=np.float32)
+    high = np.array([0x9E / 255.0, 0x2A / 255.0, 0x2B / 255.0, 1.0], dtype=np.float32)
+    assert np.allclose(colors[0], low)
+    assert np.allclose(colors[1], high)
+
+
+def test_morphology_renderer_supports_matplotlib_named_maps():
+    matplotlib = pytest.importorskip("matplotlib")
+
+    renderer = MorphologyRenderer.__new__(MorphologyRenderer)
+    renderer.collection = Mock()
+    renderer._color_buf = np.zeros((2, 4), dtype=np.float32)
+
+    renderer.update_colors(np.array([0.0, 1.0], dtype=np.float32), "mpl:viridis", color_limits=(0.0, 1.0))
+
+    colors = renderer.collection.set_colors.call_args.args[0]
+    expected = np.asarray(matplotlib.colormaps["viridis"](np.array([0.0, 1.0], dtype=np.float32)), dtype=np.float32)
+    assert np.allclose(colors, expected)
+
+
+def test_morphology_renderer_supports_matplotlib_ramp_maps():
+    pytest.importorskip("matplotlib")
+    from matplotlib.colors import LinearSegmentedColormap
+
+    renderer = MorphologyRenderer.__new__(MorphologyRenderer)
+    renderer.collection = Mock()
+    renderer._color_buf = np.zeros((2, 4), dtype=np.float32)
+
+    renderer.update_colors(
+        np.array([0.0, 1.0], dtype=np.float32),
+        "mpl-ramp:#245aa8:#9e2a2b",
+        color_limits=(0.0, 1.0),
+    )
+
+    colors = renderer.collection.set_colors.call_args.args[0]
+    expected_cmap = LinearSegmentedColormap.from_list(
+        "compneurovis-test-ramp",
+        ["#245aa8", "#9e2a2b"],
+    )
+    expected = np.asarray(expected_cmap(np.array([0.0, 1.0], dtype=np.float32)), dtype=np.float32)
+    assert np.allclose(colors, expected)
 
 
 def test_run_app_skips_frontend_launch_in_spawned_child():
@@ -831,6 +944,8 @@ def test_frontend_applies_state_patch_and_refreshes_bound_plot():
     window._poll_transport()
 
     assert window.state["selected_trace_entity_ids"] == ["seg-b"]
+    assert "trace" in window._dirty_line_plot_views
+    window._flush_due_line_plot_refreshes(force=True)
     assert "seg-b" in window.line_plot_panel("trace")._series_items
     window.close()
     app.quit()
@@ -924,6 +1039,338 @@ def test_refresh_planner_targets_only_matching_line_plot_view_for_field_replace(
 
     assert planner.targets_for_field_replace("field-a") == {RefreshTarget.line_plot("trace-a")}
     assert planner.targets_for_field_replace("field-b") == {RefreshTarget.line_plot("trace-b")}
+
+
+def test_frontend_defers_line_plot_refresh_until_refresh_budget_allows():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    scene = Scene(
+        fields={
+            "trace": Field(
+                id="trace",
+                values=np.array([1.0, 2.0, 3.0], dtype=np.float32),
+                dims=("time",),
+                coords={"time": np.array([0.0, 1.0, 2.0], dtype=np.float32)},
+            ),
+        },
+        geometries={},
+        views={"trace": LinePlotViewSpec(id="trace", field_id="trace", x_dim="time")},
+        layout=make_layout(
+            "Deferred line plot",
+            panels=(line_plot_panel_spec("trace-panel", "trace"),),
+        ),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Deferred line plot"))
+    window.timer.stop()
+    host = window.line_plot_host_panels["trace-panel"]
+    host.refresh = Mock()
+    window._line_plot_last_refresh_s["trace"] = 10.0
+
+    with patch.object(frontend_module.time, "monotonic", return_value=10.01):
+        window._apply_refresh_targets({RefreshTarget.line_plot("trace")})
+
+    host.refresh.assert_not_called()
+    assert "trace" in window._dirty_line_plot_views
+
+    with patch.object(frontend_module.time, "monotonic", return_value=10.11):
+        window._flush_due_line_plot_refreshes()
+
+    host.refresh.assert_called_once()
+    assert "trace" not in window._dirty_line_plot_views
+    window.close()
+    app.quit()
+
+
+def test_frontend_can_force_line_plot_refresh_despite_budget():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    scene = Scene(
+        fields={
+            "trace": Field(
+                id="trace",
+                values=np.array([1.0, 2.0, 3.0], dtype=np.float32),
+                dims=("time",),
+                coords={"time": np.array([0.0, 1.0, 2.0], dtype=np.float32)},
+            ),
+        },
+        geometries={},
+        views={"trace": LinePlotViewSpec(id="trace", field_id="trace", x_dim="time")},
+        layout=make_layout(
+            "Forced line plot",
+            panels=(line_plot_panel_spec("trace-panel", "trace"),),
+        ),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Forced line plot"))
+    window.timer.stop()
+    host = window.line_plot_host_panels["trace-panel"]
+    host.refresh = Mock()
+    window._line_plot_last_refresh_s["trace"] = 10.0
+
+    with patch.object(frontend_module.time, "monotonic", return_value=10.01):
+        window._apply_refresh_targets({RefreshTarget.line_plot("trace")}, force_line_plots=True)
+
+    host.refresh.assert_called_once()
+    assert "trace" not in window._dirty_line_plot_views
+    window.close()
+    app.quit()
+
+
+def test_line_plot_view_can_opt_out_of_frontend_refresh_throttle():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    scene = Scene(
+        fields={
+            "trace": Field(
+                id="trace",
+                values=np.array([1.0, 2.0, 3.0], dtype=np.float32),
+                dims=("time",),
+                coords={"time": np.array([0.0, 1.0, 2.0], dtype=np.float32)},
+            ),
+        },
+        geometries={},
+        views={
+            "trace": LinePlotViewSpec(
+                id="trace",
+                field_id="trace",
+                x_dim="time",
+                max_refresh_hz=0.0,
+            )
+        },
+        layout=make_layout(
+            "Unthrottled line plot",
+            panels=(line_plot_panel_spec("trace-panel", "trace"),),
+        ),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Unthrottled line plot"))
+    window.timer.stop()
+    host = window.line_plot_host_panels["trace-panel"]
+    host.refresh = Mock()
+    window._line_plot_last_refresh_s["trace"] = 10.0
+
+    with patch.object(frontend_module.time, "monotonic", return_value=10.01):
+        window._apply_refresh_targets({RefreshTarget.line_plot("trace")})
+
+    host.refresh.assert_called_once()
+    assert "trace" not in window._dirty_line_plot_views
+    window.close()
+    app.quit()
+
+
+def test_frontend_defers_3d_refresh_within_budget_interval():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    geometry = MorphologyGeometry(
+        id="morphology",
+        positions=np.zeros((1, 3), dtype=np.float32),
+        orientations=np.eye(3, dtype=np.float32)[None, :, :],
+        radii=np.ones(1, dtype=np.float32),
+        lengths=np.ones(1, dtype=np.float32),
+        entity_ids=("seg-a",),
+        section_names=("sec-a",),
+        xlocs=np.array([0.5], dtype=np.float32),
+        labels=("sec-a@0.5",),
+    )
+    scene = Scene(
+        fields={
+            "voltage": Field(
+                id="voltage",
+                values=np.array([1.0], dtype=np.float32),
+                dims=("segment",),
+                coords={"segment": np.array(["seg-a"])},
+            ),
+        },
+        geometries={geometry.id: geometry},
+        views={
+            "morphology": MorphologyViewSpec(
+                id="morphology",
+                geometry_id=geometry.id,
+                color_field_id="voltage",
+                sample_dim=None,
+                max_refresh_hz=10.0,
+            ),
+        },
+        layout=make_layout(
+            "Deferred 3D view",
+            panels=(view_3d_panel("morphology-panel", "morphology"),),
+        ),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Deferred 3D view"))
+    window.timer.stop()
+    window.viewport.refresh_morphology = Mock()
+    window.viewport.commit = Mock()
+    window._view_3d_last_refresh_s["morphology"] = 10.0
+
+    with patch.object(frontend_module.time, "monotonic", return_value=10.01):
+        window._apply_refresh_targets({RefreshTarget.morphology("morphology")})
+
+    window.viewport.refresh_morphology.assert_not_called()
+    assert window._dirty_view_3d_targets == {"morphology": {"morphology"}}
+
+    with patch.object(frontend_module.time, "monotonic", return_value=10.11):
+        window._flush_due_view_3d_refreshes()
+
+    window.viewport.refresh_morphology.assert_called_once()
+    window.viewport.commit.assert_called_once()
+    assert not window._dirty_view_3d_targets
+    window.close()
+    app.quit()
+
+
+def test_frontend_can_force_3d_refresh_despite_budget():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    geometry = MorphologyGeometry(
+        id="morphology",
+        positions=np.zeros((1, 3), dtype=np.float32),
+        orientations=np.eye(3, dtype=np.float32)[None, :, :],
+        radii=np.ones(1, dtype=np.float32),
+        lengths=np.ones(1, dtype=np.float32),
+        entity_ids=("seg-a",),
+        section_names=("sec-a",),
+        xlocs=np.array([0.5], dtype=np.float32),
+        labels=("sec-a@0.5",),
+    )
+    scene = Scene(
+        fields={
+            "voltage": Field(
+                id="voltage",
+                values=np.array([1.0], dtype=np.float32),
+                dims=("segment",),
+                coords={"segment": np.array(["seg-a"])},
+            ),
+        },
+        geometries={geometry.id: geometry},
+        views={
+            "morphology": MorphologyViewSpec(
+                id="morphology",
+                geometry_id=geometry.id,
+                color_field_id="voltage",
+                sample_dim=None,
+                max_refresh_hz=10.0,
+            ),
+        },
+        layout=make_layout(
+            "Forced 3D view",
+            panels=(view_3d_panel("morphology-panel", "morphology"),),
+        ),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Forced 3D view"))
+    window.timer.stop()
+    window.viewport.refresh_morphology = Mock()
+    window.viewport.commit = Mock()
+    window._view_3d_last_refresh_s["morphology"] = 10.0
+
+    with patch.object(frontend_module.time, "monotonic", return_value=10.01):
+        window._apply_refresh_targets(
+            {RefreshTarget.morphology("morphology")},
+            force_view_3d=True,
+        )
+
+    window.viewport.refresh_morphology.assert_called_once()
+    window.viewport.commit.assert_called_once()
+    assert not window._dirty_view_3d_targets
+    window.close()
+    app.quit()
+
+
+def test_morphology_view_can_opt_out_of_frontend_refresh_throttle():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    geometry = MorphologyGeometry(
+        id="morphology",
+        positions=np.zeros((1, 3), dtype=np.float32),
+        orientations=np.eye(3, dtype=np.float32)[None, :, :],
+        radii=np.ones(1, dtype=np.float32),
+        lengths=np.ones(1, dtype=np.float32),
+        entity_ids=("seg-a",),
+        section_names=("sec-a",),
+        xlocs=np.array([0.5], dtype=np.float32),
+        labels=("sec-a@0.5",),
+    )
+    scene = Scene(
+        fields={
+            "voltage": Field(
+                id="voltage",
+                values=np.array([1.0], dtype=np.float32),
+                dims=("segment",),
+                coords={"segment": np.array(["seg-a"])},
+            ),
+        },
+        geometries={geometry.id: geometry},
+        views={
+            "morphology": MorphologyViewSpec(
+                id="morphology",
+                geometry_id=geometry.id,
+                color_field_id="voltage",
+                sample_dim=None,
+                max_refresh_hz=0.0,
+            ),
+        },
+        layout=make_layout(
+            "Unthrottled 3D view",
+            panels=(view_3d_panel("morphology-panel", "morphology"),),
+        ),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Unthrottled 3D view"))
+    window.timer.stop()
+    window.viewport.refresh_morphology = Mock()
+    window.viewport.commit = Mock()
+    window._view_3d_last_refresh_s["morphology"] = 10.0
+
+    with patch.object(frontend_module.time, "monotonic", return_value=10.01):
+        window._apply_refresh_targets({RefreshTarget.morphology("morphology")})
+
+    window.viewport.refresh_morphology.assert_called_once()
+    window.viewport.commit.assert_called_once()
+    assert not window._dirty_view_3d_targets
+    window.close()
+    app.quit()
+
+
+def test_frontend_budgets_line_plot_refreshes_across_dirty_views():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    scene = Scene(
+        fields={
+            "trace-a": Field(
+                id="trace-a",
+                values=np.array([1.0, 2.0, 3.0], dtype=np.float32),
+                dims=("time",),
+                coords={"time": np.array([0.0, 1.0, 2.0], dtype=np.float32)},
+            ),
+            "trace-b": Field(
+                id="trace-b",
+                values=np.array([10.0, 20.0, 30.0], dtype=np.float32),
+                dims=("time",),
+                coords={"time": np.array([0.0, 1.0, 2.0], dtype=np.float32)},
+            ),
+        },
+        geometries={},
+        views={
+            "trace-a": LinePlotViewSpec(id="trace-a", field_id="trace-a", x_dim="time", max_refresh_hz=0.0),
+            "trace-b": LinePlotViewSpec(id="trace-b", field_id="trace-b", x_dim="time", max_refresh_hz=0.0),
+        },
+        layout=make_layout(
+            "Budgeted line plots",
+            panels=(
+                line_plot_panel_spec("trace-a-panel", "trace-a"),
+                line_plot_panel_spec("trace-b-panel", "trace-b"),
+            ),
+        ),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Budgeted line plots"))
+    window.timer.stop()
+    window.line_plot_host_panels["trace-a-panel"].refresh = Mock()
+    window.line_plot_host_panels["trace-b-panel"].refresh = Mock()
+    window._dirty_line_plot_views.update({"trace-a", "trace-b"})
+    window._line_plot_last_refresh_s["trace-a"] = 1.0
+    window._line_plot_last_refresh_s["trace-b"] = 2.0
+
+    window._flush_due_line_plot_refreshes(now=3.0)
+
+    window.line_plot_host_panels["trace-a-panel"].refresh.assert_called_once()
+    window.line_plot_host_panels["trace-b-panel"].refresh.assert_not_called()
+    assert window._dirty_line_plot_views == {"trace-b"}
+
+    window._flush_due_line_plot_refreshes(now=3.0)
+
+    window.line_plot_host_panels["trace-b-panel"].refresh.assert_called_once()
+    assert not window._dirty_line_plot_views
+    window.close()
+    app.quit()
 
 
 def test_line_plot_panel_uses_series_palette_for_multi_series_colors():
@@ -2060,6 +2507,7 @@ def test_frontend_applies_field_append_updates_incrementally():
     updated = window.scene.fields["voltage"]
     assert updated.coord("time").tolist() == [1.0, 2.0]
     assert np.allclose(updated.values, np.array([[2.0, 3.0], [20.0, 30.0]], dtype=np.float32))
+    window._flush_due_line_plot_refreshes(force=True)
     x_data, y_data = window.line_plot_panel("trace")._plot_item.getData()
     assert np.allclose(x_data, np.array([1.0, 2.0], dtype=np.float32))
     assert np.allclose(y_data, np.array([2.0, 3.0], dtype=np.float32))
@@ -2119,9 +2567,8 @@ def test_frontend_batches_multiple_field_appends_into_one_refresh_pass():
     window = VispyFrontendWindow(AppSpec(scene=scene, title="Batch append test"))
     window.timer.stop()
     window.transport = Mock()
-    window._refresh_morphology = Mock()
-    window._refresh_line_plot = Mock()
-    window.viewport.commit = Mock()
+    window._flush_due_line_plot_refreshes = Mock(return_value=(1, 0))
+    window._flush_due_view_3d_refreshes = Mock(return_value=(1, 0))
     window.transport.poll_updates.return_value = [
         FieldAppend(
             field_id="voltage",
@@ -2146,9 +2593,8 @@ def test_frontend_batches_multiple_field_appends_into_one_refresh_pass():
     assert updated.coord("time").tolist() == [0.0, 1.0, 2.0]
     assert np.allclose(updated.values, np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32))
     append_spy.assert_called_once()
-    window._refresh_morphology.assert_called_once()
-    window._refresh_line_plot.assert_called_once()
-    window.viewport.commit.assert_called_once()
+    window._flush_due_line_plot_refreshes.assert_called_once()
+    window._flush_due_view_3d_refreshes.assert_called_once()
 
     window.close()
     app.quit()

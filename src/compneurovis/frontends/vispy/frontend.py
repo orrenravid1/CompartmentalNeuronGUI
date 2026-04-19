@@ -20,6 +20,21 @@ from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel
 from compneurovis.session import LayoutReplace, PanelPatch, ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
 from compneurovis.session.base import resolve_startup_scene_source
 
+DEFAULT_LINE_PLOT_MAX_REFRESH_HZ = 15.0
+DEFAULT_VIEW_3D_MAX_REFRESH_HZ = 8.0
+DEFAULT_MAX_LINE_PLOT_REFRESHES_PER_FLUSH = 1
+DEFAULT_MAX_VIEW_3D_REFRESHES_PER_FLUSH = 1
+VIEW_3D_TARGET_KINDS = frozenset(
+    {
+        "morphology",
+        "surface_visual",
+        "surface_style",
+        "surface_axes_geometry",
+        "surface_axes_style",
+        "operator_overlay",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class RefreshTarget:
@@ -131,6 +146,7 @@ class RefreshPlanner:
             "series_palette",
             "rolling_window",
             "trim_to_rolling_window",
+            "max_refresh_hz",
             "y_min",
             "y_max",
             "x_major_tick_spacing",
@@ -300,6 +316,8 @@ class RefreshPlanner:
                 targets.add(RefreshTarget.surface_axes_style(view_id))
             if changed_props & {"field_id", "geometry_id"}:
                 targets.add(RefreshTarget.operator_overlay(view_id))
+            if "max_refresh_hz" in changed_props:
+                targets.add(RefreshTarget.surface_visual(view_id))
             return targets
         if isinstance(view, LinePlotViewSpec) and changed_props & self.LINE_PLOT_PROPS:
             return {RefreshTarget.line_plot(view_id)}
@@ -342,6 +360,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._view_to_panel_id: dict[str, str] = {}
         self.line_plot_host_panels: dict[str, LinePlotHostPanel] = {}
         self.line_plot_panels: dict[str, LinePlotPanel] = {}
+        self._dirty_line_plot_views: set[str] = set()
+        self._line_plot_last_refresh_s: dict[str, float] = {}
+        self._dirty_view_3d_targets: dict[str, set[str]] = {}
+        self._view_3d_last_refresh_s: dict[str, float] = {}
+        self._last_poll_started_s: float | None = None
         self.controls_host_panels: dict[str, ControlsHostPanel] = {}
         self.controls_panels: dict[str, ControlsPanel] = {}
 
@@ -370,6 +393,28 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.timer.timeout.connect(self._poll_transport)
         self.timer.start(1000 // 60)
 
+    def paintEvent(self, event) -> None:
+        started = time.monotonic()
+        super().paintEvent(event)
+        duration_ms = round((time.monotonic() - started) * 1000.0, 3)
+        if duration_ms >= 5.0:
+            perf_log(
+                "frontend",
+                "window_paint",
+                width_px=self.width(),
+                height_px=self.height(),
+                duration_ms=duration_ms,
+            )
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        perf_log(
+            "frontend",
+            "window_resize",
+            width_px=self.width(),
+            height_px=self.height(),
+        )
+
     @property
     def viewport(self) -> Viewport3DPanel | None:
         return next(iter(self.viewports.values()), None)
@@ -395,6 +440,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             self._stack.setCurrentWidget(self._layout_splitter)
 
     def _set_scene(self, scene: Scene) -> None:
+        started = time.monotonic()
         self.scene = scene
         self.refresh_planner = RefreshPlanner(scene)
         self._active_selection_action_id = None
@@ -402,11 +448,30 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         for control in scene.controls.values():
             self.state.setdefault(control.resolved_state_key(), control.default)
 
+        rebuild_started = time.monotonic()
         self._rebuild_panels()
+        rebuild_ms = round((time.monotonic() - rebuild_started) * 1000.0, 3)
 
+        refresh_started = time.monotonic()
         self._update_panel_visibility()
-        self._apply_refresh_targets(self.refresh_planner.full_refresh_targets())
+        self._apply_refresh_targets(
+            self.refresh_planner.full_refresh_targets(),
+            force_line_plots=True,
+            force_view_3d=True,
+        )
+        full_refresh_ms = round((time.monotonic() - refresh_started) * 1000.0, 3)
         self._show_content_state()
+        perf_log(
+            "frontend",
+            "set_scene",
+            view_count=len(scene.views),
+            field_count=len(scene.fields),
+            geometry_count=len(scene.geometries),
+            panel_count=len(scene.layout.panels),
+            rebuild_panels_ms=rebuild_ms,
+            full_refresh_ms=full_refresh_ms,
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
     def _view_ids_in_3d_panels(self) -> tuple[str, ...]:
         if self.scene is None:
@@ -434,11 +499,16 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         )
 
     def _rebuild_panels(self) -> None:
+        started = time.monotonic()
         self.viewports.clear()
         self.view_hosts.clear()
         self._view_to_panel_id.clear()
         self.line_plot_host_panels.clear()
         self.line_plot_panels.clear()
+        self._dirty_line_plot_views.clear()
+        self._line_plot_last_refresh_s.clear()
+        self._dirty_view_3d_targets.clear()
+        self._view_3d_last_refresh_s.clear()
         self.controls_host_panels.clear()
         self.controls_panels.clear()
 
@@ -471,6 +541,15 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 outer.addWidget(row)
 
         self._stack.addWidget(outer)
+        perf_log(
+            "frontend",
+            "rebuild_panels",
+            row_count=outer.count(),
+            view_host_count=len(self.view_hosts),
+            line_plot_host_count=len(self.line_plot_host_panels),
+            controls_host_count=len(self.controls_host_panels),
+            duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+        )
 
     def _resolved_panel_grid(self) -> tuple[tuple[str, ...], ...]:
         if self.scene is None:
@@ -496,6 +575,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         return tuple(rows)
 
     def _make_panel_for_cell(self, cell_id: str) -> QtWidgets.QWidget | None:
+        started = time.monotonic()
         if self.scene is None:
             return None
         panel_spec = self.scene.layout.panel(cell_id)
@@ -509,6 +589,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             self.line_plot_host_panels[panel_spec.id] = host
             self.line_plot_panels[panel_spec.id] = host.line_plot_panel
             self._view_to_panel_id[view_id] = panel_spec.id
+            perf_log(
+                "frontend",
+                "create_panel",
+                panel_id=panel_spec.id,
+                panel_kind=panel_spec.kind,
+                view_ids=panel_spec.view_ids,
+                duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+            )
             return host
         if panel_spec.kind == PANEL_KIND_VIEW_3D:
             panel = self._create_view_host(panel_spec)
@@ -516,6 +604,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             for view_id in panel_spec.view_ids:
                 self.viewports[view_id] = panel.viewport
                 self._view_to_panel_id[view_id] = panel_spec.id
+            perf_log(
+                "frontend",
+                "create_panel",
+                panel_id=panel_spec.id,
+                panel_kind=panel_spec.kind,
+                view_ids=panel_spec.view_ids,
+                duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+            )
             return panel
         if panel_spec.kind == PANEL_KIND_CONTROLS:
             controls_panel = ControlsPanel(self._on_control_changed, self._on_action_invoked)
@@ -523,6 +619,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             host = ControlsHostPanel(controls_panel, panel_id=panel_spec.id, title=title)
             self.controls_host_panels[panel_spec.id] = host
             self.controls_panels[panel_spec.id] = controls_panel
+            perf_log(
+                "frontend",
+                "create_panel",
+                panel_id=panel_spec.id,
+                panel_kind=panel_spec.kind,
+                duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+            )
             return host
         return None
 
@@ -543,6 +646,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             return None
         view = self.scene.views.get(view_id)
         return view if isinstance(view, LinePlotViewSpec) else None
+
+    def _view_3d(self, view_id: str):
+        return self._morphology_view(view_id) or self._surface_view(view_id)
+
+    def _refresh_priority_key(self, view_id: str, last_refresh_s: dict[str, float]) -> tuple[float, str]:
+        last = last_refresh_s.get(view_id)
+        return (float("-inf") if last is None else last, view_id)
 
     def _view_host(self, view_id: str):
         panel_id = self._view_to_panel_id.get(view_id)
@@ -762,14 +872,57 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         )
 
     def _refresh_line_plot(self, view_id: str) -> None:
+        self._refresh_line_plot_if_due(view_id, force=True)
+
+    def _line_plot_refresh_interval_s(self, view_id: str) -> float | None:
+        view = self._line_view(view_id)
+        if view is None:
+            return None
+        max_refresh_hz = view.max_refresh_hz
+        if max_refresh_hz is None:
+            max_refresh_hz = DEFAULT_LINE_PLOT_MAX_REFRESH_HZ
+        max_refresh_hz = float(max_refresh_hz)
+        if max_refresh_hz <= 0:
+            return None
+        return 1.0 / max_refresh_hz
+
+    def _view_3d_refresh_interval_s(self, view_id: str) -> float | None:
+        view = self._view_3d(view_id)
+        if view is None:
+            return None
+        max_refresh_hz = view.max_refresh_hz
+        if max_refresh_hz is None:
+            max_refresh_hz = DEFAULT_VIEW_3D_MAX_REFRESH_HZ
+        max_refresh_hz = float(max_refresh_hz)
+        if max_refresh_hz <= 0:
+            return None
+        return 1.0 / max_refresh_hz
+
+    def _refresh_line_plot_if_due(
+        self,
+        view_id: str,
+        *,
+        force: bool = False,
+        now: float | None = None,
+    ) -> bool:
         if self.scene is None:
-            return
+            self._dirty_line_plot_views.discard(view_id)
+            return False
         panel_id = self._view_to_panel_id.get(view_id)
         if panel_id is None:
-            return
+            self._dirty_line_plot_views.discard(view_id)
+            return False
         host = self.line_plot_host_panels.get(panel_id)
         if host is None:
-            return
+            self._dirty_line_plot_views.discard(view_id)
+            return False
+        current_time = time.monotonic() if now is None else now
+        if not force:
+            interval = self._line_plot_refresh_interval_s(view_id)
+            last_refresh = self._line_plot_last_refresh_s.get(view_id)
+            if interval is not None and last_refresh is not None and current_time - last_refresh < interval:
+                self._dirty_line_plot_views.add(view_id)
+                return False
         line_view = self._line_view(view_id)
         geometry_lookup = {
             key: value
@@ -785,8 +938,109 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             else:
                 line_field = self.scene.fields.get(line_view.field_id)
         host.refresh(line_view, line_field, self.state, geometry_lookup, self.scene.operators)
+        self._line_plot_last_refresh_s[view_id] = current_time
+        self._dirty_line_plot_views.discard(view_id)
+        return True
 
-    def _apply_refresh_targets(self, targets: set[RefreshTarget]) -> None:
+    def _refresh_view_3d_if_due(
+        self,
+        view_id: str,
+        *,
+        force: bool = False,
+        now: float | None = None,
+    ) -> bool:
+        if self.scene is None:
+            self._dirty_view_3d_targets.pop(view_id, None)
+            return False
+        host = self._view_host(view_id)
+        if host is None:
+            self._dirty_view_3d_targets.pop(view_id, None)
+            return False
+        current_time = time.monotonic() if now is None else now
+        if not force:
+            interval = self._view_3d_refresh_interval_s(view_id)
+            last_refresh = self._view_3d_last_refresh_s.get(view_id)
+            if interval is not None and last_refresh is not None and current_time - last_refresh < interval:
+                return False
+        pending_kinds = self._dirty_view_3d_targets.get(view_id)
+        if not pending_kinds:
+            self._dirty_view_3d_targets.pop(view_id, None)
+            return False
+        for kind in sorted(
+            tuple(pending_kinds),
+            key=lambda kind: {
+                "morphology": 0,
+                "surface_visual": 1,
+                "surface_style": 2,
+                "surface_axes_geometry": 3,
+                "surface_axes_style": 4,
+                "operator_overlay": 5,
+            }.get(kind, 99),
+        ):
+            if kind == "morphology":
+                self._refresh_morphology(view_id)
+            elif kind == "surface_visual":
+                self._refresh_surface_visual(view_id)
+            elif kind == "surface_style":
+                self._refresh_surface_style(view_id)
+            elif kind == "surface_axes_geometry":
+                self._refresh_surface_axes_geometry(view_id)
+            elif kind == "surface_axes_style":
+                self._refresh_surface_axes_style(view_id)
+            elif kind == "operator_overlay":
+                self._refresh_operator_overlays(view_id)
+        host.commit()
+        self._view_3d_last_refresh_s[view_id] = current_time
+        self._dirty_view_3d_targets.pop(view_id, None)
+        return True
+
+    def _flush_due_line_plot_refreshes(
+        self,
+        *,
+        force: bool = False,
+        now: float | None = None,
+    ) -> tuple[int, int]:
+        if not self._dirty_line_plot_views:
+            return 0, 0
+        current_time = time.monotonic() if now is None else now
+        refreshed = 0
+        refresh_limit = None if force else DEFAULT_MAX_LINE_PLOT_REFRESHES_PER_FLUSH
+        for view_id in sorted(
+            tuple(self._dirty_line_plot_views),
+            key=lambda dirty_view_id: self._refresh_priority_key(dirty_view_id, self._line_plot_last_refresh_s),
+        ):
+            if refresh_limit is not None and refreshed >= refresh_limit:
+                break
+            refreshed += int(self._refresh_line_plot_if_due(view_id, force=force, now=current_time))
+        return refreshed, len(self._dirty_line_plot_views)
+
+    def _flush_due_view_3d_refreshes(
+        self,
+        *,
+        force: bool = False,
+        now: float | None = None,
+    ) -> tuple[int, int]:
+        if not self._dirty_view_3d_targets:
+            return 0, 0
+        current_time = time.monotonic() if now is None else now
+        refreshed = 0
+        refresh_limit = None if force else DEFAULT_MAX_VIEW_3D_REFRESHES_PER_FLUSH
+        for view_id in sorted(
+            tuple(self._dirty_view_3d_targets),
+            key=lambda dirty_view_id: self._refresh_priority_key(dirty_view_id, self._view_3d_last_refresh_s),
+        ):
+            if refresh_limit is not None and refreshed >= refresh_limit:
+                break
+            refreshed += int(self._refresh_view_3d_if_due(view_id, force=force, now=current_time))
+        return refreshed, len(self._dirty_view_3d_targets)
+
+    def _apply_refresh_targets(
+        self,
+        targets: set[RefreshTarget],
+        *,
+        force_line_plots: bool = False,
+        force_view_3d: bool = False,
+    ) -> None:
         if not targets:
             return
         started = time.monotonic()
@@ -794,63 +1048,53 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if RefreshTarget.CONTROLS in targets:
             self._refresh_controls()
 
-        dirty_viewports: set[str] = set()
+        line_plot_target_count = 0
         for target in sorted(
             (target for target in targets if target.kind == "line_plot" and target.view_id is not None),
             key=lambda target: target.view_id or "",
         ):
-            self._refresh_line_plot(target.view_id)
-        ordered_targets = sorted(
-            (target for target in targets if target.kind not in {"controls", "line_plot"}),
-            key=lambda target: (
-                {
-                    "morphology": 0,
-                    "surface_visual": 1,
-                    "surface_style": 2,
-                    "surface_axes_geometry": 3,
-                    "surface_axes_style": 4,
-                    "operator_overlay": 5,
-                }.get(target.kind, 99),
-                target.view_id or "",
-            ),
+            self._dirty_line_plot_views.add(target.view_id)
+            line_plot_target_count += 1
+        line_plot_refreshed_count, line_plot_deferred_count = self._flush_due_line_plot_refreshes(
+            force=force_line_plots,
+            now=started,
         )
-        for target in ordered_targets:
-            if target.kind == "morphology" and target.view_id is not None:
-                self._refresh_morphology(target.view_id)
-                dirty_viewports.add(target.view_id)
-            elif target.kind == "surface_visual" and target.view_id is not None:
-                self._refresh_surface_visual(target.view_id)
-                dirty_viewports.add(target.view_id)
-            elif target.kind == "surface_style" and target.view_id is not None:
-                self._refresh_surface_style(target.view_id)
-                dirty_viewports.add(target.view_id)
-            elif target.kind == "surface_axes_geometry" and target.view_id is not None:
-                self._refresh_surface_axes_geometry(target.view_id)
-                dirty_viewports.add(target.view_id)
-            elif target.kind == "surface_axes_style" and target.view_id is not None:
-                self._refresh_surface_axes_style(target.view_id)
-                dirty_viewports.add(target.view_id)
-            elif target.kind == "operator_overlay" and target.view_id is not None:
-                self._refresh_operator_overlays(target.view_id)
-                dirty_viewports.add(target.view_id)
-        dirty_hosts = {self._view_to_panel_id[view_id] for view_id in dirty_viewports if view_id in self._view_to_panel_id}
-        for panel_id in dirty_hosts:
-            host = self.view_hosts.get(panel_id)
-            if host is not None:
-                host.commit()
+        view_3d_target_count = 0
+        for target in sorted(
+            (target for target in targets if target.kind in VIEW_3D_TARGET_KINDS and target.view_id is not None),
+            key=lambda target: (target.view_id or "", target.kind),
+        ):
+            self._dirty_view_3d_targets.setdefault(target.view_id, set()).add(target.kind)
+            view_3d_target_count += 1
+        view_3d_refreshed_count, view_3d_deferred_count = self._flush_due_view_3d_refreshes(
+            force=force_view_3d,
+            now=started,
+        )
         perf_log(
             "frontend",
             "apply_refresh_targets",
             target_count=len(targets),
             target_kinds=_target_kind_counts(targets),
-            dirty_host_count=len(dirty_hosts),
+            line_plot_target_count=line_plot_target_count,
+            line_plot_refreshed_count=line_plot_refreshed_count,
+            line_plot_deferred_count=line_plot_deferred_count,
+            view_3d_target_count=view_3d_target_count,
+            view_3d_refreshed_count=view_3d_refreshed_count,
+            view_3d_deferred_count=view_3d_deferred_count,
+            dirty_view_3d_count=len(self._dirty_view_3d_targets),
             duration_ms=round((time.monotonic() - started) * 1000.0, 3),
         )
 
     def _poll_transport(self) -> None:
-        if self.transport is None:
-            return
         poll_started = time.monotonic()
+        timer_gap_ms = None if self._last_poll_started_s is None else round((poll_started - self._last_poll_started_s) * 1000.0, 3)
+        self._last_poll_started_s = poll_started
+        if self.transport is None:
+            if self._dirty_line_plot_views:
+                self._flush_due_line_plot_refreshes(now=poll_started)
+            if self._dirty_view_3d_targets:
+                self._flush_due_view_3d_refreshes(now=poll_started)
+            return
         pending_targets: set[RefreshTarget] = set()
         pending_status: str | None = None
         pending_field_appends: dict[str, FieldAppend] = {}
@@ -982,24 +1226,38 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     QtWidgets.QMessageBox.critical(self, "Session error", msg)
                     return
         flush_pending_field_appends()
+        has_line_plot_targets = any(target.kind == "line_plot" for target in pending_targets)
+        has_view_3d_targets = any(target.kind in VIEW_3D_TARGET_KINDS for target in pending_targets)
         if pending_targets:
             self._apply_refresh_targets(pending_targets)
+        if self._dirty_line_plot_views and not has_line_plot_targets:
+            self._flush_due_line_plot_refreshes()
+        if self._dirty_view_3d_targets and not has_view_3d_targets:
+            self._flush_due_view_3d_refreshes()
         if pending_status is not None:
             self.statusBar().showMessage(pending_status)
         perf_log(
             "frontend",
             "poll_transport",
             transport_mode=getattr(self.transport, "_mode", None),
+            transport_payload_count=getattr(self.transport, "_last_poll_payload_count", None),
+            transport_poll_truncated=getattr(self.transport, "_last_poll_truncated", None),
+            transport_more_pending=getattr(self.transport, "_last_poll_more_pending", None),
+            transport_poll_duration_ms=getattr(self.transport, "_last_poll_duration_ms", None),
             update_count=len(updates),
             update_types=_update_type_counts(updates),
             coalesced_field_append_count=flushed_field_appends,
             appended_samples_by_field=appended_samples_by_field,
             pending_target_count=len(pending_targets),
             pending_target_kinds=_target_kind_counts(pending_targets),
+            dirty_line_plot_count=len(self._dirty_line_plot_views),
+            dirty_view_3d_count=len(self._dirty_view_3d_targets),
+            timer_gap_ms=timer_gap_ms,
             duration_ms=round((time.monotonic() - poll_started) * 1000.0, 3),
         )
 
     def _on_entity_selected(self, entity_id: str) -> None:
+        perf_log("frontend", "entity_selected", entity_id=entity_id)
         self.state["selected_entity_id"] = entity_id
         if self.scene is not None:
             for geometry in self.scene.geometries.values():
@@ -1034,7 +1292,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if self.transport is not None and control.send_to_session:
             self.transport.send_command(SetControl(control.id, value))
         if self.refresh_planner is not None:
-            self._apply_refresh_targets(self.refresh_planner.targets_for_state_change(control.resolved_state_key()))
+            self._apply_refresh_targets(
+                self.refresh_planner.targets_for_state_change(control.resolved_state_key()),
+                force_view_3d=True,
+            )
 
     def _on_action_invoked(self, action, payload: dict[str, Any]) -> None:
         if self._invoke_interaction_action(action.id, payload):
@@ -1181,7 +1442,10 @@ class FrontendInteractionContext:
     def set_state(self, key: str, value: Any) -> None:
         self.window.state[key] = value
         if self.window.refresh_planner is not None:
-            self.window._apply_refresh_targets(self.window.refresh_planner.targets_for_state_change(key))
+            self.window._apply_refresh_targets(
+                self.window.refresh_planner.targets_for_state_change(key),
+                force_view_3d=True,
+            )
 
     def show_status(self, message: str, timeout_ms: int | None = None) -> None:
         self.window.statusBar().showMessage(message)

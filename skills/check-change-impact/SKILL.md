@@ -18,6 +18,7 @@ Audit changes in this order:
 2. Map those paths onto the package map and public API in `AGENTS.md`.
 3. Decide whether the change affects:
    - exported names in `src/compneurovis/__init__.py`
+   - package metadata in `pyproject.toml` or `poetry.lock`
    - package-local `README.md` files
    - architecture or concept docs in `docs/`
    - examples
@@ -25,11 +26,12 @@ Audit changes in this order:
    - generated reference indexes
 4. Run the smallest useful verification:
    - `python scripts/check_architecture_invariants.py` when public terminology, protocol names, or other architectural vocabulary changed
+   - `python scripts/check_packaging_metadata.py` when the change adds, removes, or newly relies on a dependency, optional extra, or install-time workflow
    - `python -m compileall src examples tests`
    - `pytest`
    - `python scripts/generate_indexes.py --check`
 5. Identify call sites changed by the diff that are not covered by the test suite. `compileall` verifies syntax only; `pytest` only defends paths it exercises. Runtime failures - wrong kwargs, removed methods, type mismatches, untested code paths - are invisible to both. For each uncovered call site, either verify correctness by reading the callee's implementation, or flag it as a required manual smoke-test in the impact report.
-6. Report missing follow-up edits explicitly instead of assuming docs are still correct.
+6. Report missing follow-up edits explicitly instead of assuming docs are still correct. Dependency or extra changes should explicitly call out any required `pyproject.toml`, `poetry.lock`, README, Getting Started, tutorial, or `AGENTS.md` install-command updates.
 
 When the change alters public concepts, package boundaries, or workflows, treat docs updates as required work, not optional cleanup.
 
