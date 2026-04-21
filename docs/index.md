@@ -30,6 +30,6 @@ If you want to see the toolkit working before reading architecture docs, start h
 - [Static surface example](getting-started.md#static-surface-first-look)
 - [Surface plus cross-section example](getting-started.md#surface-plus-linked-cross-section)
 - [Custom solver backend example](getting-started.md#custom-backend-with-your-own-solver)
-- [Live NEURON example](getting-started.md#live-neuron-morphology-viewer)
+- [Live NEURON example](getting-started.md#complex-cell-morphology-viewer)
 - [Live Jaxley example](getting-started.md#live-jaxley-multicell-example)
 - [Replay example](getting-started.md#replay-a-precomputed-animation)

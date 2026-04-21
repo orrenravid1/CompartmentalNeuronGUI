@@ -374,62 +374,6 @@ The current docs site should stay on `MkDocs + Material + mkdocstrings` until th
 
 ## Skills / Developer Tooling
 
-### `audit-code-smells`
-
-Phase: infrastructure
-
-Skill for detecting architectural drift patterns specific to this codebase.
-Base skill already implemented at `skills/audit-code-smells/SKILL.md`. The
-remaining backlog is about stronger automation and broader mechanical coverage.
-
-Checks to include:
-- **Import layer violations** — `core` importing from `frontends` or `backends`; `session` importing from `frontends`; `backends` importing from `frontends`
-- **`isinstance` dispatch chains on `ViewSpec`/`Geometry` types outside the intended frontend panel dispatch** — branching on view/geometry type in `core` or `session` is a smell; it should live only in `_make_panel_for_cell` or equivalent dispatch sites
-- **Hardcoded field/view IDs as string literals outside `builders/` and `backends/`** — e.g. `"voltage"`, `"trace"`, `"history"` in `frontends/` or `session/`
-- **Frontend `setdefault` initializing state from scene data** — state derived from scene content should arrive via session `StatePatch`, not be computed by the frontend in `_set_scene`
-- **Session `_ui_state` holding rendering/selection keys** — anything in `_ui_state` that represents display intent rather than behavioral state is a smell; those keys should flow through `StatePatch` and live in the frontend
-
----
-
-### `audit-layer-boundaries`
-
-Phase: infrastructure
-
-Base skill already implemented at `skills/audit-layer-boundaries/SKILL.md`.
-The remaining backlog is about turning parts of that audit into a more
-mechanical repo check.
-
-Mechanical import-structure check across the 4 layers: `core` → `session` → `builders`/`backends` → `frontends`. More binary than `audit-code-smells` — either the import exists or it doesn't.
-
-Checks to include:
-- No `core` module imports from `session`, `builders`, `backends`, or `frontends`
-- No `session` module imports from `builders`, `backends`, or `frontends`
-- No `backends` or `builders` module imports from `frontends`
-- Flag any cross-layer import that isn't a declared public re-export in `__init__.py`
-
-Complements `audit-code-smells`; where smells are pattern-based, this is purely structural.
-
----
-
-### `plan-refactor`
-
-Phase: infrastructure
-
-Base skill already implemented at `skills/plan-refactor/SKILL.md`. The
-remaining backlog is about richer automation or templated plan generation, not
-the existence of the workflow itself.
-
-QoL skill for planning multi-file refactors before executing them. Given a target change, the skill identifies all touch points and produces an ordered plan.
-
-Steps to include:
-1. Identify the target: what type, name, field, or contract is changing
-2. Map touch points across: `src/`, `examples/`, `tests/`, `docs/`, `skills/`, generated indexes, `AGENTS.md`
-3. Classify each touch as: must change, likely needs update, verify only
-4. Order steps to minimize broken intermediate states (e.g. update callers before removing the old interface)
-5. Flag downstream skills or invariant checks that need to run after the change
-
-Primary use case: renames, protocol contract changes, layout model changes, and any change that spans more than 3 files.
-
 ---
 
 ## Cleanup / Retirement
@@ -451,3 +395,15 @@ Phase: 2
 ### Session Startup Scene API
 
 Implemented. Sessions can now provide `@classmethod startup_scene(cls) -> Scene | None`. `run_app(...)` uses that hook automatically when `AppSpec.scene` is absent. This allows startup layout, controls, and placeholder fields to be known before worker start, opening directly into the intended view without a loading-only phase.
+
+### `audit-code-smells`
+
+Implemented. Full skill at `skills/audit-code-smells/SKILL.md`. Covers import layer violations, `isinstance` dispatch outside frontend, hardcoded field/view IDs, frontend `setdefault` in `_set_scene`, and session `_ui_state` holding display keys.
+
+### `audit-layer-boundaries`
+
+Implemented. Full skill at `skills/audit-layer-boundaries/SKILL.md`. Mechanically checks all four layers for upward imports with explicit grep commands.
+
+### `plan-refactor`
+
+Implemented. Full skill at `skills/plan-refactor/SKILL.md`. Covers touch-point mapping, execution ordering, verification checkpoints, and follow-on skill flagging.

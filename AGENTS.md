@@ -173,17 +173,24 @@ Files:
 - Roadmap (phases, next steps, transition targets): `docs/architecture/design/roadmap.md`
 - Design decisions (settled doctrine and lessons): `docs/architecture/design/decisions.md`
 - Backlog (deferred features, infrastructure, cleanup): `docs/architecture/design/backlog.md`
+- Architecture section index: `docs/architecture/index.md`
+- Design section index: `docs/architecture/design/index.md`
+- Proposals section index: `docs/architecture/design/proposals/index.md`
 - Layout workbench proposal: `docs/architecture/design/proposals/layout-workbench-proposal.md`
+- Panel layout updates proposal: `docs/architecture/design/proposals/panel-layout-updates.md`
+- WebSocket transport proposal: `docs/architecture/design/proposals/websocket-transport-proposal.md`
 - Release process: `docs/architecture/release-process.md`
 - PR readiness attestation: `docs/architecture/pr-readiness-attestation.md`
 - Session protocol: `docs/architecture/session-protocol.md`
 - Architecture invariants: `docs/architecture/invariants.json`
 - VisPy frontend: `docs/architecture/vispy-frontend.md`
+- Concepts section index: `docs/concepts/index.md`
 - Session/update concept: `docs/concepts/session-update-model.md`
 - Field semantics: `docs/concepts/field-model.md`
 - Geometry types concept: `docs/concepts/geometry-types.md`
 - Controls/actions/state concept: `docs/concepts/controls-actions-state.md`
 - View/layout concept: `docs/concepts/view-layout-model.md`
+- Tutorials section index: `docs/tutorials/index.md`
 - Static surface tutorial: `docs/tutorials/build-a-static-surface.md`
 - NEURON session tutorial: `docs/tutorials/build-a-neuron-session.md`
 - Jaxley session tutorial: `docs/tutorials/build-a-jaxley-session.md`

@@ -9,7 +9,7 @@ Status: proposal
 
 This document captures the plan for adding a WebSocket-based transport alongside the existing `PipeTransport`. It is not a settled decision yet. When the implementation stabilizes and the durable lesson is clear, the final doctrine should move into [Design Decisions](../decisions.md).
 
-For the current high-level priority, see [Roadmap](../roadmap.md). For the deferred summary entry, see [Backlog](../backlog.md#remote-frontend--alternate-transport).
+For the current high-level priority, see [Roadmap](../roadmap.md). For the deferred summary entry, see [Backlog](../backlog.md#remote-frontend-alternate-transport).
 
 ## Problem
 
