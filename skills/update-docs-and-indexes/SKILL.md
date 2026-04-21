@@ -33,7 +33,7 @@ Update documentation in this order:
 5. Audit architecture-facing prose with `audit-architecture-doc-consistency` when the edits make claims about current support, limitations, or future work.
 6. Update or add relevant skills under `skills/` if the workflow changed in a reusable way.
 7. Regenerate the reference docs with `python scripts/generate_indexes.py`.
-8. Check nav completeness: every `.md` file under `docs/` must appear in `mkdocs.yml` nav. Glob `docs/**/*.md`, then verify each path is listed. Files present on disk but absent from nav produce only an `INFO` in `mkdocs build` — they will not cause a build failure, so this must be checked explicitly.
+8. Check nav completeness: every `.md` file under `docs/` must appear in `mkdocs.yml` nav. Glob `docs/**/*.md`, then verify each path is listed. Files present on disk but absent from nav produce only an `INFO` in `mkdocs build` - they will not cause a build failure, so this must be checked explicitly.
 9. Check section index pages: every nav section that contains two or more child pages must have an `index.md` at its root (e.g. `docs/tutorials/index.md`). If one is missing, create it with a short orientation paragraph and links to each child page.
 10. Validate with:
     - `python scripts/generate_indexes.py --check`
