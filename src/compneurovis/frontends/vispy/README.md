@@ -52,3 +52,5 @@ that operator into implicit `SurfaceViewSpec` state.
 - `IndependentCanvas3DHostPanel` is the current built-in host implementation
 
 That keeps the current one-view-one-canvas behavior intact while leaving room for future shared-canvas or shared-scene hosts.
+
+Markov graph panels render static directed graphs with live-colored nodes and edges; useful for channel state visualizations. `MarkovGraphPanel` draws node occupancies and edge fluxes using a VisPy `SceneCanvas` with `PanZoomCamera`, and follows the same throttled refresh cadence as line plots. `MarkovGraphViewSpec.max_refresh_hz` is the per-view override seam.

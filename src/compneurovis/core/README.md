@@ -16,6 +16,7 @@ summary: Field, geometry, view, control, and scene primitives.
 - `LayoutSpec`
 - `PanelSpec`
 - `ViewSpec`
+- `MarkovGraphViewSpec`
 - `ControlSpec`
 - declarative binding helpers such as `AttributeRef` and `SeriesSpec`
 

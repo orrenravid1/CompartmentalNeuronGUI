@@ -19,8 +19,8 @@ from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
 from compneurovis.core.scene import PanelSpec
 from compneurovis.core.state import StateBinding
-from compneurovis.core.views import LinePlotViewSpec, MorphologyViewSpec, SurfaceViewSpec
-from compneurovis.frontends.vispy.renderers import MorphologyRenderer, SurfaceRenderer
+from compneurovis.core.views import LinePlotViewSpec, MarkovGraphViewSpec, MorphologyViewSpec, SurfaceViewSpec
+from compneurovis.frontends.vispy.renderers import MorphologyRenderer, SurfaceRenderer, _colormap_samples
 
 
 @dataclass(slots=True)
@@ -1027,6 +1027,268 @@ class LinePlotHostPanel(QtWidgets.QGroupBox):
                 panel_width_px=self.line_plot_panel.width(),
                 panel_height_px=self.line_plot_panel.height(),
             )
+
+
+def _markov_label_color_for_fill(rgba: np.ndarray) -> tuple[float, float, float, float]:
+    rgb = np.asarray(rgba[:3], dtype=np.float32)
+    luminance = float(np.dot(rgb, np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)))
+    return (1.0, 1.0, 1.0, 1.0) if luminance < 0.45 else (0.0, 0.0, 0.0, 1.0)
+
+
+def _markov_node_colormap_name(cmap_name: str) -> str:
+    return "markov-fire" if str(cmap_name).strip().lower() == "fire" else cmap_name
+
+
+class MarkovGraphPanel(QtWidgets.QWidget):
+    """VisPy canvas panel rendering a live-colored Markov state graph."""
+
+    def __init__(self, parent=None, *, perf_panel_id: str | None = None, perf_view_id: str | None = None):
+        super().__init__(parent)
+        self._perf_panel_id = perf_panel_id
+        self._perf_view_id = perf_view_id
+        from vispy import scene as vscene
+        self._vscene = vscene
+        self._canvas = vscene.SceneCanvas(keys="interactive", bgcolor="white", show=False)
+        self._view = self._canvas.central_widget.add_view()
+        self._view.camera = vscene.cameras.PanZoomCamera(aspect=1)
+        self._view.camera.set_range(x=(-0.15, 1.15), y=(-0.15, 1.15))
+        self._markers = None
+        self._edge_visual = None
+        self._label_visuals: list = []
+        self._node_order: list[str] = []
+        self._edge_order: list[str] = []
+        self._node_pos: np.ndarray | None = None
+        self._edge_pos: np.ndarray | None = None
+        self._arrow_data: np.ndarray | None = None
+        self._node_color_buf: np.ndarray | None = None
+        self._edge_color_buf: np.ndarray | None = None
+        self._edge_segment_color_buf: np.ndarray | None = None
+        self._field_index_cache: dict[tuple[str, tuple[str, ...], tuple[str, ...]], np.ndarray] = {}
+        self._spec_sig: tuple | None = None
+        lo = QtWidgets.QVBoxLayout(self)
+        lo.setContentsMargins(0, 0, 0, 0)
+        lo.addWidget(self._canvas.native)
+
+    def _node_dict(self, view: "MarkovGraphViewSpec") -> dict[str, tuple[float, float]]:
+        return {name: (float(x), float(y)) for name, x, y in view.node_positions}
+
+    def _build_visuals(self, view: "MarkovGraphViewSpec") -> None:
+        vscene = self._vscene
+        for lbl in self._label_visuals:
+            lbl.parent = None
+        self._label_visuals.clear()
+        if self._markers is not None:
+            self._markers.parent = None
+            self._markers = None
+        if self._edge_visual is not None:
+            self._edge_visual.parent = None
+            self._edge_visual = None
+
+        self._canvas.bgcolor = view.background_color
+        self._field_index_cache.clear()
+        node_dict = self._node_dict(view)
+        self._node_order = [name for name, x, y in view.node_positions]
+        self._edge_order = [eid for src, tgt, eid in view.edges]
+        n = len(self._node_order)
+        if n == 0:
+            self._node_pos = None
+            self._node_color_buf = None
+            self._edge_color_buf = None
+            self._edge_segment_color_buf = None
+            return
+
+        self._node_pos = np.array(
+            [[node_dict[nm][0], node_dict[nm][1]] for nm in self._node_order], dtype=np.float32
+        )
+        self._node_color_buf = np.full((n, 4), [0.5, 0.5, 0.5, 1.0], dtype=np.float32)
+        self._markers = vscene.visuals.Markers(parent=self._view.scene)
+        self._markers.set_data(
+            pos=self._node_pos, face_color=self._node_color_buf,
+            size=float(view.node_size), edge_color="black", edge_width=1.5,
+        )
+        for name, x, y in view.node_positions:
+            t = vscene.visuals.Text(
+                text=str(name), pos=(float(x), float(y)),
+                color="black", font_size=8, bold=True,
+                anchor_x="center", anchor_y="center",
+                parent=self._view.scene,
+            )
+            self._label_visuals.append(t)
+
+        n_edges = len(view.edges)
+        if n_edges == 0:
+            return
+
+        edge_set = {(src, tgt) for src, tgt, eid in view.edges}
+        OFFSET = 0.022
+        NODE_GAP = 0.035
+        line_segs: list[tuple[float, float]] = []
+        arrow_pts: list[list[float]] = []
+        for src, tgt, eid in view.edges:
+            sx, sy = node_dict[src]
+            tx, ty = node_dict[tgt]
+            dx, dy = tx - sx, ty - sy
+            L = max(float(np.sqrt(dx * dx + dy * dy)), 1e-9)
+            ux, uy = dx / L, dy / L
+            px, py = -dy / L, dx / L
+            if (tgt, src) in edge_set:
+                ox, oy = px * OFFSET, py * OFFSET
+            else:
+                ox, oy = 0.0, 0.0
+            x0 = sx + ox + ux * NODE_GAP
+            y0 = sy + oy + uy * NODE_GAP
+            x1 = tx + ox - ux * NODE_GAP
+            y1 = ty + oy - uy * NODE_GAP
+            line_segs.extend([(x0, y0), (x1, y1)])
+            arrow_pts.append([x0, y0, x1, y1])
+
+        self._edge_pos = np.array(line_segs, dtype=np.float32)
+        self._arrow_data = np.array(arrow_pts, dtype=np.float32)
+        self._edge_color_buf = np.full((n_edges, 4), [0.55, 0.55, 0.55, 0.85], dtype=np.float32)
+        self._edge_segment_color_buf = np.repeat(self._edge_color_buf, 2, axis=0)
+        self._edge_visual = vscene.visuals.Arrow(
+            pos=self._edge_pos,
+            connect="segments",
+            color=self._edge_segment_color_buf,
+            arrows=self._arrow_data,
+            arrow_size=8,
+            arrow_type="stealth",
+            parent=self._view.scene,
+        )
+
+    def _read_field_values(self, field: "Field", names: list[str], dim: str) -> np.ndarray:
+        coord_key = tuple(str(s) for s in field.coord(dim).tolist())
+        name_key = tuple(names)
+        cache_key = (dim, coord_key, name_key)
+        idx = self._field_index_cache.get(cache_key)
+        if idx is None:
+            idx_map = {nm: i for i, nm in enumerate(coord_key)}
+            idx = np.array([idx_map.get(nm, -1) for nm in name_key], dtype=np.int32)
+            self._field_index_cache[cache_key] = idx
+
+        source = np.asarray(field.values, dtype=np.float32)
+        out = np.zeros(len(idx), dtype=np.float32)
+        valid = idx >= 0
+        if np.any(valid):
+            out[valid] = source[idx[valid]]
+        return out
+
+    def _apply_cmap(self, values: np.ndarray, cmap_name: str, limits: tuple[float, float]) -> np.ndarray:
+        values = np.asarray(values, dtype=np.float32)
+        vmin, vmax = float(limits[0]), float(limits[1])
+        if vmax > vmin:
+            norm = np.clip((values - vmin) / (vmax - vmin), 0.0, 1.0)
+        else:
+            norm = np.zeros(len(values), dtype=np.float32)
+        try:
+            lut = _colormap_samples(cmap_name)
+        except (KeyError, ValueError):
+            lut = _colormap_samples("grays")
+        idx = np.clip((norm * (len(lut) - 1)).astype(np.int32), 0, len(lut) - 1)
+        return lut[idx].astype(np.float32, copy=False)
+
+    def refresh(
+        self,
+        view: "MarkovGraphViewSpec",
+        node_field: "Field | None",
+        edge_field: "Field | None",
+    ) -> None:
+        started = time.monotonic()
+        sig = (view.node_positions, view.edges, view.node_size, view.background_color,
+               view.node_color_map, view.edge_color_map)
+        if sig != self._spec_sig or self._markers is None:
+            self._build_visuals(view)
+            self._spec_sig = sig
+
+        n = len(self._node_order)
+        if n == 0:
+            return
+
+        if node_field is not None:
+            nv = self._read_field_values(node_field, self._node_order, "state")
+            nc = self._apply_cmap(nv, _markov_node_colormap_name(view.node_color_map), view.node_color_limits)
+            if self._node_color_buf is None or self._node_color_buf.shape != nc.shape:
+                self._node_color_buf = np.empty_like(nc)
+            self._node_color_buf[:, :] = nc
+        else:
+            if self._node_color_buf is None or self._node_color_buf.shape != (n, 4):
+                self._node_color_buf = np.empty((n, 4), dtype=np.float32)
+            self._node_color_buf[:, :] = [0.5, 0.5, 0.5, 1.0]
+        self._markers.set_data(
+            pos=self._node_pos, face_color=self._node_color_buf,
+            size=float(view.node_size), edge_color="black", edge_width=1.5,
+        )
+        for label, color in zip(self._label_visuals, self._node_color_buf):
+            label.color = _markov_label_color_for_fill(color)
+
+        n_edges = len(view.edges)
+        if self._edge_visual is not None and n_edges > 0:
+            if edge_field is not None:
+                ev = self._read_field_values(edge_field, self._edge_order, "edge")
+                ec = self._apply_cmap(ev, view.edge_color_map, view.edge_color_limits)
+                if self._edge_color_buf is None or self._edge_color_buf.shape != ec.shape:
+                    self._edge_color_buf = np.empty_like(ec)
+                self._edge_color_buf[:, :] = ec
+            else:
+                if self._edge_color_buf is None or self._edge_color_buf.shape != (n_edges, 4):
+                    self._edge_color_buf = np.empty((n_edges, 4), dtype=np.float32)
+                self._edge_color_buf[:, :] = [0.55, 0.55, 0.55, 0.85]
+            if self._edge_segment_color_buf is None or self._edge_segment_color_buf.shape != (n_edges * 2, 4):
+                self._edge_segment_color_buf = np.empty((n_edges * 2, 4), dtype=np.float32)
+            self._edge_segment_color_buf[0::2, :] = self._edge_color_buf
+            self._edge_segment_color_buf[1::2, :] = self._edge_color_buf
+            self._edge_visual.set_data(color=self._edge_segment_color_buf)
+
+        self._canvas.update()
+        duration_ms = round((time.monotonic() - started) * 1000.0, 3)
+        if duration_ms >= 5.0:
+            perf_log(
+                "markov_graph", "refresh",
+                panel_id=self._perf_panel_id,
+                view_id=self._perf_view_id,
+                duration_ms=duration_ms,
+            )
+
+    def paintEvent(self, event) -> None:
+        started = time.monotonic()
+        super().paintEvent(event)
+        duration_ms = round((time.monotonic() - started) * 1000.0, 3)
+        if duration_ms >= 5.0:
+            perf_log(
+                "markov_graph", "paint",
+                panel_id=self._perf_panel_id,
+                view_id=self._perf_view_id,
+                duration_ms=duration_ms,
+            )
+
+
+class MarkovGraphHostPanel(QtWidgets.QGroupBox):
+    def __init__(self, *, panel_id: str, view_id: str, title: str | None = None, parent=None):
+        super().__init__(title or view_id, parent)
+        self.panel_id = panel_id
+        self.view_id = view_id
+        self.markov_graph_panel = MarkovGraphPanel(
+            perf_panel_id=panel_id, perf_view_id=view_id,
+        )
+        self._last_title = str(title or view_id)
+        lo = QtWidgets.QVBoxLayout(self)
+        lo.setContentsMargins(4, 8, 4, 4)
+        lo.addWidget(self.markov_graph_panel)
+
+    def refresh(
+        self,
+        view: "MarkovGraphViewSpec | None",
+        node_field: "Field | None",
+        edge_field: "Field | None",
+    ) -> None:
+        if view is None:
+            return
+        title = getattr(view, "title", None) or self.view_id
+        title = str(title)
+        if title != self._last_title:
+            self.setTitle(title)
+            self._last_title = title
+        self.markov_graph_panel.refresh(view, node_field, edge_field)
 
 
 class ControlsPanel(QtWidgets.QWidget):

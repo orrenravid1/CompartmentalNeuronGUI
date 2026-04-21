@@ -93,6 +93,8 @@ def _cached_colormap_samples(name: str, n: int = 256) -> np.ndarray:
     x = np.linspace(0.0, 1.0, n, dtype=np.float32)
     if normalized == "grayscale":
         rgb = np.stack([x, x, x], axis=1)
+    elif normalized in {"markov-fire", "white-fire"}:
+        return _multi_color_ramp(("#ffffff", "#ffe45c", "#f18f01", "#8f0500"), n=n)
     elif normalized == "fire":
         rgb = np.stack(
             [

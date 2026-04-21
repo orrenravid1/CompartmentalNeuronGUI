@@ -14,9 +14,9 @@ from vispy import app as vispy_app, use
 use(app="pyqt6", gl="gl+")
 
 from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
-from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec
-from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
-from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, IndependentCanvas3DHostPanel, LinePlotHostPanel, LinePlotPanel, Viewport3DPanel
+from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, MarkovGraphViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec
+from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_MARKOV_GRAPH, PANEL_KIND_VIEW_3D
+from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, IndependentCanvas3DHostPanel, LinePlotHostPanel, LinePlotPanel, MarkovGraphHostPanel, MarkovGraphPanel, Viewport3DPanel
 from compneurovis.session import LayoutReplace, PanelPatch, ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
 from compneurovis.session.base import resolve_startup_scene_source
 
@@ -24,6 +24,8 @@ DEFAULT_LINE_PLOT_MAX_REFRESH_HZ = 15.0
 DEFAULT_VIEW_3D_MAX_REFRESH_HZ = 8.0
 DEFAULT_MAX_LINE_PLOT_REFRESHES_PER_FLUSH = 1
 DEFAULT_MAX_VIEW_3D_REFRESHES_PER_FLUSH = 1
+DEFAULT_MARKOV_GRAPH_MAX_REFRESH_HZ = 15.0
+DEFAULT_MAX_MARKOV_GRAPH_REFRESHES_PER_FLUSH = 1
 VIEW_3D_TARGET_KINDS = frozenset(
     {
         "morphology",
@@ -34,6 +36,12 @@ VIEW_3D_TARGET_KINDS = frozenset(
         "operator_overlay",
     }
 )
+
+
+def _coords_are_equal(left: dict[str, np.ndarray], right: dict[str, np.ndarray]) -> bool:
+    if left.keys() != right.keys():
+        return False
+    return all(np.array_equal(np.asarray(left[key]), np.asarray(right[key])) for key in left)
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +80,10 @@ class RefreshTarget:
     @classmethod
     def operator_overlay(cls, view_id: str) -> "RefreshTarget":
         return cls("operator_overlay", view_id)
+
+    @classmethod
+    def markov_graph(cls, view_id: str) -> "RefreshTarget":
+        return cls("markov_graph", view_id)
 
 
 RefreshTarget.CONTROLS = RefreshTarget.controls()
@@ -211,6 +223,14 @@ class RefreshPlanner:
             if isinstance((view := self.scene.views.get(view_id)), LinePlotViewSpec)
         }
 
+    def markov_graph_views(self) -> dict[str, "MarkovGraphViewSpec"]:
+        return {
+            view_id: view
+            for panel in self.scene.layout.panels_of_kind(PANEL_KIND_MARKOV_GRAPH)
+            for view_id in panel.view_ids
+            if isinstance((view := self.scene.views.get(view_id)), MarkovGraphViewSpec)
+        }
+
     def full_refresh_targets(self) -> set[RefreshTarget]:
         targets = {RefreshTarget.CONTROLS}
         for view_id in self.morphology_views():
@@ -225,6 +245,8 @@ class RefreshPlanner:
             )
         for view_id in self.line_views():
             targets.add(RefreshTarget.line_plot(view_id))
+        for view_id in self.markov_graph_views():
+            targets.add(RefreshTarget.markov_graph(view_id))
         return targets
 
     def targets_for_state_change(self, state_key: str) -> set[RefreshTarget]:
@@ -298,6 +320,9 @@ class RefreshPlanner:
                     targets.add(RefreshTarget.line_plot(view_id))
             elif getattr(line_view, "field_id", None) == field_id:
                 targets.add(RefreshTarget.line_plot(view_id))
+        for view_id, mg_view in self.markov_graph_views().items():
+            if mg_view.node_field_id == field_id or mg_view.edge_field_id == field_id:
+                targets.add(RefreshTarget.markov_graph(view_id))
         return targets
 
     def targets_for_view_patch(self, view_id: str, changed_props: set[str]) -> set[RefreshTarget]:
@@ -321,6 +346,8 @@ class RefreshPlanner:
             return targets
         if isinstance(view, LinePlotViewSpec) and changed_props & self.LINE_PLOT_PROPS:
             return {RefreshTarget.line_plot(view_id)}
+        if isinstance(view, MarkovGraphViewSpec):
+            return {RefreshTarget.markov_graph(view_id)}
         return set()
 
     def targets_for_operator_patch(self, operator_id: str, changed_props: set[str]) -> set[RefreshTarget]:
@@ -367,6 +394,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._last_poll_started_s: float | None = None
         self.controls_host_panels: dict[str, ControlsHostPanel] = {}
         self.controls_panels: dict[str, ControlsPanel] = {}
+        self.markov_graph_host_panels: dict[str, MarkovGraphHostPanel] = {}
+        self.markov_graph_panels: dict[str, MarkovGraphPanel] = {}
+        self._dirty_markov_graph_views: set[str] = set()
+        self._markov_graph_last_refresh_s: dict[str, float] = {}
 
         self._layout_splitter: QtWidgets.QSplitter | None = None
 
@@ -458,6 +489,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             self.refresh_planner.full_refresh_targets(),
             force_line_plots=True,
             force_view_3d=True,
+            force_markov_graph=True,
         )
         full_refresh_ms = round((time.monotonic() - refresh_started) * 1000.0, 3)
         self._show_content_state()
@@ -511,6 +543,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._view_3d_last_refresh_s.clear()
         self.controls_host_panels.clear()
         self.controls_panels.clear()
+        self.markov_graph_host_panels.clear()
+        self.markov_graph_panels.clear()
+        self._dirty_markov_graph_views.clear()
+        self._markov_graph_last_refresh_s.clear()
 
         if self._layout_splitter is not None:
             idx = self._stack.indexOf(self._layout_splitter)
@@ -624,6 +660,23 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 "create_panel",
                 panel_id=panel_spec.id,
                 panel_kind=panel_spec.kind,
+                duration_ms=round((time.monotonic() - started) * 1000.0, 3),
+            )
+            return host
+        if panel_spec.kind == PANEL_KIND_MARKOV_GRAPH:
+            view_id = panel_spec.view_ids[0]
+            view = self.scene.views.get(view_id)
+            title = panel_spec.title or getattr(view, "title", None) or view_id
+            host = MarkovGraphHostPanel(panel_id=panel_spec.id, view_id=view_id, title=title)
+            self.markov_graph_host_panels[panel_spec.id] = host
+            self.markov_graph_panels[panel_spec.id] = host.markov_graph_panel
+            self._view_to_panel_id[view_id] = panel_spec.id
+            perf_log(
+                "frontend",
+                "create_panel",
+                panel_id=panel_spec.id,
+                panel_kind=panel_spec.kind,
+                view_ids=panel_spec.view_ids,
                 duration_ms=round((time.monotonic() - started) * 1000.0, 3),
             )
             return host
@@ -874,6 +927,82 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _refresh_line_plot(self, view_id: str) -> None:
         self._refresh_line_plot_if_due(view_id, force=True)
 
+    def _markov_graph_view(self, view_id: str):
+        if self.scene is None:
+            return None
+        view = self.scene.views.get(view_id)
+        return view if isinstance(view, MarkovGraphViewSpec) else None
+
+    def _markov_graph_refresh_interval_s(self, view_id: str) -> float | None:
+        view = self._markov_graph_view(view_id)
+        if view is None:
+            return None
+        max_hz = view.max_refresh_hz if view.max_refresh_hz is not None else DEFAULT_MARKOV_GRAPH_MAX_REFRESH_HZ
+        if float(max_hz) <= 0:
+            return None
+        return 1.0 / float(max_hz)
+
+    def _refresh_markov_graph(self, view_id: str) -> None:
+        self._refresh_markov_graph_if_due(view_id, force=True)
+
+    def _refresh_markov_graph_if_due(
+        self,
+        view_id: str,
+        *,
+        force: bool = False,
+        now: float | None = None,
+    ) -> bool:
+        if self.scene is None:
+            self._dirty_markov_graph_views.discard(view_id)
+            return False
+        panel_id = self._view_to_panel_id.get(view_id)
+        if panel_id is None:
+            self._dirty_markov_graph_views.discard(view_id)
+            return False
+        host = self.markov_graph_host_panels.get(panel_id)
+        if host is None:
+            self._dirty_markov_graph_views.discard(view_id)
+            return False
+        current_time = time.monotonic() if now is None else now
+        if not force:
+            interval = self._markov_graph_refresh_interval_s(view_id)
+            last = self._markov_graph_last_refresh_s.get(view_id)
+            if interval is not None and last is not None and current_time - last < interval:
+                self._dirty_markov_graph_views.add(view_id)
+                return False
+        mg_view = self._markov_graph_view(view_id)
+        node_field = None
+        edge_field = None
+        if mg_view is not None:
+            if mg_view.node_field_id:
+                node_field = self.scene.fields.get(mg_view.node_field_id)
+            if mg_view.edge_field_id:
+                edge_field = self.scene.fields.get(mg_view.edge_field_id)
+        host.refresh(mg_view, node_field, edge_field)
+        self._markov_graph_last_refresh_s[view_id] = current_time
+        self._dirty_markov_graph_views.discard(view_id)
+        return True
+
+    def _flush_due_markov_graph_refreshes(
+        self,
+        *,
+        force: bool = False,
+        now: float | None = None,
+    ) -> tuple[int, int]:
+        if not self._dirty_markov_graph_views:
+            return 0, 0
+        current_time = time.monotonic() if now is None else now
+        refreshed = 0
+        refresh_limit = None if force else DEFAULT_MAX_MARKOV_GRAPH_REFRESHES_PER_FLUSH
+        for view_id in sorted(
+            tuple(self._dirty_markov_graph_views),
+            key=lambda vid: self._refresh_priority_key(vid, self._markov_graph_last_refresh_s),
+        ):
+            if refresh_limit is not None and refreshed >= refresh_limit:
+                break
+            refreshed += int(self._refresh_markov_graph_if_due(view_id, force=force, now=current_time))
+        return refreshed, len(self._dirty_markov_graph_views)
+
     def _line_plot_refresh_interval_s(self, view_id: str) -> float | None:
         view = self._line_view(view_id)
         if view is None:
@@ -1040,6 +1169,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         *,
         force_line_plots: bool = False,
         force_view_3d: bool = False,
+        force_markov_graph: bool = False,
     ) -> None:
         if not targets:
             return
@@ -1070,6 +1200,17 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             force=force_view_3d,
             now=started,
         )
+        markov_graph_target_count = 0
+        for target in sorted(
+            (target for target in targets if target.kind == "markov_graph" and target.view_id is not None),
+            key=lambda target: target.view_id or "",
+        ):
+            self._dirty_markov_graph_views.add(target.view_id)
+            markov_graph_target_count += 1
+        markov_graph_refreshed_count, markov_graph_deferred_count = self._flush_due_markov_graph_refreshes(
+            force=force_markov_graph,
+            now=started,
+        )
         perf_log(
             "frontend",
             "apply_refresh_targets",
@@ -1082,6 +1223,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             view_3d_refreshed_count=view_3d_refreshed_count,
             view_3d_deferred_count=view_3d_deferred_count,
             dirty_view_3d_count=len(self._dirty_view_3d_targets),
+            markov_graph_target_count=markov_graph_target_count,
+            markov_graph_refreshed_count=markov_graph_refreshed_count,
+            markov_graph_deferred_count=markov_graph_deferred_count,
+            dirty_markov_graph_count=len(self._dirty_markov_graph_views),
             duration_ms=round((time.monotonic() - started) * 1000.0, 3),
         )
 
@@ -1094,6 +1239,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 self._flush_due_line_plot_refreshes(now=poll_started)
             if self._dirty_view_3d_targets:
                 self._flush_due_view_3d_refreshes(now=poll_started)
+            if self._dirty_markov_graph_views:
+                self._flush_due_markov_graph_refreshes(now=poll_started)
             return
         pending_targets: set[RefreshTarget] = set()
         pending_status: str | None = None
@@ -1156,8 +1303,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 if self.scene is None:
                     continue
                 current = self.scene.fields[update.field_id]
-                coords_changed = update.coords is not None
-                coords = current.coords if update.coords is None else update.coords
+                coords_changed = update.coords is not None and not _coords_are_equal(current.coords, update.coords)
+                coords = current.coords if update.coords is None or not coords_changed else update.coords
                 self.scene.fields[update.field_id] = current.with_values(update.values, coords=coords, attrs_update=update.attrs_update)
                 if self.refresh_planner is not None:
                     pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id, coords_changed=coords_changed))
@@ -1228,12 +1375,15 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         flush_pending_field_appends()
         has_line_plot_targets = any(target.kind == "line_plot" for target in pending_targets)
         has_view_3d_targets = any(target.kind in VIEW_3D_TARGET_KINDS for target in pending_targets)
+        has_markov_graph_targets = any(target.kind == "markov_graph" for target in pending_targets)
         if pending_targets:
             self._apply_refresh_targets(pending_targets)
         if self._dirty_line_plot_views and not has_line_plot_targets:
             self._flush_due_line_plot_refreshes()
         if self._dirty_view_3d_targets and not has_view_3d_targets:
             self._flush_due_view_3d_refreshes()
+        if self._dirty_markov_graph_views and not has_markov_graph_targets:
+            self._flush_due_markov_graph_refreshes()
         if pending_status is not None:
             self.statusBar().showMessage(pending_status)
         perf_log(
@@ -1252,6 +1402,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             pending_target_kinds=_target_kind_counts(pending_targets),
             dirty_line_plot_count=len(self._dirty_line_plot_views),
             dirty_view_3d_count=len(self._dirty_view_3d_targets),
+            dirty_markov_graph_count=len(self._dirty_markov_graph_views),
             timer_gap_ms=timer_gap_ms,
             duration_ms=round((time.monotonic() - poll_started) * 1000.0, 3),
         )

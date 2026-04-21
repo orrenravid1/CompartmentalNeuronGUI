@@ -14,7 +14,7 @@ from compneurovis.backends.neuron import NeuronSession
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
-from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, LinePlotHostPanel, LinePlotPanel, Viewport3DPanel
+from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, LinePlotHostPanel, LinePlotPanel, MarkovGraphPanel, Viewport3DPanel, _markov_label_color_for_fill, _markov_node_colormap_name
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer
 from compneurovis.session import BufferedSession, Error, FieldAppend, FieldReplace, Reset, StatePatch, resolve_interaction_target_source
 
@@ -301,6 +301,40 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
     window.line_plot_panel("surface-line").refresh.assert_not_called()
     window._flush_due_line_plot_refreshes(force=True)
     window.line_plot_panel("surface-line").refresh.assert_called_once()
+
+    window.close()
+    app.quit()
+
+
+def test_field_replace_with_identical_coords_does_not_refresh_surface_axes_geometry():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    app_spec = build_surface_cross_section_app()
+    app_spec.scene.replace_view("surface-view", {"color_limits": (0.0, 2.0)})
+    window = VispyFrontendWindow(app_spec)
+    window.timer.stop()
+    field = window.scene.fields["surface"]
+    original_x_coord = field.coords["x"]
+    original_y_coord = field.coords["y"]
+    window.viewport.refresh_surface_visual = Mock()
+    window.viewport.refresh_surface_axes_geometry = Mock()
+    window.viewport.refresh_operator_overlays = Mock()
+    window.viewport.commit = Mock()
+    window._view_3d_last_refresh_s.clear()
+    window.transport = Mock()
+    window.transport.poll_updates.return_value = [
+        FieldReplace(
+            field_id="surface",
+            values=np.ones_like(field.values),
+            coords={dim: coord.copy() for dim, coord in field.coords.items()},
+        )
+    ]
+
+    window._poll_transport()
+
+    window.viewport.refresh_surface_visual.assert_called_once()
+    window.viewport.refresh_surface_axes_geometry.assert_not_called()
+    assert window.scene.fields["surface"].coords["x"] is original_x_coord
+    assert window.scene.fields["surface"].coords["y"] is original_y_coord
 
     window.close()
     app.quit()
@@ -608,6 +642,59 @@ def test_morphology_renderer_supports_matplotlib_ramp_maps():
     )
     expected = np.asarray(expected_cmap(np.array([0.0, 1.0], dtype=np.float32)), dtype=np.float32)
     assert np.allclose(colors, expected)
+
+
+def test_markov_graph_panel_colormap_broadcasts_multiple_values():
+    panel = MarkovGraphPanel.__new__(MarkovGraphPanel)
+
+    colors = panel._apply_cmap(
+        np.array([-0.1, 0.0, 0.1], dtype=np.float32),
+        "bwr",
+        (-0.1, 0.1),
+    )
+
+    assert colors.shape == (3, 4)
+    assert colors.dtype == np.float32
+    assert np.all(np.isfinite(colors))
+
+
+def test_markov_graph_label_color_contrasts_node_fill():
+    assert _markov_label_color_for_fill(np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)) == (1.0, 1.0, 1.0, 1.0)
+    assert _markov_label_color_for_fill(np.array([1.0, 0.9, 0.1, 1.0], dtype=np.float32)) == (0.0, 0.0, 0.0, 1.0)
+
+
+def test_markov_graph_fire_nodes_use_white_to_deep_red_ramp():
+    panel = MarkovGraphPanel.__new__(MarkovGraphPanel)
+
+    colors = panel._apply_cmap(
+        np.array([0.0, 1.0], dtype=np.float32),
+        _markov_node_colormap_name("fire"),
+        (0.0, 1.0),
+    )
+
+    assert np.allclose(colors[0], np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32))
+    assert colors[1, 0] > colors[1, 1]
+    assert colors[1, 1] > colors[1, 2]
+    assert colors[1, 3] == 1.0
+
+
+def test_markov_graph_panel_reuses_field_index_cache():
+    panel = MarkovGraphPanel.__new__(MarkovGraphPanel)
+    panel._field_index_cache = {}
+    field = Field(
+        id="markov_nodes",
+        values=np.array([0.1, 0.2, 0.3], dtype=np.float32),
+        dims=("state",),
+        coords={"state": np.array(["A", "B", "C"])},
+    )
+
+    first = panel._read_field_values(field, ["C", "A", "missing"], "state")
+    field2 = field.with_values(np.array([1.0, 2.0, 3.0], dtype=np.float32))
+    second = panel._read_field_values(field2, ["C", "A", "missing"], "state")
+
+    assert len(panel._field_index_cache) == 1
+    assert np.allclose(first, [0.3, 0.1, 0.0])
+    assert np.allclose(second, [3.0, 1.0, 0.0])
 
 
 def test_run_app_skips_frontend_launch_in_spawned_child():

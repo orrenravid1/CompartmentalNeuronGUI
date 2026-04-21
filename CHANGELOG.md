@@ -12,6 +12,7 @@ Use it together with:
 
 ### Added
 
+- Added `MarkovGraphViewSpec` and `PANEL_KIND_MARKOV_GRAPH` for live-colored directed graph panels (e.g., Markov channel state visualization)
 - Added a GitHub Pages workflow that validates docs on pull requests and deploys the strict MkDocs site from `main`.
 
 ### Docs

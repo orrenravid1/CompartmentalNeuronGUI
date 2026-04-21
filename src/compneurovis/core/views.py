@@ -75,3 +75,25 @@ class LinePlotViewSpec(ViewSpec):
     y_max: float | None = None
     x_major_tick_spacing: float | None = None
     x_minor_tick_spacing: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MarkovGraphViewSpec(ViewSpec):
+    """Static directed graph with live-colored nodes and edges.
+
+    node_positions: each entry is (state_name, x, y) in normalized [0,1] canvas space.
+    edges: each entry is (source_state, target_state, edge_id).
+    node_field_id: Field with dims=("state",); values are current state occupancies.
+    edge_field_id: Field with dims=("edge",); values are net fluxes or rates.
+    """
+    node_field_id: str = ""
+    edge_field_id: str = ""
+    node_positions: tuple[tuple[str, float, float], ...] = ()
+    edges: tuple[tuple[str, str, str], ...] = ()
+    node_color_map: str = "fire"
+    edge_color_map: str = "bwr"
+    node_color_limits: tuple[float, float] = (0.0, 1.0)
+    edge_color_limits: tuple[float, float] = (-0.1, 0.1)
+    node_size: float = 20.0
+    background_color: Any = "white"
+    max_refresh_hz: float | None = None

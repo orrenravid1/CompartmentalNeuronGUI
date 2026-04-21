@@ -8,12 +8,13 @@ from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry
 from compneurovis.core.operators import OperatorSpec
-from compneurovis.core.views import LinePlotViewSpec, MorphologyViewSpec, SurfaceViewSpec, ViewSpec
+from compneurovis.core.views import LinePlotViewSpec, MarkovGraphViewSpec, MorphologyViewSpec, SurfaceViewSpec, ViewSpec
 
 
 PANEL_KIND_VIEW_3D = "view_3d"
 PANEL_KIND_LINE_PLOT = "line_plot"
 PANEL_KIND_CONTROLS = "controls"
+PANEL_KIND_MARKOV_GRAPH = "markov_graph"
 
 
 @dataclass(slots=True)
@@ -189,6 +190,34 @@ class LayoutSpec:
                         title=panel.title,
                     )
                 )
+            elif panel.kind == PANEL_KIND_MARKOV_GRAPH:
+                view_ids = tuple(
+                    dict.fromkeys(
+                        view_id
+                        for view_id in panel.view_ids
+                        if view_id in views and isinstance(views[view_id], MarkovGraphViewSpec)
+                    )
+                )
+                if not view_ids:
+                    continue
+                if len(view_ids) != 1:
+                    raise ValueError(
+                        f"Markov graph panel '{panel_id}' must reference exactly one markov-graph view id"
+                    )
+                duplicate_view_ids = [view_id for view_id in view_ids if view_id in seen_view_ids]
+                if duplicate_view_ids:
+                    raise ValueError(
+                        f"Markov graph view ids assigned to multiple panels: {', '.join(duplicate_view_ids)}"
+                    )
+                seen_view_ids.update(view_ids)
+                normalized.append(
+                    PanelSpec(
+                        id=panel_id,
+                        kind=panel.kind,
+                        view_ids=view_ids,
+                        title=panel.title,
+                    )
+                )
             else:
                 raise ValueError(f"Unsupported panel kind '{panel.kind}'")
 
@@ -219,6 +248,14 @@ class LayoutSpec:
                     PanelSpec(
                         id=f"{view.id}-panel",
                         kind=PANEL_KIND_LINE_PLOT,
+                        view_ids=(view.id,),
+                    )
+                )
+            elif isinstance(view, MarkovGraphViewSpec):
+                panels.append(
+                    PanelSpec(
+                        id=f"{view.id}-panel",
+                        kind=PANEL_KIND_MARKOV_GRAPH,
                         view_ids=(view.id,),
                     )
                 )
