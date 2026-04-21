@@ -318,6 +318,8 @@ The protocol and scene model should stay frontend-agnostic. Future work may add:
 - richer remote command/update semantics
 - more granular patch/update messages for remote scenes where bandwidth and serialization cost make bundled updates especially expensive
 
+Detailed proposal: [WebSocket Transport Proposal](proposals/websocket-transport-proposal.md)
+
 ---
 
 ### Repo-Local MCP Server
