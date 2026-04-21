@@ -10,7 +10,7 @@ metadata:
 
 # Add an Example
 
-Reference implementations: `examples/surface_plot/static_surface_visualizer.py` (static) and `examples/neuron/complex_cell.py` (live session).
+Reference implementations: `examples/surface_plot/static_surface_visualizer.py` (static) and `examples/neuron/complex_cell_example.py` (live session).
 
 1. Place the file under `examples/`:
    - `examples/neuron/` for NEURON-backed live examples

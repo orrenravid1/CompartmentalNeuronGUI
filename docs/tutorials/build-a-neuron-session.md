@@ -15,7 +15,7 @@ Before you start, install the NEURON extra:
 pip install -e ".[neuron]"
 ```
 
-See `examples/neuron/complex_cell.py` for a fuller runnable example.
+See `examples/neuron/complex_cell_example.py` for a fuller runnable example.
 
 This is a backend-specific tutorial, not the conceptual boundary of the library. A NEURON-backed app may expose morphology, traces, surfaces, controls, or any combination of those features. Using `build_neuron_app(...)` today means "use NEURON as the backend with current default wiring," not "build a morphology-first app."
 

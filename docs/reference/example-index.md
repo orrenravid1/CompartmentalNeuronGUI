@@ -13,9 +13,9 @@ extracts a short summary from each example when available.
 ### NEURON
 
 - **C. elegans morphology visualizer**: loads a directory of multi-tree SWC files as a single session. `python examples/neuron/c_elegans_visualizer.py` (`examples/neuron/c_elegans_visualizer.py`)
+- **Complex cell visualizer**: minimal example of a single-cell live session loaded from an SWC file. `python examples/neuron/complex_cell_example.py` (`examples/neuron/complex_cell_example.py`)
 - **HH section inspector**: simple NEURON morphology with section-linked voltage, gating, and input-current plots. `python examples/neuron/hh_section_inspector.py` (`examples/neuron/hh_section_inspector.py`)
 - **Multi-cell network visualizer**: three procedurally-built cells connected by synapses. `python examples/neuron/multicell_example.py` (`examples/neuron/multicell_example.py`)
-- **Complex cell visualizer**: minimal example of a single-cell live session loaded from an SWC file. `python examples/neuron/complex_cell.py` (`examples/neuron/complex_cell.py`)
 
 ### Jaxley
 

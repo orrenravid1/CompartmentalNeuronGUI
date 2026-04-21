@@ -95,7 +95,7 @@ Then continue with [Session/update model](concepts/session-update-model.md) and 
 Run:
 
 ```bash
-python examples/neuron/complex_cell.py
+python examples/neuron/complex_cell_example.py
 ```
 
 Requires:

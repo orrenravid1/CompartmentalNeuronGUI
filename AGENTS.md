@@ -112,7 +112,7 @@ the canonical source plus all regenerated outputs together.
 - Seal PR readiness and create the final attestation commit automatically: `python scripts/pr_readiness.py seal --commit`
 - Verify a sealed PR tip: `python scripts/pr_readiness.py verify`
 - Verify a sealed PR tip and rerun the recorded checks: `python scripts/pr_readiness.py verify --rerun-commands`
-- Run a live example: `python examples/neuron/complex_cell.py`
+- Run a live example: `python examples/neuron/complex_cell_example.py`
 - Run a static example: `python examples/surface_plot/static_surface_visualizer.py`
 
 ## PR Requirements

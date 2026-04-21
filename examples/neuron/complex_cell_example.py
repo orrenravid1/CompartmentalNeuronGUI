@@ -8,7 +8,7 @@ Patterns shown:
   - build_neuron_app() + run_app() as the two-line launch pattern
 
 Requires: NEURON, res/Animal_2_Basal_2.CNG.swc
-Run: python examples/neuron/complex_cell.py
+Run: python examples/neuron/complex_cell_example.py
 """
 
 import os

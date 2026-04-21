@@ -69,7 +69,7 @@ Choose the path that matches what you want to do first:
 - `python examples/surface_plot/static_surface_visualizer.py` for the lowest-friction first look with no simulator backend.
 - `python examples/surface_plot/surface_cross_section_visualizer.py` for a linked surface and line-slice workflow.
 - `python examples/custom/fitzhugh_nagumo_backend.py` for a pure custom `BufferedSession` backend with its own RK4 solver and explicit scene assembly.
-- `python examples/neuron/complex_cell.py` for a live SWC-backed morphology session. Requires `pip install -e ".[neuron]"`.
+- `python examples/neuron/complex_cell_example.py` for a live SWC-backed morphology session. Requires `pip install -e ".[neuron]"`.
 - `python examples/jaxley/multicell_example.py` for a live procedurally built multicell example. Requires `pip install -e ".[jaxley]"`.
 - `python examples/surface_plot/animated_surface_replay.py` for replaying precomputed frames through the same frontend model.
 
