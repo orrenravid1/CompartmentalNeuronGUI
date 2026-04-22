@@ -49,7 +49,44 @@ def setup_model(self, network, cells):
 
 If you need a custom network instead of the default `jx.Network(cells)`, override `build_network()`.
 
-## 3. Use the Default Geometry and Scene Builders
+## 3. Sample Custom Channel States Per Step
+
+To record gating variables or other channel states alongside voltage, override
+two hooks instead of `advance()`:
+
+```python
+import numpy as np
+
+class MyJaxleySession(JaxleySession):
+    def _sample_step(self):
+        # Called once per simulation step.
+        # Use _read_state() to read any channel variable at the display compartments.
+        # State keys follow Jaxley's convention: 'ChannelName_statename'.
+        return {
+            "v": self._read_display_values(),
+            "m": self._read_state("HH_m"),   # sodium activation gate
+            "n": self._read_state("HH_n"),   # potassium gate
+        }
+
+    def _emit_batch(self, times_array, steps):
+        # Called once per display update with all per-step results collected.
+        latest = steps[-1]
+        self.emit(FieldReplace(field_id="segment_display", values=latest["v"]))
+        m_batch = np.stack([s["m"] for s in steps], axis=1)
+        self.emit(FieldAppend(
+            field_id="gating_history",
+            append_dim="time",
+            values=m_batch,
+            coord_values=times_array,
+            max_length=self.max_samples,
+        ))
+```
+
+All channel states are available in `self._state` after each step — no additional
+recording calls in `setup_model()` are needed. `_read_state()` reads any state
+variable at the same compartment indices used for the morphology display.
+
+## 4. Use the Default Geometry and Scene Builders (reference)
 
 `JaxleySession` handles:
 
@@ -63,7 +100,7 @@ The geometry conversion step is handled by `JaxleySceneBuilder`. It turns Jaxley
 
 That means user code usually does not need to construct geometry manually. The current sampled quantity is still voltage by default, but the default field roles are generic display/history roles rather than voltage-named fields.
 
-## 4. Add Controls or Actions (optional)
+## 5. Add Controls or Actions (optional)
 
 ```python
 from compneurovis import ControlPresentationSpec, ControlSpec, ScalarValueSpec
@@ -93,7 +130,7 @@ For a fuller runtime-update pattern, see `examples/jaxley/multicell_example.py` 
 
 Keep the controls semantic. The frontend will route `SetControl` and `InvokeAction` to the session for you.
 
-## 5. Build and Run
+## 6. Build and Run
 
 ```python
 from compneurovis import build_jaxley_app, run_app
@@ -104,7 +141,7 @@ run_app(app)
 
 Pass the session class, not an already-created session instance. That keeps construction lazy and consistent with worker-backed transport behavior.
 
-## 6. Customize the Default Scene (optional)
+## 7. Customize the Default Scene (optional)
 
 If you want to keep the default morphology/trace setup but tweak it, override `build_scene()`:
 

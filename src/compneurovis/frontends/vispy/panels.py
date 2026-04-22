@@ -1037,9 +1037,12 @@ class LinePlotHostPanel(QtWidgets.QGroupBox):
             )
 
 
+_LABEL_LUM_WEIGHTS = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+_MARKER_EDGE_COLOR = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+
+
 def _state_label_color_for_fill(rgba: np.ndarray) -> tuple[float, float, float, float]:
-    rgb = np.asarray(rgba[:3], dtype=np.float32)
-    luminance = float(np.dot(rgb, np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)))
+    luminance = float(np.dot(rgba[:3].astype(np.float32), _LABEL_LUM_WEIGHTS))
     return (1.0, 1.0, 1.0, 1.0) if luminance < 0.45 else (0.0, 0.0, 0.0, 1.0)
 
 
@@ -1062,13 +1065,14 @@ class StateGraphPanel(QtWidgets.QWidget):
         self._view.camera.set_range(x=(-0.15, 1.15), y=(-0.15, 1.15))
         self._markers = None
         self._edge_visual = None
-        self._label_visuals: list = []
+        self._label_visual = None
         self._node_order: list[str] = []
         self._edge_order: list[str] = []
         self._node_pos: np.ndarray | None = None
         self._edge_pos: np.ndarray | None = None
         self._arrow_data: np.ndarray | None = None
         self._node_color_buf: np.ndarray | None = None
+        self._label_color_buf: np.ndarray | None = None
         self._edge_color_buf: np.ndarray | None = None
         self._edge_segment_color_buf: np.ndarray | None = None
         self._field_index_cache: dict[tuple[str, tuple[str, ...], tuple[str, ...]], np.ndarray] = {}
@@ -1082,9 +1086,10 @@ class StateGraphPanel(QtWidgets.QWidget):
 
     def _build_visuals(self, view: "StateGraphViewSpec") -> None:
         vscene = self._vscene
-        for lbl in self._label_visuals:
-            lbl.parent = None
-        self._label_visuals.clear()
+        if self._label_visual is not None:
+            self._label_visual.parent = None
+            self._label_visual = None
+        self._label_color_buf = None
         if self._markers is not None:
             self._markers.parent = None
             self._markers = None
@@ -1112,16 +1117,20 @@ class StateGraphPanel(QtWidgets.QWidget):
         self._markers = vscene.visuals.Markers(parent=self._view.scene)
         self._markers.set_data(
             pos=self._node_pos, face_color=self._node_color_buf,
-            size=float(view.node_size), edge_color="black", edge_width=1.5,
+            size=float(view.node_size), edge_color=_MARKER_EDGE_COLOR, edge_width=1.5,
         )
-        for name, x, y in view.node_positions:
-            t = vscene.visuals.Text(
-                text=str(name), pos=(float(x), float(y)),
-                color="black", font_size=8, bold=True,
-                anchor_x="center", anchor_y="center",
-                parent=self._view.scene,
-            )
-            self._label_visuals.append(t)
+        self._label_color_buf = np.zeros((n, 4), dtype=np.float32)
+        self._label_color_buf[:, 3] = 1.0
+        self._label_visual = vscene.visuals.Text(
+            text=[str(nm) for nm in self._node_order],
+            pos=self._node_pos,
+            color=self._label_color_buf,
+            font_size=8,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+            parent=self._view.scene,
+        )
 
         n_edges = len(view.edges)
         if n_edges == 0:
@@ -1224,10 +1233,12 @@ class StateGraphPanel(QtWidgets.QWidget):
             self._node_color_buf[:, :] = [0.5, 0.5, 0.5, 1.0]
         self._markers.set_data(
             pos=self._node_pos, face_color=self._node_color_buf,
-            size=float(view.node_size), edge_color="black", edge_width=1.5,
+            size=float(view.node_size), edge_color=_MARKER_EDGE_COLOR, edge_width=1.5,
         )
-        for label, color in zip(self._label_visuals, self._node_color_buf):
-            label.color = _state_label_color_for_fill(color)
+        if self._label_visual is not None and self._label_color_buf is not None:
+            lums = self._node_color_buf[:, :3] @ _LABEL_LUM_WEIGHTS
+            self._label_color_buf[:, :3] = (lums < 0.45)[:, np.newaxis]
+            self._label_visual.color = self._label_color_buf
 
         n_edges = len(view.edges)
         if self._edge_visual is not None and n_edges > 0:

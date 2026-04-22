@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import math
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 
@@ -75,6 +75,10 @@ class NeuronSession(BufferedSession, ABC):
         self.geometry = None
         self._segment_refs = None
         self._segment_vector = None
+        self._recorded_names: list[str] = []
+        self._recorded_refs: list[Any] = []
+        self._recorded_ptrs = None
+        self._recorded_vector = None
         self._runtime_handles = None
         self._field_max_samples: dict[str, int] = {}
         self._ui_state: dict[str, Any] = {}
@@ -186,6 +190,32 @@ class NeuronSession(BufferedSession, ABC):
         del entity_id, context
         return True
 
+    def record(self, name: str, ref: Any) -> None:
+        """Register one NEURON variable ref for batched PtrVector sampling."""
+
+        self.record_many((name,), (ref,))
+
+    def record_many(self, names: Sequence[str], refs: Sequence[Any]) -> None:
+        """Register NEURON variable refs for sampling once per fadvance step."""
+
+        if len(names) != len(refs):
+            raise ValueError("NeuronSession record_many names and refs must have the same length")
+        normalized_names = tuple(str(name) for name in names)
+        if len(set(normalized_names)) != len(normalized_names):
+            raise ValueError("NeuronSession record_many names must be unique")
+        duplicates = set(normalized_names).intersection(self._recorded_names)
+        if duplicates:
+            duplicate_names = ", ".join(sorted(duplicates))
+            raise ValueError(f"NeuronSession already records: {duplicate_names}")
+        self._recorded_names.extend(normalized_names)
+        self._recorded_refs.extend(refs)
+        self._rebuild_recorded_ptrs()
+
+    def on_recorded_samples(self, times: np.ndarray, values: dict[str, np.ndarray]) -> None:
+        """Handle one batched set of values registered with record()/record_many()."""
+
+        del times, values
+
     def build_scene(self, *, geometry, display_values: np.ndarray, time_value: float) -> Scene:
         """Build the initial Scene from sampled values and morphology geometry."""
 
@@ -228,6 +258,10 @@ class NeuronSession(BufferedSession, ABC):
         self._runtime_handles = self.setup_model(self.sections)
         self.geometry = NeuronSceneBuilder.build_morphology_geometry(self.sections)
         self._entity_index_by_id = {entity_id: index for index, entity_id in enumerate(self.geometry.entity_ids)}
+        self._recorded_names.clear()
+        self._recorded_refs.clear()
+        self._recorded_ptrs = None
+        self._recorded_vector = None
         self._prepare_recorders()
         h.dt = self.dt
         h.finitialize(self.v_init)
@@ -276,6 +310,30 @@ class NeuronSession(BufferedSession, ABC):
     def _read_display_values(self) -> np.ndarray:
         self._segment_refs.gather(self._segment_vector)
         return np.asarray(self._segment_vector.as_numpy(), dtype=np.float32).copy()
+
+    def _rebuild_recorded_ptrs(self) -> None:
+        from neuron import h
+
+        if not self._recorded_refs:
+            self._recorded_ptrs = None
+            self._recorded_vector = None
+            return
+        self._recorded_ptrs = h.PtrVector(len(self._recorded_refs))
+        self._recorded_vector = h.Vector(len(self._recorded_refs))
+        for index, ref in enumerate(self._recorded_refs):
+            self._recorded_ptrs.pset(index, ref)
+
+    def _read_recorded_values(self) -> np.ndarray | None:
+        if self._recorded_ptrs is None:
+            return None
+        self._recorded_ptrs.gather(self._recorded_vector)
+        return np.asarray(self._recorded_vector.as_numpy(), dtype=np.float32).copy()
+
+    def recorded_values(self) -> dict[str, float]:
+        values = self._read_recorded_values()
+        if values is None:
+            return {}
+        return {name: float(values[index]) for index, name in enumerate(self._recorded_names)}
 
     def _read_voltage(self) -> np.ndarray:
         return self._read_display_values()
@@ -406,25 +464,25 @@ class NeuronSession(BufferedSession, ABC):
             required = max(required, int(math.ceil(float(view.rolling_window) / float(self.dt))) + 1)
         return required
 
-    def advance(self) -> None:
-        """Advance the simulation and emit incremental frontend updates."""
+    def _sample_step(self) -> Any:
+        """Return per-step data after each fadvance call.
 
-        from neuron import h
+        Override to sample custom quantities. Whatever you return here is collected
+        into a list and passed to _emit_batch() once per display update batch.
+        The default returns the current morphology display values array.
+        """
+        return self._read_display_values()
 
-        samples: list[np.ndarray] = []
-        times: list[float] = []
-        for _ in range(self.steps_per_update()):
-            h.fadvance()
-            time_value, display_values = self._sample()
-            times.append(time_value)
-            samples.append(display_values)
+    def _emit_batch(self, times_array: np.ndarray, steps: list[Any]) -> None:
+        """Emit display and history field updates for one batch of fadvance steps.
 
-        if not samples:
-            return
-
-        batch_values = np.stack(samples, axis=1)
-        self._last_time_value = float(times[-1])
-        self._last_display_values = np.asarray(samples[-1], dtype=np.float32)
+        Override to emit custom fields. steps is a list of whatever _sample_step()
+        returned — one entry per fadvance step in the batch.
+        The default handles morphology voltage display and trace/full history.
+        """
+        batch_values = np.stack(steps, axis=1)
+        self._last_time_value = float(times_array[-1])
+        self._last_display_values = np.asarray(steps[-1], dtype=np.float32)
         self._last_voltage_values = self._last_display_values
 
         self.emit(self._display_field_replace(self._last_display_values))
@@ -435,23 +493,51 @@ class NeuronSession(BufferedSession, ABC):
                     field_id=self.history_field_id(),
                     append_dim="time",
                     values=batch_values,
-                    coord_values=np.asarray(times, dtype=np.float32),
+                    coord_values=times_array,
                     max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
                 )
             )
+        else:
+            self._append_selected_trace_history(batch_values, times_array.tolist())
+            if self._trace_segment_ids:
+                indices = [self._entity_index_by_id[entity_id] for entity_id in self._trace_segment_ids]
+                self.emit(
+                    FieldAppend(
+                        field_id=self.history_field_id(),
+                        append_dim="time",
+                        values=batch_values[indices, :],
+                        coord_values=times_array,
+                        max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
+                    )
+                )
+
+    def advance(self) -> None:
+        """Advance the simulation and emit incremental frontend updates."""
+
+        from neuron import h
+
+        steps: list[Any] = []
+        recorded_frames: list[np.ndarray] = []
+        times: list[float] = []
+        for _ in range(self.steps_per_update()):
+            h.fadvance()
+            times.append(float(h.t))
+            steps.append(self._sample_step())
+            recorded = self._read_recorded_values()
+            if recorded is not None:
+                recorded_frames.append(recorded)
+
+        if not steps:
             return
 
-        self._append_selected_trace_history(batch_values, times)
-        if self._trace_segment_ids:
-            indices = [self._entity_index_by_id[entity_id] for entity_id in self._trace_segment_ids]
-            self.emit(
-                FieldAppend(
-                    field_id=self.history_field_id(),
-                    append_dim="time",
-                    values=batch_values[indices, :],
-                    coord_values=np.asarray(times, dtype=np.float32),
-                    max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
-                )
+        times_array = np.asarray(times, dtype=np.float32)
+        self._emit_batch(times_array, steps)
+
+        if recorded_frames:
+            recorded_batch = np.stack(recorded_frames, axis=1)
+            self.on_recorded_samples(
+                times_array,
+                {name: recorded_batch[index] for index, name in enumerate(self._recorded_names)},
             )
 
     def _interaction_context(self) -> SessionInteractionContext:

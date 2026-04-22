@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.backends.neuron.session import NeuronSession
@@ -73,6 +74,24 @@ def test_neuronutils_package_exports_expected_helpers():
 class DummyNeuronSession(NeuronSession):
     def build_sections(self):
         return []
+
+
+def test_neuron_session_record_registration_validates_names(monkeypatch):
+    session = DummyNeuronSession()
+    monkeypatch.setattr(session, "_rebuild_recorded_ptrs", lambda: None)
+
+    ref = object()
+    session.record("gate", ref)
+
+    assert session._recorded_names == ["gate"]
+    assert session._recorded_refs == [ref]
+
+    with pytest.raises(ValueError, match="same length"):
+        session.record_many(("a", "b"), (object(),))
+    with pytest.raises(ValueError, match="unique"):
+        session.record_many(("a", "a"), (object(), object()))
+    with pytest.raises(ValueError, match="already records"):
+        session.record("gate", object())
 
 
 def test_neuron_session_captures_new_trace_history_on_click():

@@ -6,6 +6,7 @@ Patterns shown:
   - custom NeuronSession scene assembly with multiple history fields and three linked line plots
   - morphology coloring that switches between membrane voltage and the HH gates n, m, and h
   - selection-driven line plots that follow the clicked morphology section without frontend-specific code
+  - _sample_step() + _emit_batch() hooks for multi-field sampling without overriding advance()
 
 Requires: NEURON
 Run: python examples/neuron/hh_section_inspector.py
@@ -434,11 +435,16 @@ class HHSectionInspectorSession(NeuronSession):
             entity_id: index for index, entity_id in enumerate(self.geometry.entity_ids)
         }
 
+        self._recorded_names.clear()
+        self._recorded_refs.clear()
+        self._recorded_ptrs = None
+        self._recorded_vector = None
         self._prepare_recorders()
 
         h.dt = self.dt
         h.finitialize(self.v_init)
-        time_value, snapshot = self._sample_bundle()
+        snapshot = self._sample_step()
+        time_value = float(h.t)
         self._latest_snapshot = snapshot
         self._initialize_histories(time_value, snapshot)
 
@@ -506,14 +512,14 @@ class HHSectionInspectorSession(NeuronSession):
             dtype=np.float32,
         )
 
-    def _sample_bundle(self) -> tuple[float, dict[str, np.ndarray]]:
+    def _sample_step(self) -> dict[str, np.ndarray]:
         voltage = self._read_ptr_vector(self._voltage_refs, self._voltage_vector)
         sodium_m = self._read_ptr_vector(self._m_refs, self._m_vector)
         sodium_h = self._read_ptr_vector(self._h_refs, self._h_vector)
         potassium_n = self._read_ptr_vector(self._n_refs, self._n_vector)
         input_current = self._read_input_current_values()
         gating = np.stack([sodium_m, sodium_h, potassium_n], axis=1).astype(np.float32)
-        return float(h.t), {
+        return {
             "voltage": voltage,
             "input_current": input_current,
             "m": sodium_m,
@@ -592,32 +598,14 @@ class HHSectionInspectorSession(NeuronSession):
             },
         )
 
-    def advance(self) -> None:
-        voltage_frames: list[np.ndarray] = []
-        current_frames: list[np.ndarray] = []
-        gating_frames: list[np.ndarray] = []
-        times: list[float] = []
-        latest_snapshot: dict[str, np.ndarray] | None = None
-
-        for _ in range(self.steps_per_update()):
-            h.fadvance()
-            time_value, snapshot = self._sample_bundle()
-            times.append(time_value)
-            voltage_frames.append(snapshot["voltage"])
-            current_frames.append(snapshot["input_current"])
-            gating_frames.append(snapshot["gating"])
-            latest_snapshot = snapshot
-
-        if latest_snapshot is None:
-            return
-
+    def _emit_batch(self, times_array: np.ndarray, steps: list) -> None:
+        latest_snapshot = steps[-1]
         self._latest_snapshot = latest_snapshot
         self.emit(FieldReplace(field_id=DISPLAY_FIELD_ID, values=self._display_values(latest_snapshot)))
 
-        times_array = np.asarray(times, dtype=np.float32)
-        voltage_batch = np.stack(voltage_frames, axis=1).astype(np.float32)
-        current_batch = np.stack(current_frames, axis=1).astype(np.float32)
-        gating_batch = np.stack(gating_frames, axis=2).astype(np.float32)
+        voltage_batch = np.stack([s["voltage"] for s in steps], axis=1).astype(np.float32)
+        current_batch = np.stack([s["input_current"] for s in steps], axis=1).astype(np.float32)
+        gating_batch = np.stack([s["gating"] for s in steps], axis=2).astype(np.float32)
         self._append_histories(
             times=times_array,
             voltage_batch=voltage_batch,
@@ -656,7 +644,8 @@ class HHSectionInspectorSession(NeuronSession):
     def handle(self, command) -> None:
         if isinstance(command, Reset):
             h.finitialize(self.v_init)
-            time_value, snapshot = self._sample_bundle()
+            snapshot = self._sample_step()
+            time_value = float(h.t)
             self._latest_snapshot = snapshot
             self._initialize_histories(time_value, snapshot)
             self.emit(FieldReplace(field_id=DISPLAY_FIELD_ID, values=self._display_values(snapshot)))

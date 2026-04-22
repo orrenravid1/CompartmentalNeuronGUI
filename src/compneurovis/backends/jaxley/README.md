@@ -16,3 +16,10 @@ By default, the backend splits:
 - `segment_history`: retained trace history for on-demand trace inspection
 
 The current sampled quantity is voltage by default, but those field ids are role-based rather than voltage-specific. Use `history_capture_mode=HistoryCaptureMode.FULL` when the app needs full all-entity history for retrospective trace selection or playback.
+
+To sample additional channel states per step, override two hooks instead of `advance()`:
+
+- `_sample_step() -> Any` — called once per simulation step; return whatever per-step data you need.
+- `_emit_batch(times_array, steps)` — called once per display update batch; `steps` is a list of whatever `_sample_step()` returned.
+
+Use `_read_state(state_name)` inside `_sample_step()` to read any Jaxley channel variable at the display compartment indices. State keys follow Jaxley's `ChannelName_statename` convention (e.g. `'HH_m'`, `'HH_n'`, `'HH_h'`). All channel states are available in `self._state` after each step without any additional recording setup.

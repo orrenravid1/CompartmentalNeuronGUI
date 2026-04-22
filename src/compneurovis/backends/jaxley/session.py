@@ -168,7 +168,7 @@ class JaxleySession(BufferedSession, ABC):
         return "scalar"
 
     def morphology_color_limits(self) -> tuple[float, float] | None:
-        return None
+        return (-80.0, 50.0)
 
     def morphology_color_norm(self) -> str:
         return "auto"
@@ -245,26 +245,41 @@ class JaxleySession(BufferedSession, ABC):
     def initialize(self):
         """Initialize the Jaxley model, sample it once, and return the first Scene."""
 
+        print(f"[{self.title}] Importing JAX and Jaxley...")
         import jax  # noqa: F401
         import jaxley as jx
         from jaxley.integrate import build_init_and_step_fn
 
+        print(f"[{self.title}] Building cells...")
         built = self.build_cells()
         self.cells = [built] if isinstance(built, jx.Cell) else list(built)
+
+        print(f"[{self.title}] Building network ({len(self.cells)} cell(s))...")
         self.network = self.build_network(self.cells)
+
+        print(f"[{self.title}] Setting up model...")
         self._runtime_handles = self.setup_model(self.network, self.cells)
+
+        print(f"[{self.title}] Converting to JAX format...")
         self.network.delete_recordings()
         self.network.record("v", verbose=False)
         self.network.to_jax()
         params = self.network.get_parameters()
+
+        print(f"[{self.title}] Tracing step function...")
         self._init_fn, self._step_fn = build_init_and_step_fn(self.network)
+
+        print(f"[{self.title}] Compiling (first run may take a moment)...")
         self._state, self._all_params = self._init_fn(params, delta_t=self.dt)
+
         self._externals = {key: np.asarray(value) for key, value in self.network.externals.copy().items()}
         self._external_inds = {key: np.asarray(value) for key, value in self.network.external_inds.copy().items()}
         self._rec_indices = np.asarray(self.network.recordings.rec_index.to_numpy(), dtype=np.int32)
         self._rec_states = tuple(str(value) for value in self.network.recordings.state.to_numpy().tolist())
         self._time = 0.0
         self._step_index = 0
+
+        print(f"[{self.title}] Building morphology geometry...")
         self.geometry = JaxleySceneBuilder.build_morphology_geometry(
             self.network.nodes,
             xyzr=self.network.xyzr,
@@ -284,6 +299,7 @@ class JaxleySession(BufferedSession, ABC):
             append_dim="time",
         )
         self._ui_state = {}
+        print(f"[{self.title}] Ready.")
         return scene
 
     def _read_display_values(self) -> np.ndarray:
@@ -453,10 +469,66 @@ class JaxleySession(BufferedSession, ABC):
         self._externals = {key: np.asarray(value) for key, value in self.network.externals.copy().items()}
         self._external_inds = {key: np.asarray(value) for key, value in self.network.external_inds.copy().items()}
 
+    def _read_state(self, state_name: str) -> np.ndarray:
+        """Read any Jaxley state variable at the display compartment indices.
+
+        state_name is the internal Jaxley state key, e.g. 'HH_m', 'HH_n', 'HH_h'.
+        Returns a float32 array with one value per morphology display entity,
+        in the same order as the morphology coloring.
+        """
+        return np.asarray(self._state[state_name])[self._rec_indices].astype(np.float32)
+
+    def _sample_step(self) -> Any:
+        """Return per-step data after each simulation step.
+
+        Override to sample additional channel states alongside voltage. Whatever
+        you return here is collected into a list and passed to _emit_batch() once
+        per display update batch. Use _read_state() to read any channel variable
+        at the display compartment indices. The default returns the voltage array.
+        """
+        return self._read_display_values()
+
+    def _emit_batch(self, times_array: np.ndarray, steps: list[Any]) -> None:
+        """Emit display and history field updates for one batch of simulation steps.
+
+        Override to emit custom fields. steps is a list of whatever _sample_step()
+        returned — one entry per simulation step in the batch.
+        The default handles morphology voltage display and trace/full history.
+        """
+        batch_values = np.stack(steps, axis=1)
+        self._last_display_values = np.asarray(steps[-1], dtype=np.float32)
+        self._last_voltage_values = self._last_display_values
+
+        self.emit(self._display_field_replace(self._last_display_values))
+
+        if self.history_capture_mode == HistoryCaptureMode.FULL:
+            self.emit(
+                FieldAppend(
+                    field_id=self.history_field_id(),
+                    append_dim="time",
+                    values=batch_values,
+                    coord_values=times_array,
+                    max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
+                )
+            )
+        else:
+            self._append_selected_trace_history(batch_values, times_array.tolist())
+            if self._trace_segment_ids:
+                indices = [self._entity_index_by_id[entity_id] for entity_id in self._trace_segment_ids]
+                self.emit(
+                    FieldAppend(
+                        field_id=self.history_field_id(),
+                        append_dim="time",
+                        values=batch_values[indices, :],
+                        coord_values=times_array,
+                        max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
+                    )
+                )
+
     def advance(self) -> None:
         """Advance the simulation and emit incremental frontend updates."""
 
-        samples: list[np.ndarray] = []
+        steps: list[Any] = []
         times: list[float] = []
         for _ in range(self.steps_per_update()):
             externals = self._externals_for_step(self._step_index)
@@ -470,41 +542,13 @@ class JaxleySession(BufferedSession, ABC):
             self._step_index += 1
             self._time += float(self.dt)
             times.append(self._time)
-            samples.append(self._read_display_values())
+            steps.append(self._sample_step())
 
-        if not samples:
+        if not steps:
             return
 
-        batch_values = np.stack(samples, axis=1)
-        self._last_display_values = np.asarray(samples[-1], dtype=np.float32)
-        self._last_voltage_values = self._last_display_values
-
-        self.emit(self._display_field_replace(self._last_display_values))
-
-        if self.history_capture_mode == HistoryCaptureMode.FULL:
-            self.emit(
-                FieldAppend(
-                    field_id=self.history_field_id(),
-                    append_dim="time",
-                    values=batch_values,
-                    coord_values=np.asarray(times, dtype=np.float32),
-                    max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
-                )
-            )
-            return
-
-        self._append_selected_trace_history(batch_values, times)
-        if self._trace_segment_ids:
-            indices = [self._entity_index_by_id[entity_id] for entity_id in self._trace_segment_ids]
-            self.emit(
-                FieldAppend(
-                    field_id=self.history_field_id(),
-                    append_dim="time",
-                    values=batch_values[indices, :],
-                    coord_values=np.asarray(times, dtype=np.float32),
-                    max_length=self._field_max_samples.get(self.history_field_id(), self.max_samples),
-                )
-            )
+        times_array = np.asarray(times, dtype=np.float32)
+        self._emit_batch(times_array, steps)
 
     def _interaction_context(self) -> SessionInteractionContext:
         return SessionInteractionContext(self)

@@ -116,6 +116,9 @@ class MultiCellSession(JaxleySession):
         self.hh_gk = 0.036
         self.hh_gleak = 3e-4
 
+    def morphology_color_limits(self):
+        return (-80.0, 50.0)
+
     def control_specs(self):
         return {
             "display_dt": float_control("display_dt", "Visual update interval (ms sim/update)", self.display_dt, self.dt, 5.0, 98),
