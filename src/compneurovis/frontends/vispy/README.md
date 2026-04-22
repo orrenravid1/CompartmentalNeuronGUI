@@ -53,4 +53,10 @@ that operator into implicit `SurfaceViewSpec` state.
 
 That keeps the current one-view-one-canvas behavior intact while leaving room for future shared-canvas or shared-scene hosts.
 
-Markov graph panels render static directed graphs with live-colored nodes and edges; useful for channel state visualizations. `MarkovGraphPanel` draws node occupancies and edge fluxes using a VisPy `SceneCanvas` with `PanZoomCamera`, and follows the same throttled refresh cadence as line plots. `MarkovGraphViewSpec.max_refresh_hz` is the per-view override seam.
+State graph panels render static directed state-transition graphs with
+live-colored nodes and edges. `StateGraphPanel` draws node values and edge
+flux/rate values using a VisPy `SceneCanvas` with `PanZoomCamera`, and follows
+the same throttled refresh cadence as line plots. `StateGraphViewSpec` keeps
+the graph layout on the view while `node_field_id` and `edge_field_id` point at
+ordinary `Field` objects. `StateGraphViewSpec.max_refresh_hz` is the per-view
+override seam.

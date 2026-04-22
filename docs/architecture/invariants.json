@@ -116,6 +116,26 @@
       "term": "line_plot_for(",
       "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
       "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "MarkovGraph",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "PANEL_KIND_MARKOV_GRAPH",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "markov_graph",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "markov-fire",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
     }
   ],
   "commands": [

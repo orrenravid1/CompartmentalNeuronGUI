@@ -19,7 +19,7 @@ from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
 from compneurovis.core.scene import PanelSpec
 from compneurovis.core.state import StateBinding
-from compneurovis.core.views import LinePlotViewSpec, MarkovGraphViewSpec, MorphologyViewSpec, SurfaceViewSpec
+from compneurovis.core.views import LinePlotViewSpec, StateGraphViewSpec, MorphologyViewSpec, SurfaceViewSpec
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer, SurfaceRenderer, _colormap_samples
 
 
@@ -1029,18 +1029,18 @@ class LinePlotHostPanel(QtWidgets.QGroupBox):
             )
 
 
-def _markov_label_color_for_fill(rgba: np.ndarray) -> tuple[float, float, float, float]:
+def _state_label_color_for_fill(rgba: np.ndarray) -> tuple[float, float, float, float]:
     rgb = np.asarray(rgba[:3], dtype=np.float32)
     luminance = float(np.dot(rgb, np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)))
     return (1.0, 1.0, 1.0, 1.0) if luminance < 0.45 else (0.0, 0.0, 0.0, 1.0)
 
 
-def _markov_node_colormap_name(cmap_name: str) -> str:
-    return "markov-fire" if str(cmap_name).strip().lower() == "fire" else cmap_name
+def _state_node_colormap_name(cmap_name: str) -> str:
+    return "state-fire" if str(cmap_name).strip().lower() == "fire" else cmap_name
 
 
-class MarkovGraphPanel(QtWidgets.QWidget):
-    """VisPy canvas panel rendering a live-colored Markov state graph."""
+class StateGraphPanel(QtWidgets.QWidget):
+    """VisPy canvas panel rendering a live-colored state-transition graph."""
 
     def __init__(self, parent=None, *, perf_panel_id: str | None = None, perf_view_id: str | None = None):
         super().__init__(parent)
@@ -1069,10 +1069,10 @@ class MarkovGraphPanel(QtWidgets.QWidget):
         lo.setContentsMargins(0, 0, 0, 0)
         lo.addWidget(self._canvas.native)
 
-    def _node_dict(self, view: "MarkovGraphViewSpec") -> dict[str, tuple[float, float]]:
+    def _node_dict(self, view: "StateGraphViewSpec") -> dict[str, tuple[float, float]]:
         return {name: (float(x), float(y)) for name, x, y in view.node_positions}
 
-    def _build_visuals(self, view: "MarkovGraphViewSpec") -> None:
+    def _build_visuals(self, view: "StateGraphViewSpec") -> None:
         vscene = self._vscene
         for lbl in self._label_visuals:
             lbl.parent = None
@@ -1189,7 +1189,7 @@ class MarkovGraphPanel(QtWidgets.QWidget):
 
     def refresh(
         self,
-        view: "MarkovGraphViewSpec",
+        view: "StateGraphViewSpec",
         node_field: "Field | None",
         edge_field: "Field | None",
     ) -> None:
@@ -1206,7 +1206,7 @@ class MarkovGraphPanel(QtWidgets.QWidget):
 
         if node_field is not None:
             nv = self._read_field_values(node_field, self._node_order, "state")
-            nc = self._apply_cmap(nv, _markov_node_colormap_name(view.node_color_map), view.node_color_limits)
+            nc = self._apply_cmap(nv, _state_node_colormap_name(view.node_color_map), view.node_color_limits)
             if self._node_color_buf is None or self._node_color_buf.shape != nc.shape:
                 self._node_color_buf = np.empty_like(nc)
             self._node_color_buf[:, :] = nc
@@ -1219,7 +1219,7 @@ class MarkovGraphPanel(QtWidgets.QWidget):
             size=float(view.node_size), edge_color="black", edge_width=1.5,
         )
         for label, color in zip(self._label_visuals, self._node_color_buf):
-            label.color = _markov_label_color_for_fill(color)
+            label.color = _state_label_color_for_fill(color)
 
         n_edges = len(view.edges)
         if self._edge_visual is not None and n_edges > 0:
@@ -1243,7 +1243,7 @@ class MarkovGraphPanel(QtWidgets.QWidget):
         duration_ms = round((time.monotonic() - started) * 1000.0, 3)
         if duration_ms >= 5.0:
             perf_log(
-                "markov_graph", "refresh",
+                "state_graph", "refresh",
                 panel_id=self._perf_panel_id,
                 view_id=self._perf_view_id,
                 duration_ms=duration_ms,
@@ -1255,29 +1255,29 @@ class MarkovGraphPanel(QtWidgets.QWidget):
         duration_ms = round((time.monotonic() - started) * 1000.0, 3)
         if duration_ms >= 5.0:
             perf_log(
-                "markov_graph", "paint",
+                "state_graph", "paint",
                 panel_id=self._perf_panel_id,
                 view_id=self._perf_view_id,
                 duration_ms=duration_ms,
             )
 
 
-class MarkovGraphHostPanel(QtWidgets.QGroupBox):
+class StateGraphHostPanel(QtWidgets.QGroupBox):
     def __init__(self, *, panel_id: str, view_id: str, title: str | None = None, parent=None):
         super().__init__(title or view_id, parent)
         self.panel_id = panel_id
         self.view_id = view_id
-        self.markov_graph_panel = MarkovGraphPanel(
+        self.state_graph_panel = StateGraphPanel(
             perf_panel_id=panel_id, perf_view_id=view_id,
         )
         self._last_title = str(title or view_id)
         lo = QtWidgets.QVBoxLayout(self)
         lo.setContentsMargins(4, 8, 4, 4)
-        lo.addWidget(self.markov_graph_panel)
+        lo.addWidget(self.state_graph_panel)
 
     def refresh(
         self,
-        view: "MarkovGraphViewSpec | None",
+        view: "StateGraphViewSpec | None",
         node_field: "Field | None",
         edge_field: "Field | None",
     ) -> None:
@@ -1288,7 +1288,7 @@ class MarkovGraphHostPanel(QtWidgets.QGroupBox):
         if title != self._last_title:
             self.setTitle(title)
             self._last_title = title
-        self.markov_graph_panel.refresh(view, node_field, edge_field)
+        self.state_graph_panel.refresh(view, node_field, edge_field)
 
 
 class ControlsPanel(QtWidgets.QWidget):

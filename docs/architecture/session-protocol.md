@@ -221,7 +221,7 @@ The frontend may still support explicit frontend-side interaction targets as an 
 For live sessions, backend stepping and frontend emission do not need to be identical. A backend may advance several internal simulation steps inside one `advance()` call and then emit a single `FieldAppend` containing multiple new samples. That is the preferred pattern for high-frequency simulations where per-step IPC would be too expensive.
 
 Frontend presentation cadence is also allowed to differ from backend emit
-cadence. In particular, line plots and live 3-D views now default to
+cadence. In particular, line plots, live 3-D views, and state graphs now default to
 frontend-owned capped refresh schedules, so repeated `FieldAppend`s or
 `FieldReplace`s can update the underlying `Field` immediately without forcing a
 pyqtgraph redraw or VisPy canvas repaint on every backend tick. App authors
@@ -233,6 +233,7 @@ The current per-view override seams are:
 - `LinePlotViewSpec.max_refresh_hz`
 - `MorphologyViewSpec.max_refresh_hz`
 - `SurfaceViewSpec.max_refresh_hz`
+- `StateGraphViewSpec.max_refresh_hz`
 
 Each follows the same contract:
 

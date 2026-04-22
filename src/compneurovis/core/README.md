@@ -16,7 +16,7 @@ summary: Field, geometry, view, control, and scene primitives.
 - `LayoutSpec`
 - `PanelSpec`
 - `ViewSpec`
-- `MarkovGraphViewSpec`
+- `StateGraphViewSpec`
 - `ControlSpec`
 - declarative binding helpers such as `AttributeRef` and `SeriesSpec`
 
@@ -29,6 +29,11 @@ logging and similar cross-cutting diagnostics.
 `max_refresh_hz` as a frontend-owned presentation hint for live 3-D refresh
 cadence. These settings shape how the frontend presents updates; they do not
 require the backend to hand-tune its emit cadence for each app.
+
+`StateGraphViewSpec` describes a fixed directed state-transition graph with
+live-colored nodes and edges. It reuses ordinary `Field` instances for state
+occupancy and transition/rate values instead of introducing a graph-specific
+data primitive.
 
 `PanelSpec` is the current visible-panel seam. A 3-D `PanelSpec` owns host
 concerns such as initial camera distance, turntable orientation, and projected

@@ -26,7 +26,7 @@ Key names:
 - Core types: `Field`, `Scene`, `LayoutSpec`, `MorphologyGeometry`, `GridGeometry`
 - App config: `AppSpec`, `DiagnosticsSpec`
 - Operator types: `OperatorSpec`, `GridSliceOperatorSpec`
-- View types: `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
+- View types: `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`, `StateGraphViewSpec`
 - Backend/session: `NeuronSession`, `JaxleySession`, `ReplaySession`
 - Backend scene builders: `NeuronSceneBuilder`, `JaxleySceneBuilder`
 - Workflow helpers: `HistoryCaptureMode`, `grid_field`

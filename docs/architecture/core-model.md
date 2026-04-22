@@ -59,9 +59,10 @@ Scene(
 ```
 
 `LayoutSpec` now carries explicit `PanelSpec` entries for every visible panel kind:
-3-D, line plot, and controls. A panel has a stable `id`, a `kind`, and the ids
-of the views, controls, actions, or operators it hosts. This already removes the
-old identity asymmetry between 3-D, plots, and controls at the panel-spec level.
+3-D, line plot, state graph, and controls. A panel has a stable `id`, a `kind`,
+and the ids of the views, controls, actions, or operators it hosts. This
+already removes the old identity asymmetry between 3-D, plots, state graphs,
+and controls at the panel-spec level.
 
 The main remaining layout debt is elsewhere:
 

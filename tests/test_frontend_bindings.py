@@ -9,12 +9,12 @@ import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 import pytest
 
-from compneurovis import ActionSpec, AppSpec, ControlSpec, DiagnosticsSpec, Field, GridSliceOperatorSpec, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
+from compneurovis import ActionSpec, AppSpec, ControlSpec, DiagnosticsSpec, Field, GridSliceOperatorSpec, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, StateGraphViewSpec, SurfaceViewSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
 from compneurovis.backends.neuron import NeuronSession
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
-from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, LinePlotHostPanel, LinePlotPanel, MarkovGraphPanel, Viewport3DPanel, _markov_label_color_for_fill, _markov_node_colormap_name
+from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, LinePlotHostPanel, LinePlotPanel, StateGraphPanel, Viewport3DPanel, _state_label_color_for_fill, _state_node_colormap_name
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer
 from compneurovis.session import BufferedSession, Error, FieldAppend, FieldReplace, Reset, StatePatch, resolve_interaction_target_source
 
@@ -277,6 +277,44 @@ def test_refresh_planner_splits_surface_axis_geometry_and_style_targets():
     assert planner.targets_for_state_change("axis_color") == {
         RefreshTarget.surface_axes_style("surface-view"),
     }
+
+
+def test_refresh_planner_targets_state_graph_fields():
+    nodes = Field(
+        id="state-occupancy",
+        values=np.array([1.0, 0.0], dtype=np.float32),
+        dims=("state",),
+        coords={"state": np.array(["open", "closed"])},
+    )
+    edges = Field(
+        id="state-transition",
+        values=np.array([0.5], dtype=np.float32),
+        dims=("edge",),
+        coords={"edge": np.array(["open-to-closed"])},
+    )
+    view = StateGraphViewSpec(
+        id="state-graph",
+        node_field_id=nodes.id,
+        edge_field_id=edges.id,
+        node_positions=(("open", 0.2, 0.5), ("closed", 0.8, 0.5)),
+        edges=(("open", "closed", "open-to-closed"),),
+    )
+    scene = Scene(
+        fields={nodes.id: nodes, edges.id: edges},
+        geometries={},
+        views={view.id: view},
+        layout=LayoutSpec(
+            panels=(PanelSpec(id="state-graph-panel", kind="state_graph", view_ids=(view.id,)),),
+        ),
+    )
+    planner = RefreshPlanner(scene)
+
+    assert planner.full_refresh_targets() == {
+        RefreshTarget.CONTROLS,
+        RefreshTarget.state_graph("state-graph"),
+    }
+    assert planner.targets_for_field_replace(nodes.id) == {RefreshTarget.state_graph("state-graph")}
+    assert planner.targets_for_field_replace(edges.id) == {RefreshTarget.state_graph("state-graph")}
 
 
 def test_surface_control_change_avoids_surface_mesh_refresh():
@@ -644,8 +682,8 @@ def test_morphology_renderer_supports_matplotlib_ramp_maps():
     assert np.allclose(colors, expected)
 
 
-def test_markov_graph_panel_colormap_broadcasts_multiple_values():
-    panel = MarkovGraphPanel.__new__(MarkovGraphPanel)
+def test_state_graph_panel_colormap_broadcasts_multiple_values():
+    panel = StateGraphPanel.__new__(StateGraphPanel)
 
     colors = panel._apply_cmap(
         np.array([-0.1, 0.0, 0.1], dtype=np.float32),
@@ -658,17 +696,17 @@ def test_markov_graph_panel_colormap_broadcasts_multiple_values():
     assert np.all(np.isfinite(colors))
 
 
-def test_markov_graph_label_color_contrasts_node_fill():
-    assert _markov_label_color_for_fill(np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)) == (1.0, 1.0, 1.0, 1.0)
-    assert _markov_label_color_for_fill(np.array([1.0, 0.9, 0.1, 1.0], dtype=np.float32)) == (0.0, 0.0, 0.0, 1.0)
+def test_state_graph_label_color_contrasts_node_fill():
+    assert _state_label_color_for_fill(np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)) == (1.0, 1.0, 1.0, 1.0)
+    assert _state_label_color_for_fill(np.array([1.0, 0.9, 0.1, 1.0], dtype=np.float32)) == (0.0, 0.0, 0.0, 1.0)
 
 
-def test_markov_graph_fire_nodes_use_white_to_deep_red_ramp():
-    panel = MarkovGraphPanel.__new__(MarkovGraphPanel)
+def test_state_graph_fire_nodes_use_white_to_deep_red_ramp():
+    panel = StateGraphPanel.__new__(StateGraphPanel)
 
     colors = panel._apply_cmap(
         np.array([0.0, 1.0], dtype=np.float32),
-        _markov_node_colormap_name("fire"),
+        _state_node_colormap_name("fire"),
         (0.0, 1.0),
     )
 
@@ -678,11 +716,11 @@ def test_markov_graph_fire_nodes_use_white_to_deep_red_ramp():
     assert colors[1, 3] == 1.0
 
 
-def test_markov_graph_panel_reuses_field_index_cache():
-    panel = MarkovGraphPanel.__new__(MarkovGraphPanel)
+def test_state_graph_panel_reuses_field_index_cache():
+    panel = StateGraphPanel.__new__(StateGraphPanel)
     panel._field_index_cache = {}
     field = Field(
-        id="markov_nodes",
+        id="state_nodes",
         values=np.array([0.1, 0.2, 0.3], dtype=np.float32),
         dims=("state",),
         coords={"state": np.array(["A", "B", "C"])},
@@ -1976,6 +2014,7 @@ def test_layout_spec_derives_default_panels_with_standardized_ids():
             "morphology": MorphologyViewSpec(id="morphology", geometry_id="morphology-geometry"),
             "surface": SurfaceViewSpec(id="surface", field_id="surface-field", geometry_id="surface-geometry"),
             "trace": LinePlotViewSpec(id="trace", field_id="trace-field", x_dim="time"),
+            "states": StateGraphViewSpec(id="states"),
         },
         actions={"reset": ActionSpec(id="reset", label="Reset")},
         layout=LayoutSpec(title="Derived panels"),
@@ -1985,6 +2024,7 @@ def test_layout_spec_derives_default_panels_with_standardized_ids():
         "morphology-panel",
         "surface-panel",
         "trace-panel",
+        "states-panel",
         "controls-panel",
     )
     assert scene.layout.panel_grid == ()

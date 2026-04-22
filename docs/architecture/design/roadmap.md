@@ -43,7 +43,7 @@ The main architectural mismatches still present in code. If work resumes after a
    Current issue:
    splitters and fixed panel slots are useful, but still encode a temporary layout model.
    Needed direction:
-   one explicit panel model plus generic panel composition, with uniform panel ids across 3-D, plots, and controls, future saved layouts, and richer panel arrangements.
+   one explicit panel model plus generic panel composition, with uniform panel ids across 3-D, plots, state graphs, and controls, future saved layouts, and richer panel arrangements.
    Active proposal:
    [Layout Workbench Proposal](proposals/layout-workbench-proposal.md)
 

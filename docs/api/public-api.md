@@ -26,6 +26,7 @@ Use `DiagnosticsSpec` when you want app-scoped perf logging config on
         - LinePlotViewSpec
         - MorphologyGeometry
         - MorphologyViewSpec
+        - StateGraphViewSpec
         - PanelSpec
         - ReplaySession
         - SeriesSpec

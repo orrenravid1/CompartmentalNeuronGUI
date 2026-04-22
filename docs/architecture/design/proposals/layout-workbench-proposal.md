@@ -1,6 +1,6 @@
 ---
 title: Layout Workbench Proposal
-summary: Replace the transitional mixed layout shell with explicit panel specs, a recursive split-tree workbench model, and uniform panel identity across 3-D, plots, and controls.
+summary: Replace the transitional mixed layout shell with explicit panel specs, a recursive split-tree workbench model, and uniform panel identity across 3-D, plots, state graphs, and controls.
 ---
 
 # Layout Workbench Proposal
@@ -36,8 +36,8 @@ deferred summary entry, see [Backlog](../backlog.md#frontend-layout-system).
 ## Goals
 
 - Support nested horizontal and vertical splits, not only row-major grids.
-- Keep one explicit panel model for every visible region: 3-D, line plot, and
-  controls.
+- Keep one explicit panel model for every visible region: 3-D, line plot, state
+  graph, and controls.
 - Make row and column sizing explicit, draggable, and stable under window
   resize.
 - Preserve the current architectural split:
@@ -343,6 +343,7 @@ Default policy by panel kind:
 
 - 3-D hosts: `fraction`
 - line plots: `fraction`
+- state graphs: `fraction`
 - controls: `auto` by default, but still overridable
 
 This keeps major scientific views visually dominant while letting controls stay

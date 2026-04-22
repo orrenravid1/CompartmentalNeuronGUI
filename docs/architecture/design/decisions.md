@@ -33,7 +33,7 @@ Worker-side error routing only applies to code that runs inside the worker. If a
 - The frontend should invalidate only the affected targets.
 - Protocol and scene updates should follow the same rule: send only the information required by the affected targets, not broad bundled refreshes by default.
 - The cost model should be opt-in: if a backend or frontend wants broader updates, it should ask for them explicitly.
-- Current explicit targets: controls, morphology, surface visual, surface axes, surface slice overlay, and per-view line plots.
+- Current explicit targets: controls, morphology, surface visual, surface axes, surface slice overlay, per-view line plots, and per-view state graphs.
 
 **Why:**
 Real-scene profiling showed that slice changes should update only the derived line plot and slice overlay — not the surface mesh, axes, or unrelated panels. Surface rendering must distinguish geometry updates, color/data updates, axes updates, and overlay updates separately. Long-lived visuals and renderer-side caches are required for good performance; rebuilding them on every change was the original bottleneck.

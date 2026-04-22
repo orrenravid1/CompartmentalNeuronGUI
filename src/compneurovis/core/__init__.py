@@ -5,7 +5,7 @@ from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry, GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
 from compneurovis.core.state import StateBinding
-from compneurovis.core.views import LinePlotViewSpec, MarkovGraphViewSpec, MorphologyViewSpec, SurfaceViewSpec, ViewSpec
+from compneurovis.core.views import LinePlotViewSpec, StateGraphViewSpec, MorphologyViewSpec, SurfaceViewSpec, ViewSpec
 
 __all__ = [
     "ActionSpec",
@@ -20,7 +20,7 @@ __all__ = [
     "GridSliceOperatorSpec",
     "LayoutSpec",
     "LinePlotViewSpec",
-    "MarkovGraphViewSpec",
+    "StateGraphViewSpec",
     "MorphologyGeometry",
     "MorphologyViewSpec",
     "OperatorSpec",

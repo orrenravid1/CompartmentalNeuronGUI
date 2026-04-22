@@ -7,12 +7,13 @@ summary: Panel structure, refresh planning, state binding, interaction hooks, an
 
 See [View and Layout Model](../concepts/view-layout-model.md) for the higher-level mental model. This document focuses on the concrete VisPy implementation of that model.
 
-The frontend is `VispyFrontendWindow` (a `QMainWindow`) with three panel regions:
+The frontend is `VispyFrontendWindow` (a `QMainWindow`) with these visible panel types:
 
 | Panel | Class | Responsibility |
 |---|---|---|
 | 3D host(s) | `IndependentCanvas3DHostPanel` -> `Viewport3DPanel` | A host mounts one or more 3D views using a concrete hosting strategy; the current built-in host uses one canvas per view |
 | Line plot(s) | `LinePlotHostPanel` -> `LinePlotPanel` | A host provides the same framed chrome as 3-D panels while the inner plot renders 1-D slices or multi-series traces via pyqtgraph |
+| State graph(s) | `StateGraphHostPanel` -> `StateGraphPanel` | A host frames a fixed directed state-transition graph whose nodes and edges are colored from ordinary fields |
 | Controls | `ControlsHostPanel` -> `ControlsPanel` | A framed host owns the visible section chrome while the inner panel renders sliders, spinboxes, dropdowns, and action buttons |
 
 Layout is driven by `LayoutSpec`. The current implementation uses Qt splitters, so the main panes are draggable/resizable. `LayoutSpec.panels` is the current panel seam. Each `PanelSpec` declares a stable `id`, a `kind`, and the hosted view/control/action ids for one visible panel.
@@ -46,9 +47,12 @@ SURFACE_AXES_GEOMETRY(view_id) -> one Viewport3DPanel (axis/tick positions + lab
 SURFACE_AXES_STYLE(view_id)    -> one Viewport3DPanel (axis/tick colors + font sizes)
 OPERATOR_OVERLAY(view_id)    -> one Viewport3DPanel (hosted grid-operator overlays)
 LINE_PLOT(view_id)           -> one LinePlotHostPanel / LinePlotPanel pair
+STATE_GRAPH(view_id)         -> one StateGraphHostPanel / StateGraphPanel pair
 ```
 
-Refresh targets are explicitly bound to a `view_id`, so the frontend can refresh multiple morphology, surface, and line-plot panels independently in the same window even when the hosting layer changes.
+Refresh targets are explicitly bound to a `view_id`, so the frontend can
+refresh multiple morphology, surface, line-plot, and state-graph panels
+independently in the same window even when the hosting layer changes.
 
 The surface-axis overlay also keeps long-lived pooled visuals instead of recreating one VisPy text or line object per tick on every slider move. Geometry refresh updates the shared line/text data; style refresh reuses those same visuals and only changes colors or font sizes.
 
@@ -72,6 +76,10 @@ frontend presents that view on a capped schedule by default instead of
 repainting the VisPy canvas on every live field update. This matters because
 the expensive part of a busy live morphology panel is often the actual canvas
 draw on the Qt main thread rather than the field mutation itself.
+
+State graph views also use the capped presentation path. Node and edge field
+updates mark the owning state graph dirty; the frontend then recolors the
+long-lived node and edge visuals on the view's capped schedule.
 
 The line-plot widget layer also now opts into pyqtgraph's viewport-aware
 rendering path by default. Each `PlotDataItem` enables clip-to-view and auto
@@ -133,10 +141,12 @@ For live presentation cadence, the current policy is:
 - first scene load and forced full refreshes redraw immediately
 - subsequent line-plot targets mark the plot dirty
 - subsequent 3-D targets mark the owning 3-D view dirty
+- subsequent state-graph targets mark the owning state graph dirty
 - the frontend presents dirty line plots and dirty 3-D views up to default capped rates
+- the frontend presents dirty state graphs up to the same default capped rate as line plots
 - the frontend also budgets how many dirty views it presents in one flush so one hot panel does not monopolize the UI thread
 - the line-plot widget itself clips/downsamples to the current viewport by default
-- `LinePlotViewSpec.max_refresh_hz`, `MorphologyViewSpec.max_refresh_hz`, and `SurfaceViewSpec.max_refresh_hz` override those caps per view
+- `LinePlotViewSpec.max_refresh_hz`, `MorphologyViewSpec.max_refresh_hz`, `SurfaceViewSpec.max_refresh_hz`, and `StateGraphViewSpec.max_refresh_hz` override those caps per view
 - `max_refresh_hz <= 0` opts out and redraws immediately
 
 ## State and StateBinding

@@ -10,9 +10,12 @@ Use it together with:
 
 ## Unreleased
 
+### Changed
+
+- Renamed the live-colored directed graph panel API to `StateGraphViewSpec` and `PANEL_KIND_STATE_GRAPH` for channel-state, finite-state-machine, and other state-transition visualizations.
+
 ### Added
 
-- Added `MarkovGraphViewSpec` and `PANEL_KIND_MARKOV_GRAPH` for live-colored directed graph panels (e.g., Markov channel state visualization)
 - Added a GitHub Pages workflow that validates docs on pull requests and deploys the strict MkDocs site from `main`.
 
 ### Docs

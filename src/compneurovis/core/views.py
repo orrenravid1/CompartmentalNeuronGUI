@@ -78,7 +78,7 @@ class LinePlotViewSpec(ViewSpec):
 
 
 @dataclass(frozen=True, slots=True)
-class MarkovGraphViewSpec(ViewSpec):
+class StateGraphViewSpec(ViewSpec):
     """Static directed graph with live-colored nodes and edges.
 
     node_positions: each entry is (state_name, x, y) in normalized [0,1] canvas space.

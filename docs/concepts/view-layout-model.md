@@ -51,6 +51,7 @@ Examples:
 - `MorphologyViewSpec`
 - `SurfaceViewSpec`
 - `LinePlotViewSpec`
+- `StateGraphViewSpec`
 
 A view does not own data. It references existing data by id.
 
@@ -59,6 +60,7 @@ Examples:
 - a morphology view points at a `MorphologyGeometry` and a color-driving field
 - a surface view points at a `GridGeometry` and a 2-D field
 - a line plot points at a field and the dimensions or slices it should plot
+- a state graph points at named states/transitions plus node and edge fields
 
 That means the same field can be consumed by multiple views, and the same geometry can be reused across many views.
 
@@ -72,6 +74,7 @@ Valid patterns include:
 - one 2-D field shown as both a surface and a line slice
 - one `GridSliceOperatorSpec` driving both a 3-D overlay and a 2-D plot
 - one live field used for current display while another field retains history
+- one state occupancy field and one transition field shown as a live state graph
 
 This is important because "same data, different view" is a normal scientific workflow, not a special case.
 
@@ -86,6 +89,13 @@ Example:
 
 That operator is not part of the surface view itself. It is a reusable
 transformation over the same underlying field and geometry.
+
+State graphs follow the same rule. `StateGraphViewSpec` stores the static
+state names, node positions, and directed transitions. Dynamic values still
+live in `Field` objects: `node_field_id` points at a field with dim
+`("state",)`, and `edge_field_id` points at a field with dim `("edge",)`.
+That makes the panel useful for finite-state machines, channel-state models,
+and other state-transition systems without making the data model graph-specific.
 
 If you need another perspective on the same data, add another view. Do not duplicate the geometry or invent a second data model unless the underlying data is actually different.
 
@@ -102,12 +112,13 @@ It decides things such as:
 
 - which 3-D views are active
 - which line plots are active
+- which state graphs are active
 - whether controls are present
 - the order of panels
 
 Today `LayoutSpec` already uses explicit `PanelSpec` entries for all visible
-panel kinds, including 3-D, line plots, and controls. That means visible panel
-identity is already explicit and uniform at the panel-spec level.
+panel kinds, including 3-D, line plots, state graphs, and controls. That means
+visible panel identity is already explicit and uniform at the panel-spec level.
 
 Within that panel model, 3-D panels currently carry extra host-level settings
 such as camera distance, azimuth, elevation, host kind, and projected operator

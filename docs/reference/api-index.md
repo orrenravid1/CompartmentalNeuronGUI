@@ -18,7 +18,7 @@ summary: Generated list of names exported by compneurovis.__init__.
 - `HistoryCaptureMode`
 - `LayoutSpec`
 - `LinePlotViewSpec`
-- `MarkovGraphViewSpec`
+- `StateGraphViewSpec`
 - `MorphologyGeometry`
 - `MorphologyViewSpec`
 - `OperatorSpec`

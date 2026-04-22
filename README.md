@@ -127,7 +127,7 @@ You do not need the full architecture to run an example, but the core model is s
 The main package exports the core types, builders, and frontend entrypoint:
 
 - `Field`, `Scene`, `MorphologyGeometry`, `GridGeometry`
-- `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`
+- `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`, `StateGraphViewSpec`
 - `AppSpec`, `DiagnosticsSpec`
 - `NeuronSession`, `JaxleySession`, `ReplaySession`
 - `HistoryCaptureMode`, `grid_field`
