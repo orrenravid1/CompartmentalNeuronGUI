@@ -26,6 +26,31 @@ class ControlSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class XYControlSpec:
+    x_id: str
+    y_id: str
+    label: str = ""
+    x_label: str = "X"
+    y_label: str = "Y"
+    x_min: float = 0.0
+    x_max: float = 1.0
+    y_min: float = 0.0
+    y_max: float = 1.0
+    x_default: float = 0.5
+    y_default: float = 0.5
+    x_state_key: str | None = None
+    y_state_key: str | None = None
+    shape: str = "square"
+    send_to_session: bool = False
+
+    def resolved_x_state_key(self) -> str:
+        return self.x_state_key or self.x_id
+
+    def resolved_y_state_key(self) -> str:
+        return self.y_state_key or self.y_id
+
+
+@dataclass(frozen=True, slots=True)
 class ActionSpec:
     id: str
     label: str

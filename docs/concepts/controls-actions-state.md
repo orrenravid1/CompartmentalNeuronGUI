@@ -38,6 +38,39 @@ Examples:
 
 Controls are good for parameters that have a current value and can be adjusted repeatedly.
 
+### XYControlSpec
+
+An `XYControlSpec` describes a 2D parameter control — an XY pad where the user drags a handle inside a square or circular area to set two values simultaneously.
+
+Use it when two parameters are tightly coupled and exploring their interaction matters more than tuning each independently.
+
+Examples:
+
+- time constant versus amplitude
+- spatial frequency versus orientation
+- two coupled channel conductances
+
+```python
+from compneurovis import XYControlSpec
+
+XYControlSpec(
+    x_id="tau_m",
+    y_id="amplitude",
+    label="Membrane / Amplitude",
+    x_label="τ",
+    y_label="Amp",
+    x_min=0.0,
+    x_max=50.0,
+    y_min=0.0,
+    y_max=2.0,
+    shape="square",  # or "circle"
+)
+```
+
+`x_id` and `y_id` become separate state keys, so each can be bound independently with `StateBinding` in any view property.
+
+If the shape is `"circle"`, the pad clips to a circle and the corners are unreachable — use this when the parameter space is naturally radial or when corner values are meaningless.
+
 ## Actions
 
 An `ActionSpec` describes a semantic intent:
@@ -117,7 +150,8 @@ That makes multi-trace scientific apps read more like plotting configuration and
 
 Use this rule when authoring app behavior:
 
-- use `ControlSpec` when the user is setting a value
+- use `ControlSpec` when the user is setting a single scalar value
+- use `XYControlSpec` when two parameters should move together in a 2D space
 - use `ActionSpec` when the user is triggering an intent
 - use `StateBinding` when a view should follow frontend state
 - use `StatePatch` when the session needs to synchronize semantic UI state

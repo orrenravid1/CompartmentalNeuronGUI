@@ -27,6 +27,7 @@ Key names:
 - App config: `AppSpec`, `DiagnosticsSpec`
 - Operator types: `OperatorSpec`, `GridSliceOperatorSpec`
 - View types: `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`, `StateGraphViewSpec`
+- Control types: `ControlSpec`, `XYControlSpec`, `ActionSpec`
 - Backend/session: `NeuronSession`, `JaxleySession`, `ReplaySession`
 - Backend scene builders: `NeuronSceneBuilder`, `JaxleySceneBuilder`
 - Workflow helpers: `HistoryCaptureMode`, `grid_field`
@@ -151,7 +152,7 @@ the canonical source plus all regenerated outputs together.
 - Mandatory trigger: if you edit `docs/architecture/**`, `docs/concepts/**`, or design proposals and those edits make claims about current capabilities, limitations, or future work, consult `audit-architecture-doc-consistency` before finalizing the wording.
 - Use `docs/reference/skill-index.md` to discover the right skill by kind, surface, workflow stage, or trust level.
 - The current catalog is organized conceptually as:
-  - authoring and exploration: `add-example`, `add-field-visualization`, `add-simulator-backend`, `add-view-panel`, `scratch-exploration`
+  - authoring and exploration: `add-control`, `add-example`, `add-field-visualization`, `add-simulator-backend`, `add-view-panel`, `scratch-exploration`
   - coverage and verification: `audit-architecture-doc-consistency`, `check-change-impact`, `check-docs-coverage`, `check-tutorial-coverage`, `check-concept-coverage`, `check-test-coverage-drift`, `audit-skill-coverage`, `audit-skill-freshness`, `pr-readiness`
   - architectural quality: `audit-code-smells`, `audit-layer-boundaries`, `plan-refactor`
   - debugging: `debug-protocol-dataflow`, `debug-rendering`

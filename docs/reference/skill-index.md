@@ -12,6 +12,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 
 ### Authoring
 
+- `add-control`
 - `add-example`
 - `add-field-visualization`
 - `add-simulator-backend`
@@ -80,6 +81,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 
 ### Frontend
 
+- `add-control`
 - `add-view-panel`
 - `debug-rendering`
 
@@ -102,6 +104,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 
 ### Implement
 
+- `add-control`
 - `add-example`
 - `add-field-visualization`
 - `add-simulator-backend`
@@ -132,6 +135,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 
 ### General
 
+- `add-control`
 - `add-example`
 - `add-field-visualization`
 - `add-simulator-backend`
@@ -163,6 +167,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 
 ## Full Catalog
 
+- `add-control` (kind: authoring, surface: frontend, stage: implement, trust: general): Add or update a control type in CompNeuroVis. Use when introducing a new spec class (scalar or compound) that the user can interact with in the controls panel, or when changing how a control maps onto frontend state. (`skills/add-control/SKILL.md`)
 - `add-example` (kind: authoring, surface: examples, stage: implement, trust: general): Add a new runnable example to CompNeuroVis. Use when demonstrating a new workflow, builder pattern, or visualization type that is not already covered by an existing example. (`skills/add-example/SKILL.md`)
 - `add-field-visualization` (kind: authoring, surface: examples, stage: implement, trust: general): Add or update a field-driven visualization in CompNeuroVis. Use when building static or precomputed field views, grid-backed surfaces, line-plot slices, or field-oriented example apps with the builder layer. (`skills/add-field-visualization/SKILL.md`)
 - `add-simulator-backend` (kind: authoring, surface: backend, stage: implement, trust: general): Add or update a simulator backend/session for CompNeuroVis. Use when creating a new live or replay backend under compneurovis.backends, wiring it to the Session protocol, or documenting how a backend should emit SceneReady, FieldReplace or FieldAppend, StatePatch, Status, and ScenePatch updates. (`skills/add-simulator-backend/SKILL.md`)

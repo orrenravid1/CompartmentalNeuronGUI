@@ -14,7 +14,7 @@ from vispy import app as vispy_app, use
 use(app="pyqt6", gl="gl+")
 
 from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
-from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, StateGraphViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec
+from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, StateGraphViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec, XYControlSpec
 from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_STATE_GRAPH, PANEL_KIND_VIEW_3D
 from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, IndependentCanvas3DHostPanel, LinePlotHostPanel, LinePlotPanel, StateGraphHostPanel, StateGraphPanel, Viewport3DPanel
 from compneurovis.session import LayoutReplace, PanelPatch, ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
@@ -477,7 +477,11 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._active_selection_action_id = None
         self.setWindowTitle(self.app_spec.title or scene.layout.title)
         for control in scene.controls.values():
-            self.state.setdefault(control.resolved_state_key(), control.default)
+            if isinstance(control, XYControlSpec):
+                self.state.setdefault(control.resolved_x_state_key(), control.x_default)
+                self.state.setdefault(control.resolved_y_state_key(), control.y_default)
+            else:
+                self.state.setdefault(control.resolved_state_key(), control.default)
 
         rebuild_started = time.monotonic()
         self._rebuild_panels()
@@ -650,7 +654,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             )
             return panel
         if panel_spec.kind == PANEL_KIND_CONTROLS:
-            controls_panel = ControlsPanel(self._on_control_changed, self._on_action_invoked)
+            controls_panel = ControlsPanel(self._on_control_changed, self._on_action_invoked, self._on_xy_control_changed)
             title = panel_spec.title or "Controls"
             host = ControlsHostPanel(controls_panel, panel_id=panel_spec.id, title=title)
             self.controls_host_panels[panel_spec.id] = host
@@ -713,7 +717,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             return None
         return self.view_hosts.get(panel_id)
 
-    def _resolved_controls_and_actions(self, panel_id: str) -> tuple[list[ControlSpec], list[ActionSpec]]:
+    def _resolved_controls_and_actions(self, panel_id: str) -> tuple[list[ControlSpec | XYControlSpec], list[ActionSpec]]:
         if self.scene is None:
             return [], []
         panel = self.scene.layout.panel(panel_id)
@@ -1447,6 +1451,28 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 self.refresh_planner.targets_for_state_change(control.resolved_state_key()),
                 force_view_3d=True,
             )
+
+    def _on_xy_control_changed(self, control: XYControlSpec, x_value: float, y_value: float) -> None:
+        self.state[control.resolved_x_state_key()] = x_value
+        self.state[control.resolved_y_state_key()] = y_value
+        perf_log(
+            "frontend",
+            "xy_control_changed",
+            x_id=control.x_id,
+            y_id=control.y_id,
+            x_value=x_value,
+            y_value=y_value,
+            send_to_session=control.send_to_session,
+        )
+        if self.transport is not None and control.send_to_session:
+            self.transport.send_command(SetControl(control.x_id, x_value))
+            self.transport.send_command(SetControl(control.y_id, y_value))
+        if self.refresh_planner is not None:
+            targets = (
+                self.refresh_planner.targets_for_state_change(control.resolved_x_state_key())
+                | self.refresh_planner.targets_for_state_change(control.resolved_y_state_key())
+            )
+            self._apply_refresh_targets(targets, force_view_3d=True)
 
     def _on_action_invoked(self, action, payload: dict[str, Any]) -> None:
         if self._invoke_interaction_action(action.id, payload):

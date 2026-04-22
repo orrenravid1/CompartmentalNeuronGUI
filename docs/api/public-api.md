@@ -16,6 +16,7 @@ Use `DiagnosticsSpec` when you want app-scoped perf logging config on
         - AttributeRef
         - AppSpec
         - ControlSpec
+        - XYControlSpec
         - DiagnosticsSpec
         - Scene
         - Field

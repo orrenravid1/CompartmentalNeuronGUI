@@ -13,7 +13,7 @@ from vispy import scene
 from vispy.scene.cameras import TurntableCamera
 
 from compneurovis._perf import perf_log
-from compneurovis.core.controls import ActionSpec, ControlSpec
+from compneurovis.core.controls import ActionSpec, ControlSpec, XYControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
@@ -1291,16 +1291,144 @@ class StateGraphHostPanel(QtWidgets.QGroupBox):
         self.state_graph_panel.refresh(view, node_field, edge_field)
 
 
+class XYPadWidget(QtWidgets.QWidget):
+    _HANDLE_RADIUS = 7
+    _PAD_MARGIN = 14
+
+    def __init__(self, spec: XYControlSpec, x_value: float, y_value: float, on_changed, parent=None):
+        super().__init__(parent)
+        self._spec = spec
+        self._x_norm = self._to_norm_x(x_value)
+        self._y_norm = self._to_norm_y(y_value)
+        self._dragging = False
+        self._on_changed = on_changed
+        self.setMinimumSize(160, 175)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+
+    def _to_norm_x(self, value: float) -> float:
+        span = self._spec.x_max - self._spec.x_min
+        return max(0.0, min(1.0, (value - self._spec.x_min) / span)) if span else 0.5
+
+    def _to_norm_y(self, value: float) -> float:
+        span = self._spec.y_max - self._spec.y_min
+        return max(0.0, min(1.0, (value - self._spec.y_min) / span)) if span else 0.5
+
+    def _pad_rect(self) -> tuple[int, int, int, int]:
+        m = self._PAD_MARGIN
+        label_reserve = 18
+        w = self.width() - 2 * m
+        h = self.height() - 2 * m - label_reserve
+        side = max(1, min(w, h))
+        x0 = m + (w - side) // 2
+        y0 = m
+        return x0, y0, side, side
+
+    def _norm_to_pixel(self, nx: float, ny: float) -> tuple[float, float]:
+        x0, y0, w, h = self._pad_rect()
+        return x0 + nx * w, y0 + (1.0 - ny) * h
+
+    def _pixel_to_norm(self, px: float, py: float) -> tuple[float, float]:
+        x0, y0, w, h = self._pad_rect()
+        nx = max(0.0, min(1.0, (px - x0) / w)) if w else 0.5
+        ny = max(0.0, min(1.0, 1.0 - (py - y0) / h)) if h else 0.5
+        return nx, ny
+
+    def _norm_to_values(self, nx: float, ny: float) -> tuple[float, float]:
+        x = self._spec.x_min + nx * (self._spec.x_max - self._spec.x_min)
+        y = self._spec.y_min + ny * (self._spec.y_max - self._spec.y_min)
+        return x, y
+
+    def paintEvent(self, event) -> None:
+        from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath
+        from PyQt6.QtCore import QRectF, QPointF
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        x0, y0, w, h = self._pad_rect()
+        pad_rect = QRectF(x0, y0, w, h)
+        bg = QColor(40, 40, 45)
+        border = QColor(80, 80, 92)
+        grid_color = QColor(60, 60, 70)
+
+        if self._spec.shape == "circle":
+            painter.setBrush(QBrush(bg))
+            painter.setPen(QPen(border, 1.5))
+            painter.drawEllipse(pad_rect)
+            clip = QPainterPath()
+            clip.addEllipse(pad_rect)
+            painter.setClipPath(clip)
+        else:
+            painter.setBrush(QBrush(bg))
+            painter.setPen(QPen(border, 1.5))
+            painter.drawRoundedRect(pad_rect, 4.0, 4.0)
+
+        cx, cy = self._norm_to_pixel(0.5, 0.5)
+        painter.setPen(QPen(grid_color, 1, Qt.PenStyle.DashLine))
+        painter.drawLine(QPointF(x0, cy), QPointF(x0 + w, cy))
+        painter.drawLine(QPointF(cx, y0), QPointF(cx, y0 + h))
+
+        painter.setClipping(False)
+
+        hx, hy = self._norm_to_pixel(self._x_norm, self._y_norm)
+        r = self._HANDLE_RADIUS
+
+        painter.setBrush(QBrush(QColor(100, 180, 255, 55)))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(QRectF(hx - r - 4, hy - r - 4, (r + 4) * 2, (r + 4) * 2))
+
+        painter.setBrush(QBrush(QColor(100, 180, 255)))
+        painter.setPen(QPen(QColor(210, 235, 255), 1.5))
+        painter.drawEllipse(QRectF(hx - r, hy - r, r * 2, r * 2))
+
+        x_val, y_val = self._norm_to_values(self._x_norm, self._y_norm)
+        painter.setPen(QPen(QColor(155, 155, 175)))
+        font = painter.font()
+        font.setPointSize(8)
+        painter.setFont(font)
+        label = f"{self._spec.x_label}: {x_val:.3g}   {self._spec.y_label}: {y_val:.3g}"
+        painter.drawText(int(x0), int(y0 + h + self._PAD_MARGIN), label)
+
+        painter.end()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            self._update_from_pos(event.position().x(), event.position().y())
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._dragging:
+            self._update_from_pos(event.position().x(), event.position().y())
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
+
+    def _update_from_pos(self, px: float, py: float) -> None:
+        nx, ny = self._pixel_to_norm(px, py)
+        self._x_norm = nx
+        self._y_norm = ny
+        x_val, y_val = self._norm_to_values(nx, ny)
+        self._on_changed(x_val, y_val)
+        self.update()
+
+    def set_values(self, x_value: float, y_value: float) -> None:
+        self._x_norm = self._to_norm_x(x_value)
+        self._y_norm = self._to_norm_y(y_value)
+        self.update()
+
+
 class ControlsPanel(QtWidgets.QWidget):
     _MULTI_COLUMN_MIN_WIDTH = 900
     _MULTI_COLUMN_MIN_ITEMS = 8
 
-    def __init__(self, on_value_changed, on_action_invoked=None, parent=None):
+    def __init__(self, on_value_changed, on_action_invoked=None, on_xy_value_changed=None, parent=None):
         super().__init__(parent)
         self.on_value_changed = on_value_changed
         self.on_action_invoked = on_action_invoked
+        self.on_xy_value_changed = on_xy_value_changed
         self.widgets: dict[str, QtWidgets.QWidget] = {}
-        self._controls: list[ControlSpec] = []
+        self._controls: list[ControlSpec | XYControlSpec] = []
         self._actions: list[ActionSpec] = []
         self._state: dict[str, Any] = {}
         self._column_count = 1
@@ -1310,7 +1438,7 @@ class ControlsPanel(QtWidgets.QWidget):
         self._grid.setVerticalSpacing(6)
         self._grid.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-    def set_controls(self, controls: list[ControlSpec], actions: list[ActionSpec], state: dict[str, Any]) -> None:
+    def set_controls(self, controls: list[ControlSpec | XYControlSpec], actions: list[ActionSpec], state: dict[str, Any]) -> None:
         self._controls = list(controls)
         self._actions = list(actions)
         self._state = state
@@ -1330,7 +1458,8 @@ class ControlsPanel(QtWidgets.QWidget):
         self._rebuild_grid(force=False)
 
     def _desired_column_count(self) -> int:
-        item_count = len(self._controls) + len(self._actions)
+        scalar_count = sum(1 for c in self._controls if not isinstance(c, XYControlSpec))
+        item_count = scalar_count + len(self._actions)
         if item_count < self._MULTI_COLUMN_MIN_ITEMS:
             return 1
         if self.width() < self._MULTI_COLUMN_MIN_WIDTH:
@@ -1357,12 +1486,22 @@ class ControlsPanel(QtWidgets.QWidget):
             self._grid.setColumnStretch(column, 1)
 
         row_index = 0
-        for index, control in enumerate(self._controls):
-            row = row_index + (index // column_count)
-            column = index % column_count
-            self._grid.addWidget(self._build_control_row(control, self._state), row, column)
-        if self._controls:
-            row_index += math.ceil(len(self._controls) / column_count)
+        current_col = 0
+        for control in self._controls:
+            if isinstance(control, XYControlSpec):
+                if current_col > 0:
+                    row_index += 1
+                    current_col = 0
+                self._grid.addWidget(self._build_xy_pad_row(control, self._state), row_index, 0, 1, column_count)
+                row_index += 1
+            else:
+                self._grid.addWidget(self._build_control_row(control, self._state), row_index, current_col)
+                current_col += 1
+                if current_col >= column_count:
+                    current_col = 0
+                    row_index += 1
+        if current_col > 0:
+            row_index += 1
 
         if self._controls and self._actions:
             divider = QtWidgets.QFrame()
@@ -1449,6 +1588,26 @@ class ControlsPanel(QtWidgets.QWidget):
             self.widgets[control.id] = combo
 
         return row
+
+    def _build_xy_pad_row(self, control: XYControlSpec, state: dict[str, Any]) -> QtWidgets.QWidget:
+        wrapper = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(wrapper)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(2)
+        if control.label:
+            layout.addWidget(QtWidgets.QLabel(control.label))
+        x_val = float(state.get(control.resolved_x_state_key(), control.x_default))
+        y_val = float(state.get(control.resolved_y_state_key(), control.y_default))
+
+        def on_xy_changed(xv: float, yv: float, spec=control) -> None:
+            if self.on_xy_value_changed is not None:
+                self.on_xy_value_changed(spec, xv, yv)
+
+        pad = XYPadWidget(control, x_val, y_val, on_xy_changed)
+        layout.addWidget(pad)
+        self.widgets[control.x_id] = pad
+        self.widgets[control.y_id] = pad
+        return wrapper
 
     def _build_action_button(self, action: ActionSpec, state: dict[str, Any]) -> QtWidgets.QPushButton:
         button = QtWidgets.QPushButton(action.label)
