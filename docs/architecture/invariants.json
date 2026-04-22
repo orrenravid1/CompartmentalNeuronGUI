@@ -136,6 +136,11 @@
       "term": "markov-fire",
       "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
       "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "XYControlSpec",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
     }
   ],
   "commands": [

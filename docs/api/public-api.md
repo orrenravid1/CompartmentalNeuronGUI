@@ -15,8 +15,10 @@ Use `DiagnosticsSpec` when you want app-scoped perf logging config on
         - ActionSpec
         - AttributeRef
         - AppSpec
+        - BoolValueSpec
+        - ChoiceValueSpec
+        - ControlPresentationSpec
         - ControlSpec
-        - XYControlSpec
         - DiagnosticsSpec
         - Scene
         - Field
@@ -30,10 +32,12 @@ Use `DiagnosticsSpec` when you want app-scoped perf logging config on
         - StateGraphViewSpec
         - PanelSpec
         - ReplaySession
+        - ScalarValueSpec
         - SeriesSpec
         - StateBinding
         - SurfaceViewSpec
         - ViewSpec
+        - XYValueSpec
         - VispyFrontendWindow
         - build_replay_app
         - build_surface_app

@@ -1,53 +1,73 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, TypeAlias
 
 from compneurovis.core.bindings import AttributeRef
 
 
 @dataclass(frozen=True, slots=True)
-class ControlSpec:
-    id: str
-    kind: str
-    label: str
-    default: Any
+class ScalarValueSpec:
+    default: float | int
     min: float | int | None = None
     max: float | int | None = None
-    steps: int | None = None
-    options: tuple[str, ...] = ()
-    state_key: str | None = None
-    send_to_session: bool = False
-    scale: str = "linear"
-    target: AttributeRef | None = None
-
-    def resolved_state_key(self) -> str:
-        return self.state_key or self.id
+    value_type: Literal["float", "int"] = "float"
 
 
 @dataclass(frozen=True, slots=True)
-class XYControlSpec:
-    x_id: str
-    y_id: str
-    label: str = ""
+class ChoiceValueSpec:
+    default: str
+    options: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BoolValueSpec:
+    default: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class XYValueSpec:
+    default: dict[str, float] = field(default_factory=lambda: {"x": 0.5, "y": 0.5})
+    x_range: tuple[float, float] = (0.0, 1.0)
+    y_range: tuple[float, float] = (0.0, 1.0)
     x_label: str = "X"
     y_label: str = "Y"
-    x_min: float = 0.0
-    x_max: float = 1.0
-    y_min: float = 0.0
-    y_max: float = 1.0
-    x_default: float = 0.5
-    y_default: float = 0.5
-    x_state_key: str | None = None
-    y_state_key: str | None = None
-    shape: str = "square"
+
+    def default_value(self) -> dict[str, float]:
+        return {
+            "x": float(self.default.get("x", 0.5)),
+            "y": float(self.default.get("y", 0.5)),
+        }
+
+
+ControlValueSpec: TypeAlias = ScalarValueSpec | ChoiceValueSpec | BoolValueSpec | XYValueSpec
+
+
+@dataclass(frozen=True, slots=True)
+class ControlPresentationSpec:
+    kind: str | None = None
+    steps: int | None = None
+    scale: str = "linear"
+    shape: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ControlSpec:
+    id: str
+    label: str
+    value_spec: ControlValueSpec
+    presentation: ControlPresentationSpec | None = None
+    state_key: str | None = None
     send_to_session: bool = False
+    target: AttributeRef | None = None
 
-    def resolved_x_state_key(self) -> str:
-        return self.x_state_key or self.x_id
+    def default_value(self) -> Any:
+        if isinstance(self.value_spec, XYValueSpec):
+            return self.value_spec.default_value()
+        return self.value_spec.default
 
-    def resolved_y_state_key(self) -> str:
-        return self.y_state_key or self.y_id
+    def resolved_state_key(self) -> str:
+        return self.state_key or self.id
 
 
 @dataclass(frozen=True, slots=True)

@@ -13,6 +13,7 @@ Use it together with:
 ### Changed
 
 - Renamed the live-colored directed graph panel API to `StateGraphViewSpec` and `PANEL_KIND_STATE_GRAPH` for channel-state, finite-state-machine, and other state-transition visualizations.
+- Reworked controls around `ControlSpec.value_spec` and optional `ControlPresentationSpec`, replacing the old flat control fields and `XYControlSpec`.
 
 ### Added
 

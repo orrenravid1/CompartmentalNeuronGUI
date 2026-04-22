@@ -13,7 +13,15 @@ from vispy import scene
 from vispy.scene.cameras import TurntableCamera
 
 from compneurovis._perf import perf_log
-from compneurovis.core.controls import ActionSpec, ControlSpec, XYControlSpec
+from compneurovis.core.controls import (
+    ActionSpec,
+    BoolValueSpec,
+    ChoiceValueSpec,
+    ControlPresentationSpec,
+    ControlSpec,
+    ScalarValueSpec,
+    XYValueSpec,
+)
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
@@ -1295,23 +1303,29 @@ class XYPadWidget(QtWidgets.QWidget):
     _HANDLE_RADIUS = 7
     _PAD_MARGIN = 14
 
-    def __init__(self, spec: XYControlSpec, x_value: float, y_value: float, on_changed, parent=None):
+    def __init__(self, control: ControlSpec, value: dict[str, float], on_changed, parent=None):
         super().__init__(parent)
-        self._spec = spec
-        self._x_norm = self._to_norm_x(x_value)
-        self._y_norm = self._to_norm_y(y_value)
+        if not isinstance(control.value_spec, XYValueSpec):
+            raise TypeError("XYPadWidget requires a ControlSpec with XYValueSpec")
+        self._control = control
+        self._spec = control.value_spec
+        self._presentation = control.presentation or ControlPresentationSpec()
+        self._x_norm = self._to_norm_x(float(value.get("x", self._spec.default_value()["x"])))
+        self._y_norm = self._to_norm_y(float(value.get("y", self._spec.default_value()["y"])))
         self._dragging = False
         self._on_changed = on_changed
         self.setMinimumSize(160, 175)
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
 
     def _to_norm_x(self, value: float) -> float:
-        span = self._spec.x_max - self._spec.x_min
-        return max(0.0, min(1.0, (value - self._spec.x_min) / span)) if span else 0.5
+        x_min, x_max = self._spec.x_range
+        span = x_max - x_min
+        return max(0.0, min(1.0, (value - x_min) / span)) if span else 0.5
 
     def _to_norm_y(self, value: float) -> float:
-        span = self._spec.y_max - self._spec.y_min
-        return max(0.0, min(1.0, (value - self._spec.y_min) / span)) if span else 0.5
+        y_min, y_max = self._spec.y_range
+        span = y_max - y_min
+        return max(0.0, min(1.0, (value - y_min) / span)) if span else 0.5
 
     def _pad_rect(self) -> tuple[int, int, int, int]:
         m = self._PAD_MARGIN
@@ -1333,10 +1347,13 @@ class XYPadWidget(QtWidgets.QWidget):
         ny = max(0.0, min(1.0, 1.0 - (py - y0) / h)) if h else 0.5
         return nx, ny
 
-    def _norm_to_values(self, nx: float, ny: float) -> tuple[float, float]:
-        x = self._spec.x_min + nx * (self._spec.x_max - self._spec.x_min)
-        y = self._spec.y_min + ny * (self._spec.y_max - self._spec.y_min)
-        return x, y
+    def _norm_to_values(self, nx: float, ny: float) -> dict[str, float]:
+        x_min, x_max = self._spec.x_range
+        y_min, y_max = self._spec.y_range
+        return {
+            "x": float(x_min + nx * (x_max - x_min)),
+            "y": float(y_min + ny * (y_max - y_min)),
+        }
 
     def paintEvent(self, event) -> None:
         from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath
@@ -1351,7 +1368,7 @@ class XYPadWidget(QtWidgets.QWidget):
         border = QColor(80, 80, 92)
         grid_color = QColor(60, 60, 70)
 
-        if self._spec.shape == "circle":
+        if self._presentation.shape == "circle":
             painter.setBrush(QBrush(bg))
             painter.setPen(QPen(border, 1.5))
             painter.drawEllipse(pad_rect)
@@ -1381,12 +1398,12 @@ class XYPadWidget(QtWidgets.QWidget):
         painter.setPen(QPen(QColor(210, 235, 255), 1.5))
         painter.drawEllipse(QRectF(hx - r, hy - r, r * 2, r * 2))
 
-        x_val, y_val = self._norm_to_values(self._x_norm, self._y_norm)
+        value = self._norm_to_values(self._x_norm, self._y_norm)
         painter.setPen(QPen(QColor(155, 155, 175)))
         font = painter.font()
         font.setPointSize(8)
         painter.setFont(font)
-        label = f"{self._spec.x_label}: {x_val:.3g}   {self._spec.y_label}: {y_val:.3g}"
+        label = f"{self._spec.x_label}: {value['x']:.3g}   {self._spec.y_label}: {value['y']:.3g}"
         painter.drawText(int(x0), int(y0 + h + self._PAD_MARGIN), label)
 
         painter.end()
@@ -1408,13 +1425,12 @@ class XYPadWidget(QtWidgets.QWidget):
         nx, ny = self._pixel_to_norm(px, py)
         self._x_norm = nx
         self._y_norm = ny
-        x_val, y_val = self._norm_to_values(nx, ny)
-        self._on_changed(x_val, y_val)
+        self._on_changed(self._norm_to_values(nx, ny))
         self.update()
 
-    def set_values(self, x_value: float, y_value: float) -> None:
-        self._x_norm = self._to_norm_x(x_value)
-        self._y_norm = self._to_norm_y(y_value)
+    def set_values(self, value: dict[str, float]) -> None:
+        self._x_norm = self._to_norm_x(float(value.get("x", self._spec.default_value()["x"])))
+        self._y_norm = self._to_norm_y(float(value.get("y", self._spec.default_value()["y"])))
         self.update()
 
 
@@ -1422,13 +1438,12 @@ class ControlsPanel(QtWidgets.QWidget):
     _MULTI_COLUMN_MIN_WIDTH = 900
     _MULTI_COLUMN_MIN_ITEMS = 8
 
-    def __init__(self, on_value_changed, on_action_invoked=None, on_xy_value_changed=None, parent=None):
+    def __init__(self, on_value_changed, on_action_invoked=None, parent=None):
         super().__init__(parent)
         self.on_value_changed = on_value_changed
         self.on_action_invoked = on_action_invoked
-        self.on_xy_value_changed = on_xy_value_changed
         self.widgets: dict[str, QtWidgets.QWidget] = {}
-        self._controls: list[ControlSpec | XYControlSpec] = []
+        self._controls: list[ControlSpec] = []
         self._actions: list[ActionSpec] = []
         self._state: dict[str, Any] = {}
         self._column_count = 1
@@ -1438,7 +1453,7 @@ class ControlsPanel(QtWidgets.QWidget):
         self._grid.setVerticalSpacing(6)
         self._grid.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-    def set_controls(self, controls: list[ControlSpec | XYControlSpec], actions: list[ActionSpec], state: dict[str, Any]) -> None:
+    def set_controls(self, controls: list[ControlSpec], actions: list[ActionSpec], state: dict[str, Any]) -> None:
         self._controls = list(controls)
         self._actions = list(actions)
         self._state = state
@@ -1458,7 +1473,7 @@ class ControlsPanel(QtWidgets.QWidget):
         self._rebuild_grid(force=False)
 
     def _desired_column_count(self) -> int:
-        scalar_count = sum(1 for c in self._controls if not isinstance(c, XYControlSpec))
+        scalar_count = sum(1 for c in self._controls if not isinstance(c.value_spec, XYValueSpec))
         item_count = scalar_count + len(self._actions)
         if item_count < self._MULTI_COLUMN_MIN_ITEMS:
             return 1
@@ -1488,7 +1503,7 @@ class ControlsPanel(QtWidgets.QWidget):
         row_index = 0
         current_col = 0
         for control in self._controls:
-            if isinstance(control, XYControlSpec):
+            if isinstance(control.value_spec, XYValueSpec):
                 if current_col > 0:
                     row_index += 1
                     current_col = 0
@@ -1526,19 +1541,25 @@ class ControlsPanel(QtWidgets.QWidget):
         row_layout.setContentsMargins(0, 0, 0, 0)
         row_layout.addWidget(QtWidgets.QLabel(control.label))
         key = control.resolved_state_key()
-        current = state.get(key, control.default)
+        current = state.get(key, control.default_value())
+        value_spec = control.value_spec
+        presentation = control.presentation or ControlPresentationSpec()
 
-        if control.kind in ("float", "double"):
+        if isinstance(value_spec, ScalarValueSpec) and value_spec.value_type == "float":
+            kind = presentation.kind or "slider"
+            if kind != "slider":
+                raise ValueError(f"Unsupported presentation kind '{kind}' for scalar float control '{control.id}'")
             slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
-            steps = int(control.steps or 100)
+            steps = int(presentation.steps or 100)
             slider.setRange(0, steps)
-            mn = float(control.min if control.min is not None else 0.0)
-            mx = float(control.max if control.max is not None else 1.0)
+            mn = float(value_spec.min if value_spec.min is not None else 0.0)
+            mx = float(value_spec.max if value_spec.max is not None else 1.0)
             value_label = QtWidgets.QLabel("")
 
             def on_change(raw: int, *, spec=control, label=value_label, min_value=mn, max_value=mx, steps_value=steps):
                 frac = raw / max(1, steps_value)
-                if spec.scale == "log" and min_value > 0 and max_value > min_value:
+                scale = (spec.presentation or ControlPresentationSpec()).scale
+                if scale == "log" and min_value > 0 and max_value > min_value:
                     value = float(min_value * ((max_value / min_value) ** frac))
                 else:
                     value = float(min_value + (max_value - min_value) * frac)
@@ -1552,7 +1573,7 @@ class ControlsPanel(QtWidgets.QWidget):
             slider.setValue(max(0, min(steps, v0)))
             slider.valueChanged.connect(on_change)
             frac = slider.value() / max(1, steps)
-            if control.scale == "log" and mn > 0 and mx > mn:
+            if presentation.scale == "log" and mn > 0 and mx > mn:
                 initial_value = float(mn * ((mx / mn) ** frac))
             else:
                 initial_value = float(mn + (mx - mn) * frac)
@@ -1561,52 +1582,71 @@ class ControlsPanel(QtWidgets.QWidget):
             row_layout.addWidget(value_label)
             self.widgets[control.id] = slider
 
-        elif control.kind == "int":
+        elif isinstance(value_spec, ScalarValueSpec) and value_spec.value_type == "int":
+            kind = presentation.kind or "spinbox"
+            if kind != "spinbox":
+                raise ValueError(f"Unsupported presentation kind '{kind}' for scalar int control '{control.id}'")
             spin = QtWidgets.QSpinBox()
-            spin.setRange(int(control.min if control.min is not None else 0), int(control.max if control.max is not None else 100))
+            spin.setRange(
+                int(value_spec.min if value_spec.min is not None else 0),
+                int(value_spec.max if value_spec.max is not None else 100),
+            )
             spin.setValue(int(current))
             spin.valueChanged.connect(lambda value, spec=control: self.on_value_changed(spec, int(value)))
             row_layout.addWidget(spin)
             self.widgets[control.id] = spin
 
-        elif control.kind == "bool":
+        elif isinstance(value_spec, BoolValueSpec):
+            kind = presentation.kind or "checkbox"
+            if kind != "checkbox":
+                raise ValueError(f"Unsupported presentation kind '{kind}' for bool control '{control.id}'")
             checkbox = QtWidgets.QCheckBox()
             checkbox.setChecked(bool(current))
             checkbox.toggled.connect(lambda value, spec=control: self.on_value_changed(spec, bool(value)))
             row_layout.addWidget(checkbox)
             self.widgets[control.id] = checkbox
 
-        elif control.kind == "enum":
+        elif isinstance(value_spec, ChoiceValueSpec):
+            kind = presentation.kind or "dropdown"
+            if kind != "dropdown":
+                raise ValueError(f"Unsupported presentation kind '{kind}' for choice control '{control.id}'")
             combo = QtWidgets.QComboBox()
-            combo.addItems([str(option) for option in control.options])
-            if str(current) in control.options:
-                combo.setCurrentIndex(control.options.index(str(current)))
+            combo.addItems([str(option) for option in value_spec.options])
+            if str(current) in value_spec.options:
+                combo.setCurrentIndex(value_spec.options.index(str(current)))
             combo.currentIndexChanged.connect(
-                lambda idx, spec=control, options=control.options: self.on_value_changed(spec, options[int(idx)])
+                lambda idx, spec=control, options=value_spec.options: self.on_value_changed(spec, options[int(idx)])
             )
             row_layout.addWidget(combo)
             self.widgets[control.id] = combo
+        else:
+            raise ValueError(f"Unsupported value spec for control '{control.id}'")
 
         return row
 
-    def _build_xy_pad_row(self, control: XYControlSpec, state: dict[str, Any]) -> QtWidgets.QWidget:
+    def _build_xy_pad_row(self, control: ControlSpec, state: dict[str, Any]) -> QtWidgets.QWidget:
         wrapper = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(wrapper)
         layout.setContentsMargins(0, 2, 0, 2)
         layout.setSpacing(2)
         if control.label:
             layout.addWidget(QtWidgets.QLabel(control.label))
-        x_val = float(state.get(control.resolved_x_state_key(), control.x_default))
-        y_val = float(state.get(control.resolved_y_state_key(), control.y_default))
+        if not isinstance(control.value_spec, XYValueSpec):
+            raise ValueError(f"Control '{control.id}' is not an XY control")
+        presentation = control.presentation or ControlPresentationSpec()
+        kind = presentation.kind or "xy_pad"
+        if kind != "xy_pad":
+            raise ValueError(f"Unsupported presentation kind '{kind}' for XY control '{control.id}'")
+        current = state.get(control.resolved_state_key(), control.default_value())
+        if not isinstance(current, dict):
+            current = control.default_value()
 
-        def on_xy_changed(xv: float, yv: float, spec=control) -> None:
-            if self.on_xy_value_changed is not None:
-                self.on_xy_value_changed(spec, xv, yv)
+        def on_xy_changed(value: dict[str, float], spec=control) -> None:
+            self.on_value_changed(spec, value)
 
-        pad = XYPadWidget(control, x_val, y_val, on_xy_changed)
+        pad = XYPadWidget(control, current, on_xy_changed)
         layout.addWidget(pad)
-        self.widgets[control.x_id] = pad
-        self.widgets[control.y_id] = pad
+        self.widgets[control.id] = pad
         return wrapper
 
     def _build_action_button(self, action: ActionSpec, state: dict[str, Any]) -> QtWidgets.QPushButton:

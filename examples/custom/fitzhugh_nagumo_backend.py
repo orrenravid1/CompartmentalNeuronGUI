@@ -27,7 +27,22 @@ from types import SimpleNamespace
 import numpy as np
 
 from compneurovis._perf import perf_log
-from compneurovis import ActionSpec, AppSpec, AttributeRef, ControlSpec, DiagnosticsSpec, Field, LayoutSpec, LinePlotViewSpec, PanelSpec, Scene, SeriesSpec, run_app
+from compneurovis import (
+    ActionSpec,
+    AppSpec,
+    AttributeRef,
+    ControlPresentationSpec,
+    ControlSpec,
+    DiagnosticsSpec,
+    Field,
+    LayoutSpec,
+    LinePlotViewSpec,
+    PanelSpec,
+    ScalarValueSpec,
+    Scene,
+    SeriesSpec,
+    run_app,
+)
 from compneurovis.session import BufferedSession, FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, Status
 
 
@@ -144,67 +159,45 @@ TERM_SERIES = (
     SeriesSpec("dvdt", "dV/dt", source=AttributeRef("model", "dvdt"), color=(255, 50, 100)),
 )
 
+
+def float_control(
+    control_id: str,
+    label: str,
+    default: float,
+    min_value: float,
+    max_value: float,
+    steps: int,
+    target: AttributeRef,
+    *,
+    scale: str = "linear",
+) -> ControlSpec:
+    return ControlSpec(
+        id=control_id,
+        label=label,
+        value_spec=ScalarValueSpec(default=default, min=min_value, max=max_value, value_type="float"),
+        presentation=ControlPresentationSpec(kind="slider", steps=steps, scale=scale),
+        send_to_session=True,
+        target=target,
+    )
+
+
 CONTROLS = (
-    ControlSpec("a", "float", "a", 0.7, min=0.1, max=1.5, steps=140, send_to_session=True, target=AttributeRef("model", "a")),
-    ControlSpec("b", "float", "b", 0.8, min=0.1, max=1.5, steps=140, send_to_session=True, target=AttributeRef("model", "b")),
-    ControlSpec("tau", "float", "tau (ms)", 12.5, min=1.0, max=40.0, steps=195, scale="log", send_to_session=True, target=AttributeRef("model", "tau")),
-    ControlSpec(
+    float_control("a", "a", 0.7, 0.1, 1.5, 140, AttributeRef("model", "a")),
+    float_control("b", "b", 0.8, 0.1, 1.5, 140, AttributeRef("model", "b")),
+    float_control("tau", "tau (ms)", 12.5, 1.0, 40.0, 195, AttributeRef("model", "tau"), scale="log"),
+    float_control(
         "holding_current",
-        "float",
         "Holding drive",
         0.5,
-        min=-0.5,
-        max=1.5,
-        steps=200,
-        send_to_session=True,
-        target=AttributeRef("model", "holding_current"),
+        -0.5,
+        1.5,
+        200,
+        AttributeRef("model", "holding_current"),
     ),
-    ControlSpec(
-        "exc_weight",
-        "float",
-        "Exc kick weight",
-        0.9,
-        min=0.0,
-        max=2.5,
-        steps=200,
-        send_to_session=True,
-        target=AttributeRef("model", "exc_weight"),
-    ),
-    ControlSpec(
-        "inh_weight",
-        "float",
-        "Inh kick weight",
-        0.7,
-        min=0.0,
-        max=2.5,
-        steps=200,
-        send_to_session=True,
-        target=AttributeRef("model", "inh_weight"),
-    ),
-    ControlSpec(
-        "tau_exc",
-        "float",
-        "Exc decay (ms)",
-        18.0,
-        min=2.0,
-        max=80.0,
-        steps=195,
-        scale="log",
-        send_to_session=True,
-        target=AttributeRef("model", "tau_exc"),
-    ),
-    ControlSpec(
-        "tau_inh",
-        "float",
-        "Inh decay (ms)",
-        30.0,
-        min=2.0,
-        max=80.0,
-        steps=195,
-        scale="log",
-        send_to_session=True,
-        target=AttributeRef("model", "tau_inh"),
-    ),
+    float_control("exc_weight", "Exc kick weight", 0.9, 0.0, 2.5, 200, AttributeRef("model", "exc_weight")),
+    float_control("inh_weight", "Inh kick weight", 0.7, 0.0, 2.5, 200, AttributeRef("model", "inh_weight")),
+    float_control("tau_exc", "Exc decay (ms)", 18.0, 2.0, 80.0, 195, AttributeRef("model", "tau_exc"), scale="log"),
+    float_control("tau_inh", "Inh decay (ms)", 30.0, 2.0, 80.0, 195, AttributeRef("model", "tau_inh"), scale="log"),
 )
 
 CONTROL_BY_ID = {control.id: control for control in CONTROLS}

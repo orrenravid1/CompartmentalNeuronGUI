@@ -4,7 +4,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from compneurovis.core.controls import ActionSpec, ControlSpec, XYControlSpec
+from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry
 from compneurovis.core.operators import OperatorSpec
@@ -86,7 +86,7 @@ class LayoutSpec:
         self,
         *,
         views: dict[str, ViewSpec],
-        controls: dict[str, ControlSpec | XYControlSpec],
+        controls: dict[str, ControlSpec],
         actions: dict[str, ActionSpec],
     ) -> None:
         if self.panels:
@@ -106,7 +106,7 @@ class LayoutSpec:
         self,
         *,
         views: dict[str, ViewSpec],
-        controls: dict[str, ControlSpec | XYControlSpec],
+        controls: dict[str, ControlSpec],
         actions: dict[str, ActionSpec],
     ) -> tuple[PanelSpec, ...]:
         normalized: list[PanelSpec] = []
@@ -229,7 +229,7 @@ class LayoutSpec:
         self,
         *,
         views: dict[str, ViewSpec],
-        controls: dict[str, ControlSpec | XYControlSpec],
+        controls: dict[str, ControlSpec],
         actions: dict[str, ActionSpec],
     ) -> tuple[PanelSpec, ...]:
         panels: list[PanelSpec] = []
@@ -279,7 +279,7 @@ class Scene:
     geometries: dict[str, Geometry]
     views: dict[str, ViewSpec]
     operators: dict[str, OperatorSpec] = field(default_factory=dict)
-    controls: dict[str, ControlSpec | XYControlSpec] = field(default_factory=dict)
+    controls: dict[str, ControlSpec] = field(default_factory=dict)
     actions: dict[str, ActionSpec] = field(default_factory=dict)
     layout: LayoutSpec = field(default_factory=LayoutSpec)
     metadata: dict[str, Any] = field(default_factory=dict)

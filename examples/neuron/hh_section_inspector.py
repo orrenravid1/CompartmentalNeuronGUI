@@ -19,6 +19,8 @@ import numpy as np
 from neuron import h
 
 from compneurovis import (
+    ChoiceValueSpec,
+    ControlPresentationSpec,
     ControlSpec,
     DiagnosticsSpec,
     Field,
@@ -28,6 +30,7 @@ from compneurovis import (
     NeuronSceneBuilder,
     NeuronSession,
     PanelSpec,
+    ScalarValueSpec,
     Scene,
     StateBinding,
     build_neuron_app,
@@ -185,31 +188,23 @@ class HHSectionInspectorSession(NeuronSession):
     def control_specs(self) -> dict[str, ControlSpec]:
         return {
             "morphology_quantity": ControlSpec(
-                "morphology_quantity",
-                "enum",
-                "Morphology coloring",
-                self.morphology_quantity,
-                options=DISPLAY_OPTIONS,
+                id="morphology_quantity",
+                label="Morphology coloring",
+                value_spec=ChoiceValueSpec(default=self.morphology_quantity, options=DISPLAY_OPTIONS),
                 send_to_session=True,
             ),
             "stim_scale": ControlSpec(
-                "stim_scale",
-                "float",
-                "Stimulus scale",
-                self.stim_scale,
-                min=0.0,
-                max=1.6,
-                steps=160,
+                id="stim_scale",
+                label="Stimulus scale",
+                value_spec=ScalarValueSpec(default=self.stim_scale, min=0.0, max=1.6, value_type="float"),
+                presentation=ControlPresentationSpec(kind="slider", steps=160),
                 send_to_session=True,
             ),
             "display_dt": ControlSpec(
-                "display_dt",
-                "float",
-                "Visual update interval (ms sim/update)",
-                self.display_dt,
-                min=self.dt,
-                max=4.0,
-                steps=159,
+                id="display_dt",
+                label="Visual update interval (ms sim/update)",
+                value_spec=ScalarValueSpec(default=self.display_dt, min=self.dt, max=4.0, value_type="float"),
+                presentation=ControlPresentationSpec(kind="slider", steps=159),
                 send_to_session=True,
             ),
         }

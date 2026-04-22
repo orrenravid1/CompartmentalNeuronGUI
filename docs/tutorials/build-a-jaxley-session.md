@@ -66,12 +66,18 @@ That means user code usually does not need to construct geometry manually. The c
 ## 4. Add Controls or Actions (optional)
 
 ```python
-from compneurovis import ControlSpec
+from compneurovis import ControlPresentationSpec, ControlSpec, ScalarValueSpec
 
 
 def control_specs(self):
     return {
-        "stim_amp": ControlSpec("stim_amp", "float", "Stimulus amplitude", 0.6, min=0.0, max=2.0, steps=100),
+        "stim_amp": ControlSpec(
+            id="stim_amp",
+            label="Stimulus amplitude",
+            value_spec=ScalarValueSpec(default=0.6, min=0.0, max=2.0, value_type="float"),
+            presentation=ControlPresentationSpec(kind="slider", steps=100),
+            send_to_session=True,
+        ),
     }
 
 

@@ -9,14 +9,39 @@ import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 import pytest
 
-from compneurovis import ActionSpec, AppSpec, ControlSpec, DiagnosticsSpec, Field, GridSliceOperatorSpec, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, StateGraphViewSpec, SurfaceViewSpec, VispyFrontendWindow, build_neuron_app, build_surface_app, grid_field
+from compneurovis import (
+    ActionSpec,
+    AppSpec,
+    BoolValueSpec,
+    ChoiceValueSpec,
+    ControlPresentationSpec,
+    ControlSpec,
+    DiagnosticsSpec,
+    Field,
+    GridSliceOperatorSpec,
+    LayoutSpec,
+    LinePlotViewSpec,
+    MorphologyGeometry,
+    MorphologyViewSpec,
+    PanelSpec,
+    ScalarValueSpec,
+    Scene,
+    StateBinding,
+    StateGraphViewSpec,
+    SurfaceViewSpec,
+    VispyFrontendWindow,
+    XYValueSpec,
+    build_neuron_app,
+    build_surface_app,
+    grid_field,
+)
 from compneurovis.backends.neuron import NeuronSession
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
 from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
 from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, LinePlotHostPanel, LinePlotPanel, StateGraphPanel, Viewport3DPanel, _state_label_color_for_fill, _state_node_colormap_name
 from compneurovis.frontends.vispy.renderers import MorphologyRenderer
-from compneurovis.session import BufferedSession, Error, FieldAppend, FieldReplace, Reset, StatePatch, resolve_interaction_target_source
+from compneurovis.session import BufferedSession, Error, FieldAppend, FieldReplace, Reset, SetControl, StatePatch, resolve_interaction_target_source
 
 
 def view_3d_panel(panel_id: str, view_id: str, **kwargs) -> PanelSpec:
@@ -38,6 +63,31 @@ def make_layout(title: str, *, panels: tuple[PanelSpec, ...]) -> LayoutSpec:
         rows.append(main_row)
     rows.extend((panel.id,) for panel in panels if panel.kind == "controls")
     return LayoutSpec(title=title, panels=panels, panel_grid=tuple(rows))
+
+
+def float_control(control_id: str, label: str, default: float, min_value: float = 0.0, max_value: float = 1.0, steps: int = 100) -> ControlSpec:
+    return ControlSpec(
+        id=control_id,
+        label=label,
+        value_spec=ScalarValueSpec(default=default, min=min_value, max=max_value, value_type="float"),
+        presentation=ControlPresentationSpec(kind="slider", steps=steps),
+    )
+
+
+def int_control(control_id: str, label: str, default: int, min_value: int = 0, max_value: int = 100) -> ControlSpec:
+    return ControlSpec(
+        id=control_id,
+        label=label,
+        value_spec=ScalarValueSpec(default=default, min=min_value, max=max_value, value_type="int"),
+    )
+
+
+def choice_control(control_id: str, label: str, default: str, options: tuple[str, ...]) -> ControlSpec:
+    return ControlSpec(id=control_id, label=label, value_spec=ChoiceValueSpec(default=default, options=options))
+
+
+def bool_control(control_id: str, label: str, default: bool) -> ControlSpec:
+    return ControlSpec(id=control_id, label=label, value_spec=BoolValueSpec(default=default))
 
 
 def resolved_controls_host(window: VispyFrontendWindow, panel_id: str = "controls-panel") -> ControlsHostPanel:
@@ -177,8 +227,8 @@ def build_surface_cross_section_app():
     values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
     field, geometry = grid_field(field_id="surface", values=values, x_coords=x, y_coords=y)
     controls = {
-        "slice_axis": ControlSpec("slice_axis", "enum", "Slice axis", "x", options=("x", "y")),
-        "slice_position": ControlSpec("slice_position", "float", "Slice position", 0.0, min=0.0, max=1.0, steps=20),
+        "slice_axis": choice_control("slice_axis", "Slice axis", "x", ("x", "y")),
+        "slice_position": float_control("slice_position", "Slice position", 0.0, 0.0, 1.0, 20),
     }
     operator = GridSliceOperatorSpec(
         id="surface-slice",
@@ -215,12 +265,12 @@ def build_surface_axes_binding_app():
     values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
     field, geometry = grid_field(field_id="surface", values=values, x_coords=x, y_coords=y)
     controls = {
-        "tick_count": ControlSpec("tick_count", "int", "Axis ticks", 7, min=0, max=12),
-        "tick_label_size": ControlSpec("tick_label_size", "float", "Tick text size", 12.0, min=6.0, max=24.0, steps=18),
-        "axis_label_size": ControlSpec("axis_label_size", "float", "Axis label size", 16.0, min=8.0, max=32.0, steps=24),
-        "axis_color": ControlSpec("axis_color", "enum", "Axis color", "black", options=("black", "red")),
-        "text_color": ControlSpec("text_color", "enum", "Text color", "black", options=("black", "blue")),
-        "axis_alpha": ControlSpec("axis_alpha", "float", "Axis alpha", 1.0, min=0.0, max=1.0, steps=10),
+        "tick_count": int_control("tick_count", "Axis ticks", 7, 0, 12),
+        "tick_label_size": float_control("tick_label_size", "Tick text size", 12.0, 6.0, 24.0, 18),
+        "axis_label_size": float_control("axis_label_size", "Axis label size", 16.0, 8.0, 32.0, 24),
+        "axis_color": choice_control("axis_color", "Axis color", "black", ("black", "red")),
+        "text_color": choice_control("text_color", "Text color", "black", ("black", "blue")),
+        "axis_alpha": float_control("axis_alpha", "Axis alpha", 1.0, 0.0, 1.0, 10),
     }
     surface_view = SurfaceViewSpec(
         id="surface-view",
@@ -339,6 +389,86 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
     window.line_plot_panel("surface-line").refresh.assert_not_called()
     window._flush_due_line_plot_refreshes(force=True)
     window.line_plot_panel("surface-line").refresh.assert_called_once()
+
+    window.close()
+    app.quit()
+
+
+def test_scalar_control_state_default_comes_from_value_spec():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    scene = Scene(
+        fields={},
+        geometries={},
+        views={},
+        controls={"gain": float_control("gain", "Gain", 1.25, 0.0, 2.0)},
+        layout=make_layout("Scalar default", panels=(controls_panel_spec(control_ids=("gain",)),)),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="Scalar default"))
+    window.timer.stop()
+
+    assert window.state["gain"] == 1.25
+
+    window.close()
+    app.quit()
+
+
+def test_controls_panel_renders_widgets_from_value_spec_and_presentation():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = ControlsPanel(lambda *_args: None)
+    controls = [
+        float_control("gain", "Gain", 0.5, 0.0, 1.0, 12),
+        int_control("count", "Count", 3, 0, 9),
+        choice_control("mode", "Mode", "a", ("a", "b")),
+        bool_control("enabled", "Enabled", True),
+    ]
+
+    panel.set_controls(controls, [], {})
+
+    assert isinstance(panel.widgets["gain"], QtWidgets.QSlider)
+    assert isinstance(panel.widgets["count"], QtWidgets.QSpinBox)
+    assert isinstance(panel.widgets["mode"], QtWidgets.QComboBox)
+    assert isinstance(panel.widgets["enabled"], QtWidgets.QCheckBox)
+
+    panel.close()
+    app.quit()
+
+
+def test_xy_control_uses_atomic_state_key_and_single_session_command():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    xy_control = ControlSpec(
+        id="stimulus_position",
+        label="Stimulus position",
+        value_spec=XYValueSpec(default={"x": 0.5, "y": 0.25}, x_range=(0.0, 1.0), y_range=(0.0, 1.0)),
+        presentation=ControlPresentationSpec(kind="xy_pad", shape="square"),
+        send_to_session=True,
+    )
+    scene = Scene(
+        fields={},
+        geometries={},
+        views={},
+        controls={xy_control.id: xy_control},
+        layout=make_layout("XY control", panels=(controls_panel_spec(control_ids=(xy_control.id,)),)),
+    )
+    window = VispyFrontendWindow(AppSpec(scene=scene, title="XY control"))
+    window.timer.stop()
+    window.transport = Mock()
+    window.refresh_planner = Mock()
+    window.refresh_planner.targets_for_state_change.return_value = set()
+    new_value = {"x": 0.2, "y": 0.8}
+
+    assert window.state["stimulus_position"] == {"x": 0.5, "y": 0.25}
+    assert "x" not in window.state
+    assert "y" not in window.state
+
+    window._on_control_changed(xy_control, new_value)
+
+    assert window.state["stimulus_position"] == new_value
+    window.transport.send_command.assert_called_once()
+    command = window.transport.send_command.call_args[0][0]
+    assert isinstance(command, SetControl)
+    assert command.control_id == "stimulus_position"
+    assert command.value == new_value
+    window.refresh_planner.targets_for_state_change.assert_called_once_with("stimulus_position")
 
     window.close()
     app.quit()
@@ -2152,7 +2282,7 @@ def test_controls_host_title_reflects_controls_and_actions_presence():
         fields={},
         geometries={},
         views={},
-        controls={"gain": ControlSpec(id="gain", kind="float", label="Gain", default=1.0)},
+        controls={"gain": float_control("gain", "Gain", 1.0)},
         actions={"reset": ActionSpec(id="reset", label="Reset")},
         layout=make_layout(
             "Controls and actions",
@@ -2187,7 +2317,7 @@ def test_controls_panel_switches_to_two_columns_when_wide():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = ControlsPanel(lambda *_args: None)
     controls = [
-        ControlSpec(id=f"gain_{index}", kind="float", label=f"Gain {index}", default=1.0, min=0.0, max=2.0)
+        float_control(f"gain_{index}", f"Gain {index}", 1.0, 0.0, 2.0)
         for index in range(8)
     ]
 
@@ -2484,7 +2614,7 @@ class DummyNeuronSession(NeuronSession):
         return []
 
     def control_specs(self):
-        return {"gain": ControlSpec("gain", "float", "Gain", 1.0)}
+        return {"gain": float_control("gain", "Gain", 1.0)}
 
     def action_specs(self):
         return {"toggle_mode": ActionSpec("toggle_mode", "Toggle mode")}

@@ -18,7 +18,11 @@ summary: Field, geometry, view, control, and scene primitives.
 - `ViewSpec`
 - `StateGraphViewSpec`
 - `ControlSpec`
-- `XYControlSpec`
+- `ScalarValueSpec`
+- `ChoiceValueSpec`
+- `BoolValueSpec`
+- `XYValueSpec`
+- `ControlPresentationSpec`
 - declarative binding helpers such as `AttributeRef` and `SeriesSpec`
 
 `AppSpec` also carries optional `DiagnosticsSpec` settings for app-scoped perf

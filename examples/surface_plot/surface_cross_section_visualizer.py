@@ -15,10 +15,13 @@ Run: python examples/surface_plot/surface_cross_section_visualizer.py
 import numpy as np
 
 from compneurovis import (
+    ChoiceValueSpec,
+    ControlPresentationSpec,
     ControlSpec,
     GridSliceOperatorSpec,
     LinePlotViewSpec,
     PanelSpec,
+    ScalarValueSpec,
     SurfaceViewSpec,
     build_surface_app,
     grid_field,
@@ -54,8 +57,17 @@ field, geometry = grid_field(
 # slice_axis selects which dimension is sliced; slice_position is a 0-1 normalized position.
 # Those controls feed the shared operator, not the surface view directly.
 controls = {
-    "slice_axis": ControlSpec("slice_axis", "enum", "Slice axis", "x", options=("x", "y")),
-    "slice_position": ControlSpec("slice_position", "float", "Slice position", 0.0, min=0.0, max=1.0, steps=200),
+    "slice_axis": ControlSpec(
+        id="slice_axis",
+        label="Slice axis",
+        value_spec=ChoiceValueSpec(default="x", options=("x", "y")),
+    ),
+    "slice_position": ControlSpec(
+        id="slice_position",
+        label="Slice position",
+        value_spec=ScalarValueSpec(default=0.0, min=0.0, max=1.0, value_type="float"),
+        presentation=ControlPresentationSpec(kind="slider", steps=200),
+    ),
 }
 
 slice_operator = GridSliceOperatorSpec(

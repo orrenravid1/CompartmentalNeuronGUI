@@ -48,16 +48,24 @@ Omit `geometry` from the next steps if your view doesn't need explicit grid coor
 Controls appear in the right panel and can drive `ViewSpec` properties via `StateBinding`:
 
 ```python
-from compneurovis import ControlSpec
+from compneurovis import ChoiceValueSpec, ControlPresentationSpec, ControlSpec, ScalarValueSpec
 
 controls = {
-    "surface_alpha": ControlSpec("surface_alpha", "float", "Surface alpha", 0.9, min=0.1, max=1.0, steps=90),
-    "background_color": ControlSpec("background_color", "enum", "Background", "white",
-                                    options=("black", "white", "gray")),
+    "surface_alpha": ControlSpec(
+        id="surface_alpha",
+        label="Surface alpha",
+        value_spec=ScalarValueSpec(default=0.9, min=0.1, max=1.0, value_type="float"),
+        presentation=ControlPresentationSpec(kind="slider", steps=90),
+    ),
+    "background_color": ControlSpec(
+        id="background_color",
+        label="Background",
+        value_spec=ChoiceValueSpec(default="white", options=("black", "white", "gray")),
+    ),
 }
 ```
 
-Control kinds: `"float"`, `"int"`, `"enum"`.
+`value_spec` describes the value contract. `presentation` is only a widget hint.
 
 ## 3. Build the ViewSpec
 
@@ -125,10 +133,19 @@ To add a cross-section plot driven by a slider, define a `GridSliceOperatorSpec`
 and let both the 3-D host and the line plot consume that operator:
 
 ```python
-from compneurovis import GridSliceOperatorSpec, LinePlotViewSpec
+from compneurovis import ChoiceValueSpec, ControlPresentationSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, ScalarValueSpec
 
-controls["slice_axis"] = ControlSpec("slice_axis", "enum", "Slice axis", "x", options=("x", "y"))
-controls["slice_pos"] = ControlSpec("slice_pos", "float", "Slice Y", 0.0, min=-3.0, max=3.0, steps=120)
+controls["slice_axis"] = ControlSpec(
+    id="slice_axis",
+    label="Slice axis",
+    value_spec=ChoiceValueSpec(default="x", options=("x", "y")),
+)
+controls["slice_pos"] = ControlSpec(
+    id="slice_pos",
+    label="Slice Y",
+    value_spec=ScalarValueSpec(default=0.0, min=-3.0, max=3.0, value_type="float"),
+    presentation=ControlPresentationSpec(kind="slider", steps=120),
+)
 
 slice_operator = GridSliceOperatorSpec(
     id="surface-slice",

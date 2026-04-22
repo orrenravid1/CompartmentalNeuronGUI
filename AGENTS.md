@@ -27,7 +27,7 @@ Key names:
 - App config: `AppSpec`, `DiagnosticsSpec`
 - Operator types: `OperatorSpec`, `GridSliceOperatorSpec`
 - View types: `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`, `StateGraphViewSpec`
-- Control types: `ControlSpec`, `XYControlSpec`, `ActionSpec`
+- Control types: `ControlSpec`, `ScalarValueSpec`, `ChoiceValueSpec`, `BoolValueSpec`, `XYValueSpec`, `ControlPresentationSpec`, `ActionSpec`
 - Backend/session: `NeuronSession`, `JaxleySession`, `ReplaySession`
 - Backend scene builders: `NeuronSceneBuilder`, `JaxleySceneBuilder`
 - Workflow helpers: `HistoryCaptureMode`, `grid_field`

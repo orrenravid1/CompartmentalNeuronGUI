@@ -57,9 +57,19 @@ You do not need to manage the NEURON run loop, pt3d parsing, or scene constructi
 ## 2. Override Hooks (optional)
 
 ```python
+from compneurovis import ControlPresentationSpec, ControlSpec, ScalarValueSpec
+
 def control_specs(self):
     # Return controls to show in the UI.
-    return [ControlSpec("amp", "float", "Clamp amp (nA)", 0.5, min=0.0, max=2.0, steps=100)]
+    return {
+        "amp": ControlSpec(
+            id="amp",
+            label="Clamp amp (nA)",
+            value_spec=ScalarValueSpec(default=0.5, min=0.0, max=2.0, value_type="float"),
+            presentation=ControlPresentationSpec(kind="slider", steps=100),
+            send_to_session=True,
+        )
+    }
 
 def action_specs(self):
     return [ActionSpec("reset", "Reset")]

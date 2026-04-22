@@ -22,54 +22,85 @@ only want to make something runnable first, go back to
 A `ControlSpec` describes a persistent UI value such as:
 
 - a slider
+- a spinbox
 - a checkbox
 - a dropdown
+- an XY pad
 
 Controls usually answer:
 
-- "what value should the UI hold right now?"
+- "what value shape does this control own?"
 - "should this value also be sent to the session?"
+- "is there a preferred frontend widget?"
 
 Examples:
 
 - stimulus amplitude
 - rolling window size
 - selected slice axis
+- stimulus position
 
 Controls are good for parameters that have a current value and can be adjusted repeatedly.
 
-### XYControlSpec
+`ControlSpec.value_spec` is the semantic value contract. It tells sessions,
+state bindings, and model targets what value shape to expect.
+`ControlSpec.presentation` is optional and only hints which widget the frontend
+should use.
 
-An `XYControlSpec` describes a 2D parameter control — an XY pad where the user drags a handle inside a square or circular area to set two values simultaneously.
+Current value specs:
 
-Use it when two parameters are tightly coupled and exploring their interaction matters more than tuning each independently.
-
-Examples:
-
-- time constant versus amplitude
-- spatial frequency versus orientation
-- two coupled channel conductances
+- `ScalarValueSpec`: one `float` or `int`
+- `ChoiceValueSpec`: one value from a fixed string option set
+- `BoolValueSpec`: one boolean
+- `XYValueSpec`: one atomic `{"x": float, "y": float}` dictionary
 
 ```python
-from compneurovis import XYControlSpec
+from compneurovis import ControlPresentationSpec, ControlSpec, ScalarValueSpec
 
-XYControlSpec(
-    x_id="tau_m",
-    y_id="amplitude",
-    label="Membrane / Amplitude",
-    x_label="τ",
-    y_label="Amp",
-    x_min=0.0,
-    x_max=50.0,
-    y_min=0.0,
-    y_max=2.0,
-    shape="square",  # or "circle"
+ControlSpec(
+    id="speed",
+    label="Speed",
+    value_spec=ScalarValueSpec(default=1.0, min=0.1, max=4.0, value_type="float"),
+    presentation=ControlPresentationSpec(kind="slider", steps=78, scale="linear"),
+    send_to_session=True,
 )
 ```
 
-`x_id` and `y_id` become separate state keys, so each can be bound independently with `StateBinding` in any view property.
+If `presentation` is omitted, the frontend infers a default widget from the
+value spec: float slider, int spinbox, checkbox, dropdown, or XY pad.
 
-If the shape is `"circle"`, the pad clips to a circle and the corners are unreachable — use this when the parameter space is naturally radial or when corner values are meaningless.
+### XY Controls
+
+An `XYValueSpec` describes a 2D parameter control where the user drags one
+handle to set two values together. Use it when two parameters are tightly
+coupled and exploring their interaction matters more than tuning each
+independently.
+
+```python
+from compneurovis import ControlPresentationSpec, ControlSpec, XYValueSpec
+
+ControlSpec(
+    id="stimulus_position",
+    label="Stimulus position",
+    value_spec=XYValueSpec(
+        default={"x": 0.5, "y": 0.5},
+        x_range=(0.0, 1.0),
+        y_range=(0.0, 1.0),
+        x_label="X",
+        y_label="Y",
+    ),
+    presentation=ControlPresentationSpec(kind="xy_pad", shape="square"),
+    send_to_session=True,
+)
+```
+
+The control has one state key, normally the control `id`. The stored and sent
+value is one dictionary: `{"x": float, "y": float}`. `SetControl(control.id,
+value)` is still the only session command shape.
+
+If the presentation shape is `"circle"`, the pad clips to a circle and the
+corners are unreachable. Use this when the parameter space is naturally radial
+or when corner values are meaningless.
 
 ## Actions
 
@@ -150,8 +181,8 @@ That makes multi-trace scientific apps read more like plotting configuration and
 
 Use this rule when authoring app behavior:
 
-- use `ControlSpec` when the user is setting a single scalar value
-- use `XYControlSpec` when two parameters should move together in a 2D space
+- use `ControlSpec` with `ScalarValueSpec`, `ChoiceValueSpec`, or `BoolValueSpec` when the user is setting one value
+- use `ControlSpec` with `XYValueSpec` when two parameters should move together in a 2D space
 - use `ActionSpec` when the user is triggering an intent
 - use `StateBinding` when a view should follow frontend state
 - use `StatePatch` when the session needs to synchronize semantic UI state

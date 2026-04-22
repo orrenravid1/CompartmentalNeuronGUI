@@ -15,7 +15,7 @@ import os
 
 from neuron import h
 
-from compneurovis import ControlSpec, NeuronSession, build_neuron_app, run_app
+from compneurovis import ControlPresentationSpec, ControlSpec, NeuronSession, ScalarValueSpec, build_neuron_app, run_app
 from compneurovis.neuronutils import load_swc_neuron
 
 
@@ -33,23 +33,17 @@ class ComplexCellSession(NeuronSession):
     def control_specs(self):
         return {
             "display_dt": ControlSpec(
-                "display_dt",
-                "float",
-                "Visual update interval (ms sim/update)",
-                self.display_dt,
-                min=self.dt,
-                max=5.0,
-                steps=98,
+                id="display_dt",
+                label="Visual update interval (ms sim/update)",
+                value_spec=ScalarValueSpec(default=self.display_dt, min=self.dt, max=5.0, value_type="float"),
+                presentation=ControlPresentationSpec(kind="slider", steps=98),
                 send_to_session=True,
             ),
             "stim_amp": ControlSpec(
-                "stim_amp",
-                "float",
-                "Stimulus amplitude (nA)",
-                self.stim_amp,
-                min=0.0,
-                max=2.0,
-                steps=100,
+                id="stim_amp",
+                label="Stimulus amplitude (nA)",
+                value_spec=ScalarValueSpec(default=self.stim_amp, min=0.0, max=2.0, value_type="float"),
+                presentation=ControlPresentationSpec(kind="slider", steps=100),
                 send_to_session=True,
             ),
         }

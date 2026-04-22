@@ -65,6 +65,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `examples/surface_plot/surface_cross_section_visualizer.py`
 
 ## Skills
+- `add-control`: `skills/add-control/SKILL.md`
 - `add-example`: `skills/add-example/SKILL.md`
 - `add-field-visualization`: `skills/add-field-visualization/SKILL.md`
 - `add-simulator-backend`: `skills/add-simulator-backend/SKILL.md`

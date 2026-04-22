@@ -18,8 +18,27 @@ from jaxley.channels import HH
 from jaxley.connect import connect
 from jaxley.synapses import IonotropicSynapse
 
-from compneurovis import ControlSpec, JaxleySession, build_jaxley_app, run_app
+from compneurovis import ControlPresentationSpec, ControlSpec, JaxleySession, ScalarValueSpec, build_jaxley_app, run_app
 from compneurovis.jaxleyutils import translate_cells_xyzr
+
+
+def float_control(
+    control_id: str,
+    label: str,
+    default: float,
+    min_value: float,
+    max_value: float,
+    steps: int,
+    *,
+    scale: str = "linear",
+) -> ControlSpec:
+    return ControlSpec(
+        id=control_id,
+        label=label,
+        value_spec=ScalarValueSpec(default=default, min=min_value, max=max_value, value_type="float"),
+        presentation=ControlPresentationSpec(kind="slider", steps=steps, scale=scale),
+        send_to_session=True,
+    )
 
 
 def make_straight_cell(name: str):
@@ -99,119 +118,17 @@ class MultiCellSession(JaxleySession):
 
     def control_specs(self):
         return {
-            "display_dt": ControlSpec(
-                "display_dt",
-                "float",
-                "Visual update interval (ms sim/update)",
-                self.display_dt,
-                min=self.dt,
-                max=5.0,
-                steps=98,
-                send_to_session=True,
-            ),
-            "stim_amp": ControlSpec(
-                "stim_amp",
-                "float",
-                "Stimulus amplitude (nA)",
-                self.stim_amp,
-                min=0.0,
-                max=5.0,
-                steps=200,
-                send_to_session=True,
-            ),
-            "stim_dur": ControlSpec(
-                "stim_dur",
-                "float",
-                "Stimulus duration (ms)",
-                self.stim_dur,
-                min=1.0,
-                max=20.0,
-                steps=190,
-                send_to_session=True,
-            ),
-            "syn_gs": ControlSpec(
-                "syn_gs",
-                "float",
-                "Synapse gS",
-                self.syn_gs,
-                min=1e-5,
-                max=1e-1,
-                steps=200,
-                scale="log",
-                send_to_session=True,
-            ),
-            "syn_e_syn": ControlSpec(
-                "syn_e_syn",
-                "float",
-                "Synapse reversal (mV)",
-                self.syn_e_syn,
-                min=-80.0,
-                max=60.0,
-                steps=280,
-                send_to_session=True,
-            ),
-            "syn_k_minus": ControlSpec(
-                "syn_k_minus",
-                "float",
-                "Synapse k_minus",
-                self.syn_k_minus,
-                min=1e-3,
-                max=1.0,
-                steps=200,
-                scale="log",
-                send_to_session=True,
-            ),
-            "syn_v_th": ControlSpec(
-                "syn_v_th",
-                "float",
-                "Synapse pre-V threshold (mV)",
-                self.syn_v_th,
-                min=-70.0,
-                max=10.0,
-                steps=160,
-                send_to_session=True,
-            ),
-            "syn_delta": ControlSpec(
-                "syn_delta",
-                "float",
-                "Synapse pre-V slope (mV)",
-                self.syn_delta,
-                min=1.0,
-                max=20.0,
-                steps=190,
-                send_to_session=True,
-            ),
-            "hh_gna": ControlSpec(
-                "hh_gna",
-                "float",
-                "HH gNa (S/cm^2)",
-                self.hh_gna,
-                min=0.01,
-                max=0.3,
-                steps=200,
-                send_to_session=True,
-            ),
-            "hh_gk": ControlSpec(
-                "hh_gk",
-                "float",
-                "HH gK (S/cm^2)",
-                self.hh_gk,
-                min=0.005,
-                max=0.12,
-                steps=200,
-                send_to_session=True,
-            ),
-            "hh_gleak": ControlSpec(
-                "hh_gleak",
-                "float",
-                "HH gLeak (S/cm^2)",
-                self.hh_gleak,
-                min=1e-5,
-                max=3e-3,
-                steps=200,
-                scale="log",
-                send_to_session=True,
-            ),
+            "display_dt": float_control("display_dt", "Visual update interval (ms sim/update)", self.display_dt, self.dt, 5.0, 98),
+            "stim_amp": float_control("stim_amp", "Stimulus amplitude (nA)", self.stim_amp, 0.0, 5.0, 200),
+            "stim_dur": float_control("stim_dur", "Stimulus duration (ms)", self.stim_dur, 1.0, 20.0, 190),
+            "syn_gs": float_control("syn_gs", "Synapse gS", self.syn_gs, 1e-5, 1e-1, 200, scale="log"),
+            "syn_e_syn": float_control("syn_e_syn", "Synapse reversal (mV)", self.syn_e_syn, -80.0, 60.0, 280),
+            "syn_k_minus": float_control("syn_k_minus", "Synapse k_minus", self.syn_k_minus, 1e-3, 1.0, 200, scale="log"),
+            "syn_v_th": float_control("syn_v_th", "Synapse pre-V threshold (mV)", self.syn_v_th, -70.0, 10.0, 160),
+            "syn_delta": float_control("syn_delta", "Synapse pre-V slope (mV)", self.syn_delta, 1.0, 20.0, 190),
+            "hh_gna": float_control("hh_gna", "HH gNa (S/cm^2)", self.hh_gna, 0.01, 0.3, 200),
+            "hh_gk": float_control("hh_gk", "HH gK (S/cm^2)", self.hh_gk, 0.005, 0.12, 200),
+            "hh_gleak": float_control("hh_gleak", "HH gLeak (S/cm^2)", self.hh_gleak, 1e-5, 3e-3, 200, scale="log"),
         }
 
     def build_cells(self):

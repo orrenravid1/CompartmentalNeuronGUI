@@ -129,6 +129,7 @@ The main package exports the core types, builders, and frontend entrypoint:
 - `Field`, `Scene`, `MorphologyGeometry`, `GridGeometry`
 - `MorphologyViewSpec`, `SurfaceViewSpec`, `LinePlotViewSpec`, `StateGraphViewSpec`
 - `AppSpec`, `DiagnosticsSpec`
+- `ControlSpec`, `ScalarValueSpec`, `ChoiceValueSpec`, `BoolValueSpec`, `XYValueSpec`, `ControlPresentationSpec`, `ActionSpec`
 - `NeuronSession`, `JaxleySession`, `ReplaySession`
 - `HistoryCaptureMode`, `grid_field`
 - `build_neuron_app`, `build_jaxley_app`, `build_surface_app`, `build_replay_app`

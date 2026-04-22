@@ -1,5 +1,5 @@
 from compneurovis.core.bindings import AttributeRef, SeriesSpec
-from compneurovis.core.controls import ActionSpec, ControlSpec, XYControlSpec
+from compneurovis.core.controls import ActionSpec, BoolValueSpec, ChoiceValueSpec, ControlPresentationSpec, ControlSpec, ScalarValueSpec, XYValueSpec
 from compneurovis.core.scene import AppSpec, DiagnosticsSpec, LayoutSpec, PanelSpec, Scene
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry, GridGeometry, MorphologyGeometry
@@ -11,8 +11,10 @@ __all__ = [
     "ActionSpec",
     "AttributeRef",
     "AppSpec",
+    "BoolValueSpec",
+    "ChoiceValueSpec",
+    "ControlPresentationSpec",
     "ControlSpec",
-    "XYControlSpec",
     "DiagnosticsSpec",
     "Scene",
     "Field",
@@ -27,7 +29,9 @@ __all__ = [
     "OperatorSpec",
     "PanelSpec",
     "SeriesSpec",
+    "ScalarValueSpec",
     "StateBinding",
     "SurfaceViewSpec",
     "ViewSpec",
+    "XYValueSpec",
 ]

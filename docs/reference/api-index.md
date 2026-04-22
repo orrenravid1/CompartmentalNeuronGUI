@@ -8,6 +8,9 @@ summary: Generated list of names exported by compneurovis.__init__.
 - `ActionSpec`
 - `AttributeRef`
 - `AppSpec`
+- `BoolValueSpec`
+- `ChoiceValueSpec`
+- `ControlPresentationSpec`
 - `ControlSpec`
 - `DiagnosticsSpec`
 - `Scene`
@@ -24,10 +27,12 @@ summary: Generated list of names exported by compneurovis.__init__.
 - `OperatorSpec`
 - `PanelSpec`
 - `ReplaySession`
+- `ScalarValueSpec`
 - `SeriesSpec`
 - `StateBinding`
 - `SurfaceViewSpec`
 - `ViewSpec`
+- `XYValueSpec`
 - `VispyFrontendWindow`
 - `build_replay_app`
 - `build_surface_app`
