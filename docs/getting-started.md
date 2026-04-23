@@ -90,6 +90,22 @@ When you need timestamped perf logs for debugging, prefer
 environment variables.
 Then continue with [Session/update model](concepts/session-update-model.md) and the generated [Example Index](reference/example-index.md).
 
+### Custom LIF Point Neuron
+
+Run:
+
+```bash
+python examples/custom/lif_backend.py
+```
+
+Use this if you want a smaller event-driven custom backend reference for a
+spiking neuron. This example subclasses `BufferedSession` directly, owns the
+threshold/reset logic and pulse-injection action, and streams explicit
+voltage/current/event `Field` histories into linked `LinePlotViewSpec`
+panels without using the NEURON or Jaxley helpers.
+Then continue with [Session/update model](concepts/session-update-model.md)
+and the generated [Example Index](reference/example-index.md).
+
 ### Live HH Point-Model With Clamp Control
 
 Run:

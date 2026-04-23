@@ -50,6 +50,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 
 ## Examples
 - `examples/custom/fitzhugh_nagumo_backend.py`
+- `examples/custom/lif_backend.py`
 - `examples/debug/multi_3d_views.py`
 - `examples/debug/session_error_after_open.py`
 - `examples/debug/two_line_plots.py`

@@ -69,6 +69,7 @@ Choose the path that matches what you want to do first:
 - `python examples/surface_plot/static_surface_visualizer.py` for the lowest-friction first look with no simulator backend.
 - `python examples/surface_plot/surface_cross_section_visualizer.py` for a linked surface and line-slice workflow.
 - `python examples/custom/fitzhugh_nagumo_backend.py` for a pure custom `BufferedSession` backend with its own RK4 solver and explicit scene assembly.
+- `python examples/custom/lif_backend.py` for a pure custom `BufferedSession` backend with threshold/reset spike logic, pulse injection actions, and linked voltage/current/event plots.
 - `python examples/neuron/hh_point_model_controls.py` for a live single-compartment Hodgkin-Huxley example with a continuously adjustable `IClamp` and linked voltage, current, and gating plots. Requires `pip install -e ".[neuron]"`.
 - `python examples/neuron/signaling_cascade_vis.py` for a NEURON-backed signaling cascade built from bundled point-process `.mod` files and a live multi-trace plot. Compile from inside `examples/neuron/signaling_cascade_mod/` first, then the example loads that directory automatically. Requires `pip install -e ".[neuron]"`.
 - `python examples/neuron/complex_cell_example.py` for a live SWC-backed morphology session. Requires `pip install -e ".[neuron]"`.
