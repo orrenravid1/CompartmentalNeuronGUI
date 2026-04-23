@@ -11,7 +11,7 @@ CompNeuroVis is a desktop visualization toolkit for computational neuroscience w
 
 - render a 2-D field as an interactive 3-D surface
 - link a surface view to a line-plot slice and controls
-- view live NEURON or Jaxley compartment activity on morphology and traces
+- view live NEURON or Jaxley activity on morphology and/or linked plots
 - build a complete custom session with your own solver and explicit scene model
 - replay precomputed frames through the same frontend and layout system
 
@@ -30,6 +30,8 @@ If you want to see the toolkit working before reading architecture docs, start h
 - [Static surface example](getting-started.md#static-surface-first-look)
 - [Surface plus cross-section example](getting-started.md#surface-plus-linked-cross-section)
 - [Custom solver backend example](getting-started.md#custom-backend-with-your-own-solver)
-- [Live NEURON example](getting-started.md#complex-cell-morphology-viewer)
+- [Live HH point-model example](getting-started.md#live-hh-point-model-with-clamp-control)
+- [Live signaling cascade example](getting-started.md#live-signaling-cascade-with-bundled-mechanisms)
+- [Live NEURON morphology example](getting-started.md#complex-cell-morphology-viewer)
 - [Live Jaxley example](getting-started.md#live-jaxley-multicell-example)
 - [Replay example](getting-started.md#replay-a-precomputed-animation)

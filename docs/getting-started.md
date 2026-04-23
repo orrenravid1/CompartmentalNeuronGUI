@@ -90,6 +90,52 @@ When you need timestamped perf logs for debugging, prefer
 environment variables.
 Then continue with [Session/update model](concepts/session-update-model.md) and the generated [Example Index](reference/example-index.md).
 
+### Live HH Point-Model With Clamp Control
+
+Run:
+
+```bash
+python examples/neuron/hh_point_model_controls.py
+```
+
+Requires:
+
+```bash
+pip install -e ".[neuron]"
+```
+
+Use this if you want the smallest live NEURON example with no morphology panel.
+It keeps one `IClamp` active for the full run, so the amplitude slider changes
+the injected current live while the voltage trace and `m`/`h`/`n` state
+variables keep streaming.
+Then continue with [Build a NEURON session](tutorials/build-a-neuron-session.md)
+and the generated [Example Index](reference/example-index.md).
+
+### Live Signaling Cascade With Bundled Mechanisms
+
+Run:
+
+```bash
+python examples/neuron/signaling_cascade_vis.py
+```
+
+Requires:
+
+```bash
+pip install -e ".[neuron]"
+```
+
+Before first run, compile from inside `examples/neuron/signaling_cascade_mod/`
+with your NEURON mechanism compiler. In practice that means running
+`nrnivmodl.bat .` on Windows or `nrnivmodl .` on Unix/macOS from that
+directory. The example then calls `neuron.load_mechanisms(...)` on the same
+folder and loads the resulting `nrnmech.dll` on Windows or the
+platform-specific `libnrnmech.*` build directory on Unix/macOS.
+
+Use this if you want a NEURON-backed biochemical/signaling toy model with no
+morphology panel and multiple linked traces driven by custom point processes.
+Then continue with the generated [Example Index](reference/example-index.md).
+
 ### Complex Cell Morphology Viewer
 
 Run:

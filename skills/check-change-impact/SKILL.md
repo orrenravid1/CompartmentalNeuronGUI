@@ -30,7 +30,12 @@ Audit changes in this order:
    - `python -m compileall src examples tests`
    - `pytest`
    - `python scripts/generate_indexes.py --check`
+   - For runnable examples with unguarded `run_app(...)`, prefer `compileall`, targeted code reads, or an explicit subprocess/manual GUI smoke-test. Do **not** treat direct module import as a safe verification path.
 5. Identify call sites changed by the diff that are not covered by the test suite. `compileall` verifies syntax only; `pytest` only defends paths it exercises. Runtime failures - wrong kwargs, removed methods, type mismatches, untested code paths - are invisible to both. For each uncovered call site, either verify correctness by reading the callee's implementation, or flag it as a required manual smoke-test in the impact report.
+   - If the change adds `ActionSpec` usage or backend-driven control resets, explicitly verify the full command path:
+     - actions: frontend `InvokeAction` -> session `handle(...)` / dispatch
+     - controls: frontend `SetControl` -> session `handle(...)`
+     - session-emitted control-state updates: backend patch -> frontend control refresh
 6. Report missing follow-up edits explicitly instead of assuming docs are still correct. Dependency or extra changes should explicitly call out any required `pyproject.toml`, `poetry.lock`, README, Getting Started, tutorial, or `AGENTS.md` install-command updates.
 
 When the change alters public concepts, package boundaries, or workflows, treat docs updates as required work, not optional cleanup.

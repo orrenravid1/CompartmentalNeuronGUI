@@ -262,6 +262,41 @@ This should remove frontend special-casing and make common simulation affordance
 
 ---
 
+### Base Session Action Dispatch Contract
+
+Phase: 2
+
+`NeuronSession` and `JaxleySession` already treat actions as first-class
+semantic commands: they declare `action_specs()`, receive `InvokeAction`, and
+dispatch through `_dispatch_action()` into `on_action()` / `apply_action()`.
+The generic `Session` / `BufferedSession` base does not provide the same
+contract, so custom sessions can expose `ActionSpec` buttons in the UI without
+inheriting any default action-dispatch behavior.
+
+Current mismatch:
+
+- frontend controls/actions panels can render arbitrary `ActionSpec` buttons
+- frontend sends most actions as `InvokeAction(action_id, payload)`
+- backend-specific simulator bases handle that path
+- generic `BufferedSession` authors must remember to implement
+  `handle(InvokeAction(...))` manually
+- `reset` is still special-cased in the frontend as `Reset()` instead of going
+  through the same action path
+
+This is a real authoring footgun: action support looks architectural at the UI
+layer, but is only guaranteed by some session bases. The public model should
+make one of these true:
+
+- every session base that can back a controls/actions panel gets shared action
+  dispatch helpers and default `InvokeAction` handling
+- or action support is factored into an explicit mixin/capability that builders
+  and examples opt into deliberately
+
+The long-term goal is that app authors should not need to remember transport
+command trivia just because they added a button.
+
+---
+
 ### Interaction System Cleanup
 
 Phase: 2
@@ -296,11 +331,19 @@ the UI thread. That removes one major app-author burden, but it does not yet
 solve transport-level backpressure or generalized drop/merge policy for all
 update classes.
 
+Current workaround patterns are now visible in real examples: sessions such as
+the HH point model and signaling cascade batch multiple solver steps into one
+display update so they do not emit one tiny `FieldAppend` per `fadvance()`
+call. That is the right app-level control seam for simulation cadence, but it
+also exposes a shared architectural cost: append-heavy live fields still pay
+repeated array-growth work in the generic append path.
+
 Future work may include:
 
 - explicit backpressure or bounded pending-update queues so the worker cannot build unbounded GUI lag
 - transport-level coalescing of repetitive update bursts beyond simple per-poll batching
 - field-level append aggregation policies for live trace fields before they reach frontend mutation
+- append-efficient bounded storage for live trace fields so `FieldAppend` does not rely on repeated `np.concatenate` growth in both coalescing and final field mutation
 - drop/merge policies for superseded display-only updates where freshness matters more than replaying every intermediate sample
 - instrumentation hooks so apps can inspect queue depth, poll cost, redraw cost, and dropped/coalesced update counts during performance tuning
 

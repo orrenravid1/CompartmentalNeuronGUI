@@ -1348,9 +1348,17 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             elif isinstance(update, StatePatch):
                 if self.refresh_planner is None:
                     continue
+                control_state_keys = set()
+                if self.scene is not None:
+                    control_state_keys = {
+                        control.resolved_state_key()
+                        for control in self.scene.controls.values()
+                    }
                 for key, value in update.updates.items():
                     self.state[key] = value
                     pending_targets.update(self.refresh_planner.targets_for_state_change(key))
+                    if key in control_state_keys:
+                        pending_targets.add(RefreshTarget.CONTROLS)
             elif isinstance(update, Status):
                 if update.message:
                     if update.timeout_ms is not None:

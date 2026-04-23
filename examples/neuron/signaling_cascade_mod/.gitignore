@@ -1,0 +1,10 @@
+*.cpp
+*.o
+*.tmp
+nrnmech.dll
+x86_64/
+i686/
+aarch64/
+arm64/
+powerpc/
+umac/

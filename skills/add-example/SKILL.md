@@ -26,10 +26,18 @@ Reference implementations: `examples/surface_plot/static_surface_visualizer.py` 
 
 3. Keep module-level code free of expensive NEURON initialization. Any NEURON setup that runs at import time will repeat in every spawned worker process on Windows. Put it inside `build_sections()` or `setup_model()`.
 
-4. Verify importability: `python -m compileall examples`
+4. Verify syntax/import safety without importing runnable entrypoints directly:
+   - Use `python -m compileall examples`
+   - Do **not** smoke-test a runnable example by importing its module in-process when it ends with unguarded `run_app(app)`. Importing that module will launch the app and can block indefinitely.
+   - If you need runtime verification beyond `compileall`, launch the example as a separate process with an explicit timeout or do a manual GUI smoke-test.
 
-5. If the example is a primary entry point for a new workflow or backend, update authored docs (getting-started, README, AGENTS, relevant tutorials) using `update-docs-and-indexes`.
+5. When the example defines controls or actions, verify the session command path matches the UI:
+   - `send_to_session=True` controls require `handle(SetControl(...))` support
+   - action buttons require `handle(InvokeAction(...))` or equivalent dispatch
+   - if the session resets control values from the backend, make sure the frontend control state is updated too, not just the model state
 
-6. Regenerate the example index: `python scripts/generate_indexes.py`
+6. If the example is a primary entry point for a new workflow or backend, update authored docs (getting-started, README, AGENTS, relevant tutorials) using `update-docs-and-indexes`.
 
-7. Validate: `python scripts/generate_indexes.py --check`
+7. Regenerate the example index: `python scripts/generate_indexes.py`
+
+8. Validate: `python scripts/generate_indexes.py --check`

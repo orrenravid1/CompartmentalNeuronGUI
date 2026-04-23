@@ -28,12 +28,17 @@ Run this workflow after implementation changes and before calling a change PR-re
    - frontend state bindings
    - docs/index invariants
    - example importability or builder behavior
+   - action/control wiring for examples or sessions that define `ActionSpec`, `SetControl`, or backend-driven control resets
 4. Add or update tests when a change introduces new branches, new public contracts, or new failure modes.
 5. Run the smallest meaningful verification first, then expand:
    - targeted `pytest` modules
    - optional backend suites such as `pytest --run-jaxley tests/test_jaxley_backend.py` when the change touches that backend
    - `pytest`
    - `python -m compileall src examples tests`
+
+Special case for runnable examples:
+
+- If an example ends with unguarded `run_app(...)`, do not use direct module import as a routine smoke test. Treat `compileall` as the safe import/syntax check, then use a subprocess with a timeout or a manual GUI smoke-test for runtime verification.
 
 Use this decision rule:
 

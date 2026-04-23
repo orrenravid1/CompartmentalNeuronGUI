@@ -433,6 +433,42 @@ def test_controls_panel_renders_widgets_from_value_spec_and_presentation():
     app.quit()
 
 
+def test_log_scaled_float_control_initializes_slider_from_default_value():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = ControlsPanel(lambda *_args: None)
+    control = ControlSpec(
+        id="effector_k",
+        label="Effector K",
+        value_spec=ScalarValueSpec(default=0.5, min=0.001, max=10.0, value_type="float"),
+        presentation=ControlPresentationSpec(kind="slider", steps=100, scale="log"),
+    )
+
+    panel.set_controls([control], [], {})
+
+    slider = panel.widgets["effector_k"]
+    assert isinstance(slider, QtWidgets.QSlider)
+    expected = ControlsPanel._slider_value_to_raw(
+        0.5,
+        min_value=0.001,
+        max_value=10.0,
+        steps=100,
+        scale="log",
+    )
+    assert slider.value() == expected
+
+    resolved = ControlsPanel._slider_raw_to_value(
+        slider.value(),
+        min_value=0.001,
+        max_value=10.0,
+        steps=100,
+        scale="log",
+    )
+    assert resolved == pytest.approx(0.5, rel=0.05)
+
+    panel.close()
+    app.quit()
+
+
 def test_xy_control_uses_atomic_state_key_and_single_session_command():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     xy_control = ControlSpec(

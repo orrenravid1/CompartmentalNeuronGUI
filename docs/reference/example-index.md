@@ -14,8 +14,10 @@ extracts a short summary from each example when available.
 
 - **C. elegans morphology visualizer**: loads a directory of multi-tree SWC files as a single session. `python examples/neuron/c_elegans_visualizer.py` (`examples/neuron/c_elegans_visualizer.py`)
 - **Complex cell visualizer**: minimal example of a single-cell live session loaded from an SWC file. `python examples/neuron/complex_cell_example.py` (`examples/neuron/complex_cell_example.py`)
+- **HH point-model controls**: single-compartment NEURON Hodgkin-Huxley example with a live IClamp amplitude slider plus linked voltage, input-current, and gating plots. `python examples/neuron/hh_point_model_controls.py` (`examples/neuron/hh_point_model_controls.py`)
 - **HH section inspector**: simple NEURON morphology with section-linked voltage, gating, and input-current plots. `python examples/neuron/hh_section_inspector.py` (`examples/neuron/hh_section_inspector.py`)
 - **Multi-cell network visualizer**: three procedurally-built cells connected by synapses. `python examples/neuron/multicell_example.py` (`examples/neuron/multicell_example.py`)
+- **Signaling cascade viewer**: NEURON point-process example using bundled custom mod files and a linked live plot. `python examples/neuron/signaling_cascade_vis.py` (`examples/neuron/signaling_cascade_vis.py`)
 
 ### Jaxley
 

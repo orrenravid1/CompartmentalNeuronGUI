@@ -6,7 +6,7 @@ Use it to:
 
 - render a 2-D field as an interactive 3-D surface
 - link a surface view to a line-plot slice and controls
-- view live NEURON or Jaxley compartment activity on morphology and traces
+- view live NEURON or Jaxley activity on morphology and/or linked plots
 - build a complete custom session with your own solver, controls, and plots
 - replay precomputed frames through the same frontend and layout system
 
@@ -69,6 +69,8 @@ Choose the path that matches what you want to do first:
 - `python examples/surface_plot/static_surface_visualizer.py` for the lowest-friction first look with no simulator backend.
 - `python examples/surface_plot/surface_cross_section_visualizer.py` for a linked surface and line-slice workflow.
 - `python examples/custom/fitzhugh_nagumo_backend.py` for a pure custom `BufferedSession` backend with its own RK4 solver and explicit scene assembly.
+- `python examples/neuron/hh_point_model_controls.py` for a live single-compartment Hodgkin-Huxley example with a continuously adjustable `IClamp` and linked voltage, current, and gating plots. Requires `pip install -e ".[neuron]"`.
+- `python examples/neuron/signaling_cascade_vis.py` for a NEURON-backed signaling cascade built from bundled point-process `.mod` files and a live multi-trace plot. Compile from inside `examples/neuron/signaling_cascade_mod/` first, then the example loads that directory automatically. Requires `pip install -e ".[neuron]"`.
 - `python examples/neuron/complex_cell_example.py` for a live SWC-backed morphology session. Requires `pip install -e ".[neuron]"`.
 - `python examples/jaxley/multicell_example.py` for a live procedurally built multicell example. Requires `pip install -e ".[jaxley]"`.
 - `python examples/surface_plot/animated_surface_replay.py` for replaying precomputed frames through the same frontend model.

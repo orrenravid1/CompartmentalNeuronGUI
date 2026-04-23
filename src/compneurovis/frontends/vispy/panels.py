@@ -1546,6 +1546,29 @@ class ControlsPanel(QtWidgets.QWidget):
 
         self._grid.setRowStretch(row_index, 1)
 
+    @staticmethod
+    def _slider_raw_to_value(raw: int, *, min_value: float, max_value: float, steps: int, scale: str) -> float:
+        frac = raw / max(1, steps)
+        if scale == "log" and min_value > 0 and max_value > min_value:
+            return float(min_value * ((max_value / min_value) ** frac))
+        return float(min_value + (max_value - min_value) * frac)
+
+    @staticmethod
+    def _slider_value_to_raw(value: Any, *, min_value: float, max_value: float, steps: int, scale: str) -> int:
+        try:
+            numeric = float(value)
+        except Exception:
+            return 0
+        if max_value <= min_value:
+            return 0
+        if scale == "log" and min_value > 0 and max_value > min_value:
+            if numeric <= 0:
+                return 0
+            frac = math.log(numeric / min_value) / math.log(max_value / min_value)
+        else:
+            frac = (numeric - min_value) / (max_value - min_value)
+        return int(round(min(max(frac, 0.0), 1.0) * steps))
+
     def _build_control_row(self, control: ControlSpec, state: dict[str, Any]) -> QtWidgets.QWidget:
         row = QtWidgets.QWidget()
         row_layout = QtWidgets.QHBoxLayout(row)
@@ -1568,26 +1591,33 @@ class ControlsPanel(QtWidgets.QWidget):
             value_label = QtWidgets.QLabel("")
 
             def on_change(raw: int, *, spec=control, label=value_label, min_value=mn, max_value=mx, steps_value=steps):
-                frac = raw / max(1, steps_value)
                 scale = (spec.presentation or ControlPresentationSpec()).scale
-                if scale == "log" and min_value > 0 and max_value > min_value:
-                    value = float(min_value * ((max_value / min_value) ** frac))
-                else:
-                    value = float(min_value + (max_value - min_value) * frac)
+                value = self._slider_raw_to_value(
+                    raw,
+                    min_value=min_value,
+                    max_value=max_value,
+                    steps=steps_value,
+                    scale=scale,
+                )
                 label.setText(f"{value:.3g}")
                 self.on_value_changed(spec, value)
 
-            try:
-                v0 = int(round((float(current) - mn) / (mx - mn) * steps)) if mx > mn else 0
-            except Exception:
-                v0 = 0
+            v0 = self._slider_value_to_raw(
+                current,
+                min_value=mn,
+                max_value=mx,
+                steps=steps,
+                scale=presentation.scale,
+            )
             slider.setValue(max(0, min(steps, v0)))
             slider.valueChanged.connect(on_change)
-            frac = slider.value() / max(1, steps)
-            if presentation.scale == "log" and mn > 0 and mx > mn:
-                initial_value = float(mn * ((mx / mn) ** frac))
-            else:
-                initial_value = float(mn + (mx - mn) * frac)
+            initial_value = self._slider_raw_to_value(
+                slider.value(),
+                min_value=mn,
+                max_value=mx,
+                steps=steps,
+                scale=presentation.scale,
+            )
             value_label.setText(f"{initial_value:.3g}")
             row_layout.addWidget(slider, 1)
             row_layout.addWidget(value_label)

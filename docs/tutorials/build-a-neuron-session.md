@@ -15,7 +15,12 @@ Before you start, install the NEURON extra:
 pip install -e ".[neuron]"
 ```
 
-See `examples/neuron/complex_cell_example.py` for a fuller runnable example.
+See `examples/neuron/complex_cell_example.py` for a fuller morphology-first
+example. If you want a plot-only NEURON app with no morphology panel and a live
+`IClamp` amplitude slider, see `examples/neuron/hh_point_model_controls.py`.
+If you want a NEURON-backed signaling toy model built from bundled custom
+point-process `.mod` files and a plot-only `BufferedSession`, see
+`examples/neuron/signaling_cascade_vis.py`.
 
 This is a backend-specific tutorial, not the conceptual boundary of the library. A NEURON-backed app may expose morphology, traces, surfaces, controls, or any combination of those features. Using `build_neuron_app(...)` today means "use NEURON as the backend with current default wiring," not "build a morphology-first app."
 
@@ -123,7 +128,12 @@ class MySession(NeuronSession):
 
 `_sample_step()` runs inside the `fadvance()` loop — keep it fast. `_emit_batch()` runs after the loop and is where you build and emit your `FieldAppend` updates.
 
-See `examples/neuron/hh_section_inspector.py` for a full worked example sampling voltage, sodium activation/inactivation, and potassium gating across multiple sections with linked line plots.
+See `examples/neuron/hh_section_inspector.py` for a full worked example
+sampling voltage, sodium activation/inactivation, and potassium gating across
+multiple sections with linked line plots. See
+`examples/neuron/hh_point_model_controls.py` for the complementary
+single-compartment, plot-only pattern with a continuously adjustable live
+clamp.
 
 ## 4. Record Scalar Variables
 
