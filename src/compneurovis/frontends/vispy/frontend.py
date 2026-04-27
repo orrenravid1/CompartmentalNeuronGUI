@@ -18,6 +18,7 @@ from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperato
 from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_STATE_GRAPH, PANEL_KIND_VIEW_3D
 from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, IndependentCanvas3DHostPanel, LinePlotHostPanel, LinePlotPanel, StateGraphHostPanel, StateGraphPanel, Viewport3DPanel
 from compneurovis.session import LayoutReplace, PanelPatch, ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
+from compneurovis.frontends.vispy.panel_helpers import field_from_grid_slice_operator
 from compneurovis.session.base import resolve_startup_scene_source
 
 DEFAULT_LINE_PLOT_MAX_REFRESH_HZ = 15.0
@@ -1053,20 +1054,17 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 self._dirty_line_plot_views.add(view_id)
                 return False
         line_view = self._line_view(view_id)
-        geometry_lookup = {
-            key: value
-            for key, value in self.scene.geometries.items()
-            if isinstance(value, MorphologyGeometry)
-        }
         line_field = None
         if line_view is not None:
             if line_view.operator_id is not None:
                 operator = self.scene.operators.get(line_view.operator_id)
                 if isinstance(operator, GridSliceOperatorSpec):
-                    line_field = self.scene.fields.get(operator.field_id)
+                    source_field = self.scene.fields.get(operator.field_id)
+                    if source_field is not None:
+                        line_field = field_from_grid_slice_operator(source_field, operator, self.state)
             else:
                 line_field = self.scene.fields.get(line_view.field_id)
-        host.refresh(line_view, line_field, self.state, geometry_lookup, self.scene.operators)
+        host.refresh(line_view, line_field, self.state)
         self._line_plot_last_refresh_s[view_id] = current_time
         self._dirty_line_plot_views.discard(view_id)
         return True

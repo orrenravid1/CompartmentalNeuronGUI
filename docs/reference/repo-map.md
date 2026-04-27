@@ -32,8 +32,15 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/frontends/__init__.py`
 - `src/compneurovis/frontends/vispy/__init__.py`
 - `src/compneurovis/frontends/vispy/frontend.py`
+- `src/compneurovis/frontends/vispy/panel_helpers.py`
 - `src/compneurovis/frontends/vispy/panels.py`
-- `src/compneurovis/frontends/vispy/renderers.py`
+- `src/compneurovis/frontends/vispy/renderers/__init__.py`
+- `src/compneurovis/frontends/vispy/renderers/axes_overlay.py`
+- `src/compneurovis/frontends/vispy/renderers/colormaps.py`
+- `src/compneurovis/frontends/vispy/renderers/morphology.py`
+- `src/compneurovis/frontends/vispy/renderers/overlays.py`
+- `src/compneurovis/frontends/vispy/renderers/slice_overlay.py`
+- `src/compneurovis/frontends/vispy/renderers/surface.py`
 - `src/compneurovis/jaxleyutils/__init__.py`
 - `src/compneurovis/jaxleyutils/layout.py`
 - `src/compneurovis/jaxleyutils/swc_utils.py`
@@ -78,6 +85,7 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `audit-layer-boundaries`: `skills/audit-layer-boundaries/SKILL.md`
 - `audit-skill-coverage`: `skills/audit-skill-coverage/SKILL.md`
 - `audit-skill-freshness`: `skills/audit-skill-freshness/SKILL.md`
+- `audit-source-organization`: `skills/audit-source-organization/SKILL.md`
 - `breaking-rename-sweep`: `skills/breaking-rename-sweep/SKILL.md`
 - `check-change-impact`: `skills/check-change-impact/SKILL.md`
 - `check-concept-coverage`: `skills/check-concept-coverage/SKILL.md`

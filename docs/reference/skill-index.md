@@ -26,6 +26,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 - `audit-layer-boundaries`
 - `audit-skill-coverage`
 - `audit-skill-freshness`
+- `audit-source-organization`
 - `check-change-impact`
 - `check-concept-coverage`
 - `check-docs-coverage`
@@ -58,6 +59,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 
 - `audit-code-smells`
 - `audit-layer-boundaries`
+- `audit-source-organization`
 - `breaking-rename-sweep`
 - `check-change-impact`
 - `check-test-coverage-drift`
@@ -124,6 +126,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 - `audit-layer-boundaries`
 - `audit-skill-coverage`
 - `audit-skill-freshness`
+- `audit-source-organization`
 - `check-change-impact`
 - `check-concept-coverage`
 - `check-docs-coverage`
@@ -145,6 +148,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 - `audit-layer-boundaries`
 - `audit-skill-coverage`
 - `audit-skill-freshness`
+- `audit-source-organization`
 - `check-change-impact`
 - `check-concept-coverage`
 - `check-docs-coverage`
@@ -177,6 +181,7 @@ groups them by workflow metadata so discovery does not depend on a flat path lis
 - `audit-layer-boundaries` (kind: coverage, surface: cross-cutting, stage: verify, trust: general): Check the CompNeuroVis import graph for structural layer violations across core, session, builders/backends, and frontends. Use when a refactor or new module may have introduced a cross-layer import that bypasses the intended dependency direction. (`skills/audit-layer-boundaries/SKILL.md`)
 - `audit-skill-coverage` (kind: coverage, surface: repo-infra, stage: verify, trust: general): Check whether a CompNeuroVis change introduces a new reusable workflow that deserves a repo-owned skill. Use after check-change-impact and before register-skill in the pr-readiness pipeline. (`skills/audit-skill-coverage/SKILL.md`)
 - `audit-skill-freshness` (kind: coverage, surface: repo-infra, stage: verify, trust: general): Audit repo-owned CompNeuroVis skills against the current codebase, docs, commands, and workflow conventions to find stale instructions, dead file references, outdated commands, and missing catalog wiring. Use after significant refactors, workflow changes, skill additions, or whenever a skill may no longer match current package layout, frontend/session behavior, or PR-readiness process. (`skills/audit-skill-freshness/SKILL.md`)
+- `audit-source-organization` (kind: coverage, surface: cross-cutting, stage: verify, trust: general): Review CompNeuroVis source files for maintainability of file layout, top-level symbol order, class method order, abstraction jumps, long methods, and names-only readability. Use when assessing whether code is easy to read top-down, when a file feels scrambled or accreted, or before/after refactors that reorganize frontend, renderer, backend, session, or core implementation files. (`skills/audit-source-organization/SKILL.md`)
 - `breaking-rename-sweep` (kind: meta, surface: cross-cutting, stage: implement, trust: maintainer-only): Apply a deliberate breaking rename or taxonomy cleanup across CompNeuroVis code, docs, generated references, and skills, then verify no banned legacy terms remain. Use when a canonical architectural term changes and compatibility aliases are not desired. (`skills/breaking-rename-sweep/SKILL.md`)
 - `check-change-impact` (kind: coverage, surface: cross-cutting, stage: verify, trust: general): Review a CompNeuroVis change set and determine what code, tests, docs, AGENTS metadata, generated indexes, and repo-owned skills need to be updated. Use when code has changed and an agent should audit downstream impact before or after implementation. (`skills/check-change-impact/SKILL.md`)
 - `check-concept-coverage` (kind: coverage, surface: docs, stage: verify, trust: general): Audit whether every major conceptual area in CompNeuroVis has a concept doc in docs/concepts/. Use in the pr-readiness pipeline when a new major primitive, model, or user-facing idea is introduced. (`skills/check-concept-coverage/SKILL.md`)

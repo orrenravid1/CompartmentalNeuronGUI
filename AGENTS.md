@@ -150,11 +150,12 @@ the canonical source plus all regenerated outputs together.
 - Mandatory trigger: if you touch authored docs under `docs/`, `AGENTS.md`, package-local `README.md` files, or generated reference indexes, consult `update-docs-and-indexes` even when those edits are incidental to another code change.
 - Mandatory trigger: if code or terminology changes imply doc drift but the docs are not updated yet, consult `check-change-impact` first and then `update-docs-and-indexes` as required follow-through.
 - Mandatory trigger: if you edit `docs/architecture/**`, `docs/concepts/**`, or design proposals and those edits make claims about current capabilities, limitations, or future work, consult `audit-architecture-doc-consistency` before finalizing the wording.
+- Mandatory trigger: if a user asks whether a source file is well-organized, whether method or symbol order makes sense, or asks you to reorganize a file, consult `audit-source-organization` before making or recommending changes.
 - Use `docs/reference/skill-index.md` to discover the right skill by kind, surface, workflow stage, or trust level.
 - The current catalog is organized conceptually as:
   - authoring and exploration: `add-control`, `add-example`, `add-field-visualization`, `add-simulator-backend`, `add-view-panel`, `scratch-exploration`
-  - coverage and verification: `audit-architecture-doc-consistency`, `check-change-impact`, `check-docs-coverage`, `check-tutorial-coverage`, `check-concept-coverage`, `check-test-coverage-drift`, `audit-skill-coverage`, `audit-skill-freshness`, `pr-readiness`
-  - architectural quality: `audit-code-smells`, `audit-layer-boundaries`, `plan-refactor`
+  - coverage and verification: `audit-architecture-doc-consistency`, `audit-source-organization`, `check-change-impact`, `check-docs-coverage`, `check-tutorial-coverage`, `check-concept-coverage`, `check-test-coverage-drift`, `audit-skill-coverage`, `audit-skill-freshness`, `pr-readiness`
+  - architectural quality: `audit-code-smells`, `audit-layer-boundaries`, `audit-source-organization`, `plan-refactor`
   - debugging: `debug-protocol-dataflow`, `debug-rendering`
   - repo maintenance: `breaking-rename-sweep`, `register-skill`, `update-docs-and-indexes`
 - Read the generated skill index at `docs/reference/skill-index.md` for descriptions and canonical paths.

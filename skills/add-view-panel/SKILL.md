@@ -13,10 +13,11 @@ metadata:
 Read `docs/architecture/vispy-frontend.md` and
 `docs/concepts/view-layout-model.md` first.
 
-Reference implementations: `src/compneurovis/frontends/vispy/panels.py` and `src/compneurovis/frontends/vispy/renderers.py`.
+Reference implementations: `src/compneurovis/frontends/vispy/panels.py` and the renderer package under `src/compneurovis/frontends/vispy/renderers/`.
 
 1. Define a `ViewSpec` subclass in `src/compneurovis/core/views.py` that captures rendering intent.
 2. Implement the panel or renderer under `src/compneurovis/frontends/vispy/`; consume `Scene` and typed updates - no raw backend callbacks.
+   - For new 3-D visual families, extend the `Viewport3DPanel` primary-renderer or overlay pattern. Do not model renderer selection as another panel "mode" string.
 3. Keep all UI state (selection, slice position, etc.) in the frontend; do not leak it to the backend.
 4. Wire the panel into `VispyFrontendWindow` and register it with `RefreshPlanner`.
 5. Update public exports when the new view is part of the authoring surface:

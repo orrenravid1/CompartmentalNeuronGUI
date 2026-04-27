@@ -112,9 +112,19 @@ That means the current built-in independent host behavior is:
 - one 3D view per host
 - one `SceneCanvas` per host
 - one `ViewBox` per host
+- one active primary 3-D renderer per host
 
 An app can already mount multiple such hosts in one window. This list describes
 the current host implementation, not a global one-view limit.
+
+Inside the current `Viewport3DPanel`, morphology and surface rendering are
+primary renderers, not interaction modes. The host tracks an active primary
+renderer through a small registry and clears the previously active renderer
+when a different primary renderer is activated. Surface axes and grid-slice
+projections remain overlays owned by the surface renderer. This keeps the
+current independent-canvas behavior explicit while leaving room for future 3-D
+renderer types such as volumes, point clouds, vector fields, or meshes without
+adding more string-based "modes" to the host.
 
 This is the intended extension point for future alternatives such as:
 
@@ -205,4 +215,4 @@ See the `add-view-panel` skill for the full workflow. The key steps:
 4. Add a `_refresh_<panel>()` method in `VispyFrontendWindow` and call it from `_apply_refresh_targets()`
 5. Wire visibility into `_update_panel_visibility()` and `LayoutSpec` as needed
 
-Reference: `MorphologyRenderer` and `SurfaceRenderer` in `src/compneurovis/frontends/vispy/renderers.py`.
+Reference: `MorphologyRenderer` and `SurfaceRenderer` in `src/compneurovis/frontends/vispy/renderers/`.

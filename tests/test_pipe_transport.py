@@ -231,13 +231,28 @@ def test_sleep_to_session_cadence_waits_out_remaining_tick_time():
     assert elapsed >= 0.04
 
 
+def _wait_for_first_update(transport, *, deadline_s: float = 8.0) -> list:
+    deadline = time.time() + deadline_s
+    while time.time() < deadline:
+        updates = transport.poll_updates()
+        if updates:
+            return updates
+        time.sleep(0.05)
+    return []
+
+
 def test_live_pipe_transport_respects_idle_sleep_cadence():
     transport = PipeTransport(FastLiveSession)
     transport.start()
     try:
+        # Subprocess startup on Windows (spawn) can take several seconds.
+        # Wait until the first update arrives, then measure pacing over 0.25s.
+        first = _wait_for_first_update(transport)
+        assert first, "expected session to start within 8 seconds"
         time.sleep(0.25)
         updates = transport.poll_updates()
-        statuses = [update for update in updates if isinstance(update, Status)]
+        all_updates = first + updates
+        statuses = [update for update in all_updates if isinstance(update, Status)]
         assert statuses, "expected paced live status updates"
         last_tick = max(int(status.message.split(":")[1]) for status in statuses)
         assert last_tick < 20
@@ -251,6 +266,9 @@ def test_pipe_transport_bounds_update_drain_per_poll_to_preserve_ui_responsivene
     transport._max_poll_duration_s = 1.0
     transport.start()
     try:
+        # Wait for subprocess startup, then let the flood session accumulate updates.
+        first = _wait_for_first_update(transport)
+        assert first, "expected session to start within 8 seconds"
         time.sleep(0.2)
         updates = transport.poll_updates()
         statuses = [update for update in updates if isinstance(update, Status)]

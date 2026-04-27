@@ -12,7 +12,7 @@ metadata:
 
 Read `docs/architecture/vispy-frontend.md` first.
 
-Reference: `src/compneurovis/frontends/vispy/renderers.py` and `src/compneurovis/frontends/vispy/panels.py`.
+Reference: `src/compneurovis/frontends/vispy/renderers/` and `src/compneurovis/frontends/vispy/panels.py`.
 
 Debug in this order:
 

@@ -112,17 +112,6 @@ def test_line_plot_panel_resolves_selected_entity_binding():
             "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
         },
     )
-    geometry = MorphologyGeometry(
-        id="morphology",
-        positions=np.zeros((2, 3), dtype=np.float32),
-        orientations=np.repeat(np.eye(3, dtype=np.float32)[None, :, :], 2, axis=0),
-        radii=np.ones(2, dtype=np.float32),
-        lengths=np.ones(2, dtype=np.float32),
-        entity_ids=("seg-a", "seg-b"),
-        section_names=("sec-a", "sec-b"),
-        xlocs=np.array([0.1, 0.9], dtype=np.float32),
-        labels=("sec-a@0.1", "sec-b@0.9"),
-    )
     view = LinePlotViewSpec(
         id="trace",
         field_id=field.id,
@@ -133,11 +122,11 @@ def test_line_plot_panel_resolves_selected_entity_binding():
         y_label="Voltage",
     )
 
-    panel.refresh(view, field, {"selected_entity_id": "seg-b"}, {"morphology": geometry})
+    panel.refresh(view, field, {"selected_entity_id": "seg-b"})
     x_data, y_data = panel._plot_item.getData()
     assert np.allclose(x_data, np.array([0.0, 1.0, 2.0], dtype=np.float32))
     assert np.allclose(y_data, np.array([10.0, 20.0, 30.0], dtype=np.float32))
-    assert "sec-b@0.9" in panel.resolved_title
+    assert panel.resolved_title == "Voltage"
     app.quit()
 
 
@@ -153,17 +142,6 @@ def test_line_plot_host_uses_resolved_plot_title():
             "time": np.array([0.0, 1.0, 2.0], dtype=np.float32),
         },
     )
-    geometry = MorphologyGeometry(
-        id="morphology",
-        positions=np.zeros((2, 3), dtype=np.float32),
-        orientations=np.repeat(np.eye(3, dtype=np.float32)[None, :, :], 2, axis=0),
-        radii=np.ones(2, dtype=np.float32),
-        lengths=np.ones(2, dtype=np.float32),
-        entity_ids=("seg-a", "seg-b"),
-        section_names=("sec-a", "sec-b"),
-        xlocs=np.array([0.1, 0.9], dtype=np.float32),
-        labels=("sec-a@0.1", "sec-b@0.9"),
-    )
     view = LinePlotViewSpec(
         id="trace",
         field_id=field.id,
@@ -174,9 +152,9 @@ def test_line_plot_host_uses_resolved_plot_title():
         y_label="Voltage",
     )
 
-    panel.refresh(view, field, {"selected_entity_id": "seg-b"}, {"morphology": geometry})
+    panel.refresh(view, field, {"selected_entity_id": "seg-b"})
 
-    assert "sec-b@0.9" in panel.title()
+    assert "Voltage" in panel.title()
     assert panel.line_plot_panel.plotItem.titleLabel.text == ""
     app.quit()
 
@@ -211,7 +189,7 @@ def test_multi_series_line_plot_items_inherit_render_optimization_defaults():
         series_dim="series",
     )
 
-    panel.refresh(view, field, {}, {})
+    panel.refresh(view, field, {})
 
     for item in panel._series_items.values():
         assert item.opts["clipToView"] is True
@@ -617,6 +595,46 @@ def test_surface_visual_reuses_same_surface_object_for_same_shape_updates():
     second_surface = panel.renderer_surface.surface
 
     assert first_surface is second_surface
+    app.quit()
+
+
+def test_viewport_3d_panel_uses_primary_renderer_registry_not_modes():
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = Viewport3DPanel()
+    panel.renderer_morph.clear = Mock()
+    panel.renderer_surface.clear = Mock()
+    volume_clear = Mock()
+
+    panel._register_primary_renderer("volume", volume_clear)
+    with pytest.raises(ValueError, match="already registered"):
+        panel._register_primary_renderer("volume", Mock())
+
+    panel._activate_primary_renderer("morphology")
+    assert panel._active_primary_renderer == "morphology"
+    panel.renderer_morph.clear.assert_not_called()
+    panel.renderer_surface.clear.assert_not_called()
+    volume_clear.assert_not_called()
+
+    panel._active_morphology_geometry = object()
+    panel._activate_primary_renderer("surface")
+    assert panel._active_primary_renderer == "surface"
+    panel.renderer_morph.clear.assert_called_once()
+    assert panel._active_morphology_geometry is None
+    panel.renderer_surface.clear.assert_not_called()
+    volume_clear.assert_not_called()
+
+    panel._surface_scene = object()
+    panel._surface_coord_key = ("surface",)
+    panel._activate_primary_renderer("volume")
+    assert panel._active_primary_renderer == "volume"
+    panel.renderer_surface.clear.assert_called_once()
+    assert panel._surface_scene is None
+    assert panel._surface_coord_key is None
+    volume_clear.assert_not_called()
+
+    panel._activate_primary_renderer(None)
+    assert panel._active_primary_renderer is None
+    volume_clear.assert_called_once()
     app.quit()
 
 
@@ -1177,7 +1195,7 @@ def test_line_plot_panel_supports_multi_series_fields():
         series_colors={"ligand": "#ff0000", "receptor": "#0000ff"},
     )
 
-    panel.refresh(view, field, {}, {})
+    panel.refresh(view, field, {})
 
     assert set(panel._series_items.keys()) == {"ligand", "receptor"}
     ligand_x, ligand_y = panel._series_items["ligand"].getData()
@@ -1684,7 +1702,7 @@ def test_line_plot_panel_uses_series_palette_for_multi_series_colors():
         series_palette=("#ff0000", "#0000ff"),
     )
 
-    panel.refresh(view, field, {}, {})
+    panel.refresh(view, field, {})
 
     ligand_pen = panel._series_items["ligand"].opts["pen"]
     receptor_pen = panel._series_items["receptor"].opts["pen"]
@@ -1711,7 +1729,7 @@ def test_line_plot_panel_applies_rolling_window_and_y_range():
         y_max=5.0,
     )
 
-    panel.refresh(view, field, {}, {})
+    panel.refresh(view, field, {})
     view_range = panel.plotItem.getViewBox().viewRange()
 
     assert np.allclose(view_range[0], [1.5, 3.0])
@@ -1735,7 +1753,7 @@ def test_line_plot_panel_clamps_rolling_window_to_available_history():
         rolling_window=120.0,
     )
 
-    panel.refresh(view, field, {}, {})
+    panel.refresh(view, field, {})
     view_range = panel.plotItem.getViewBox().viewRange()
 
     assert np.allclose(view_range[0], [0.0, 100.0])
@@ -1764,8 +1782,8 @@ def test_line_plot_panel_resets_single_sample_rolling_window_without_negative_ba
         coords={"time": np.array([0.0], dtype=np.float32)},
     )
 
-    panel.refresh(view, field_before, {}, {})
-    panel.refresh(view, field_after, {}, {})
+    panel.refresh(view, field_before, {})
+    panel.refresh(view, field_after, {})
     view_range = panel.plotItem.getViewBox().viewRange()
 
     assert np.allclose(view_range[0], [0.0, 30.0])
@@ -1789,7 +1807,7 @@ def test_line_plot_panel_can_trim_data_to_rolling_window():
         trim_to_rolling_window=True,
     )
 
-    panel.refresh(view, field, {}, {})
+    panel.refresh(view, field, {})
     x_data, y_data = panel._plot_item.getData()
 
     assert np.allclose(x_data, np.array([1.0, 2.0, 3.0], dtype=np.float32))
@@ -1818,7 +1836,7 @@ def test_multi_series_line_plot_can_trim_data_to_rolling_window():
         trim_to_rolling_window=True,
     )
 
-    panel.refresh(view, field, {}, {})
+    panel.refresh(view, field, {})
     ligand_x, ligand_y = panel._series_items["ligand"].getData()
     receptor_x, receptor_y = panel._series_items["receptor"].getData()
 
@@ -1890,7 +1908,7 @@ def test_line_plot_panel_supports_multi_selected_morphology_traces():
         title="Selected voltages",
     )
 
-    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-b", "seg-a"]}, {})
+    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-b", "seg-a"]})
 
     assert set(panel._series_items.keys()) == {"seg-a", "seg-b"}
     seg_b_x, seg_b_y = panel._series_items["seg-b"].getData()
@@ -1921,7 +1939,7 @@ def test_line_plot_panel_drops_nonfinite_prefix_for_sparse_selected_trace_histor
         rolling_window=10.0,
     )
 
-    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-a", "seg-b"]}, {})
+    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-a", "seg-b"]})
 
     seg_b_x, seg_b_y = panel._series_items["seg-b"].getData()
     assert np.allclose(seg_b_x, np.array([2.0, 3.0], dtype=np.float32))
@@ -1950,7 +1968,7 @@ def test_multi_series_rolling_window_uses_visible_finite_history_for_x_range():
         rolling_window=10.0,
     )
 
-    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-b"]}, {})
+    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-b"]})
     view_range = panel.plotItem.getViewBox().viewRange()
 
     assert np.allclose(view_range[0], [2.0, 3.0])
@@ -1978,7 +1996,7 @@ def test_line_plot_panel_ignores_missing_selected_trace_labels_for_sparse_histor
         title="Selected voltages",
     )
 
-    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-a", "seg-b"]}, {})
+    panel.refresh(view, field, {"selected_trace_entity_ids": ["seg-a", "seg-b"]})
 
     assert set(panel._series_items.keys()) == {"seg-a"}
     app.quit()
@@ -2001,7 +2019,7 @@ def test_line_plot_panel_applies_explicit_x_tick_spacing():
         x_minor_tick_spacing=1.0,
         rolling_window=30.0,
     )
-    panel.refresh(view, field, {}, {})
+    panel.refresh(view, field, {})
     ticks = panel.plotItem.getAxis("bottom")._tickLevels
     assert ticks is not None
     major = ticks[0]
@@ -2037,8 +2055,8 @@ def test_line_plot_panel_updates_manual_ticks_when_window_crosses_minor_spacing(
         coords={"time": np.array([1.1, 2.1, 4.0], dtype=np.float32)},
     )
 
-    panel.refresh(view, field_before, {}, {})
-    panel.refresh(view, field_after, {}, {})
+    panel.refresh(view, field_before, {})
+    panel.refresh(view, field_after, {})
     ticks = panel.plotItem.getAxis("bottom")._tickLevels
 
     assert ticks is not None
@@ -3000,7 +3018,7 @@ def test_multi_series_refresh_keeps_existing_legend_when_series_are_stable():
         show_legend=True,
     )
 
-    panel.refresh(view, field, {}, {})
+    panel.refresh(view, field, {})
     legend = panel.plotItem.legend
     assert legend is not None
     original_clear = legend.clear
@@ -3008,7 +3026,7 @@ def test_multi_series_refresh_keeps_existing_legend_when_series_are_stable():
     legend.clear = Mock(wraps=original_clear)
     legend.addItem = Mock(wraps=original_add)
 
-    panel.refresh(view, field.with_values(field.values + 1.0), {}, {})
+    panel.refresh(view, field.with_values(field.values + 1.0), {})
 
     legend.clear.assert_not_called()
     legend.addItem.assert_not_called()

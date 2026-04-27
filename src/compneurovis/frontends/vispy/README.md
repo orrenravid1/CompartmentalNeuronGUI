@@ -7,9 +7,17 @@ summary: Current PyQt6/VisPy frontend panels, renderers, and window orchestratio
 
 This package contains the current runnable frontend:
 
-- `renderers.py`
+- `renderers/`
+- `panel_helpers.py`
 - `panels.py`
 - `frontend.py`
+
+`renderers/` contains the VisPy-facing renderer classes, surface overlay
+visuals, and shared colormap sampling helpers. The package root re-exports the
+public renderer names so existing imports from
+`compneurovis.frontends.vispy.renderers` keep working.
+`panel_helpers.py` contains shared binding, surface-scene, and grid-slice
+projection helpers used by the widget panels.
 
 The frontend uses explicit refresh targets and long-lived renderer objects so state changes can update only the affected layers instead of forcing a full scene rebuild. Surface-axis overlays now split geometry refresh from style refresh and reuse pooled line/text visuals instead of rebuilding every tick label on each control drag.
 
@@ -38,6 +46,13 @@ on every live field update. `MorphologyViewSpec.max_refresh_hz` and
 `<= 0` opt out of throttling. Both the 3-D and line-plot paths also budget how
 many dirty views they present in one flush so one busy live panel does not
 starve the rest of the window.
+
+`Viewport3DPanel` treats morphology and surface rendering as primary renderers,
+not panel modes. The current independent-canvas host activates one primary
+renderer at a time through a small registry and lets renderer-owned overlays
+such as surface axes and grid-slice projections stay attached to that renderer.
+New 3-D visual families should extend the primary-renderer or overlay pattern
+instead of adding another panel mode string.
 
 Grid operators such as `GridSliceOperatorSpec` are rendered as host-level
 overlays and can also feed other panels such as the line plot without turning

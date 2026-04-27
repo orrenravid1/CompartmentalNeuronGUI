@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
 import math
 import time
 from typing import Any
@@ -24,22 +24,18 @@ from compneurovis.core.controls import (
 )
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
-from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
+from compneurovis.core.operators import GridSliceOperatorSpec
 from compneurovis.core.scene import PanelSpec
-from compneurovis.core.state import StateBinding
 from compneurovis.core.views import LinePlotViewSpec, StateGraphViewSpec, MorphologyViewSpec, SurfaceViewSpec
-from compneurovis.frontends.vispy.renderers import MorphologyRenderer, SurfaceRenderer, _colormap_samples
-
-
-@dataclass(slots=True)
-class SurfaceSceneData:
-    field_id: str
-    x_dim: str
-    y_dim: str
-    x_grid: np.ndarray
-    y_grid: np.ndarray
-    z: np.ndarray
-    coords: dict[str, np.ndarray]
+from compneurovis.frontends.vispy.panel_helpers import (
+    SurfaceSceneData,
+    overlay_from_grid_slice_operator,
+    resolve_binding,
+    surface_scene_from_field,
+)
+from compneurovis.frontends.vispy.renderers.colormaps import _colormap_samples
+from compneurovis.frontends.vispy.renderers.morphology import MorphologyRenderer
+from compneurovis.frontends.vispy.renderers.surface import SurfaceRenderer
 
 
 class InstrumentedSceneCanvas(scene.SceneCanvas):
@@ -96,10 +92,13 @@ class Viewport3DPanel(QtWidgets.QWidget):
         self.on_entity_selected = on_entity_selected
         self.DRAG_THRESHOLD = 5
         self._mouse_start = None
-        self._active_geometry = None
-        self._active_mode: str | None = None
+        self._active_morphology_geometry = None
+        self._active_primary_renderer: str | None = None
+        self._primary_renderer_clearers: dict[str, Callable[[], None]] = {}
         self._surface_scene: SurfaceSceneData | None = None
         self._surface_coord_key: tuple | None = None
+        self._register_primary_renderer("morphology", self._clear_morphology_renderer)
+        self._register_primary_renderer("surface", self._clear_surface_renderer)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -108,54 +107,8 @@ class Viewport3DPanel(QtWidgets.QWidget):
         self.canvas.events.mouse_press.connect(self._on_mouse_press)
         self.canvas.events.mouse_release.connect(self._on_mouse_release)
 
-    def _on_mouse_press(self, ev):
-        self._mouse_start = ev.pos
-        perf_log(
-            "view_3d",
-            "mouse_press",
-            panel_id=self._panel_id,
-            pos=[float(ev.pos[0]), float(ev.pos[1])],
-        )
-
-    def _on_mouse_release(self, ev):
-        if self._active_geometry is None or self.on_entity_selected is None or self._mouse_start is None:
-            return
-        dx = ev.pos[0] - self._mouse_start[0]
-        dy = ev.pos[1] - self._mouse_start[1]
-        self._mouse_start = None
-        if dx * dx + dy * dy > self.DRAG_THRESHOLD ** 2:
-            return
-        x, y = ev.pos
-        _, h = self.canvas.size
-        ps = self.canvas.pixel_scale
-        xf, yf = int(x * ps), int((h - y - 1) * ps)
-        entity_id = self.renderer_morph.pick(xf, yf, self.canvas)
-        perf_log(
-            "view_3d",
-            "mouse_release",
-            panel_id=self._panel_id,
-            pos=[float(ev.pos[0]), float(ev.pos[1])],
-            drag_dx=float(dx),
-            drag_dy=float(dy),
-            picked_entity_id=entity_id,
-        )
-        if entity_id:
-            self.on_entity_selected(entity_id)
-
-    def _set_mode(self, mode: str | None) -> None:
-        if self._active_mode == mode:
-            return
-        if mode != "morphology":
-            self.renderer_morph.clear()
-            self._active_geometry = None
-        if mode != "surface":
-            self.renderer_surface.clear()
-            self._surface_scene = None
-            self._surface_coord_key = None
-        self._active_mode = mode
-
     def clear(self) -> None:
-        self._set_mode(None)
+        self._activate_primary_renderer(None)
         self.canvas.native.setVisible(False)
 
     def refresh_morphology(
@@ -170,9 +123,9 @@ class Viewport3DPanel(QtWidgets.QWidget):
         if morphology_view is None or morphology_geometry is None:
             return
 
-        self._set_mode("morphology")
+        self._activate_primary_renderer("morphology")
         self.canvas.native.setVisible(True)
-        self._active_geometry = morphology_geometry
+        self._active_morphology_geometry = morphology_geometry
         self.canvas.bgcolor = resolved_state.get(f"{morphology_view.id}:background_color", morphology_view.background_color)
         geometry_changed = self.renderer_morph.geometry is not morphology_geometry
         set_geometry_ms = 0.0
@@ -215,11 +168,11 @@ class Viewport3DPanel(QtWidgets.QWidget):
         if surface_view is None or surface_field is None:
             return
 
-        self._set_mode("surface")
+        self._activate_primary_renderer("surface")
         self.canvas.native.setVisible(True)
         self.canvas.bgcolor = resolved_state[f"{surface_view.id}:background_color"]
 
-        # Build a coord key from the grid source. Shape-based identity is sufficient —
+        # Build a coord key from the grid source. Shape-based identity is sufficient -
         # if shape matches, coordinates are the same for all practical animation use cases.
         if grid_geometry is not None:
             coord_key = (grid_geometry.id,) + tuple(c.shape for c in grid_geometry.coords.values())
@@ -231,7 +184,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
             self._surface_scene = surface_scene_from_field(surface_field, grid_geometry)
             self._surface_coord_key = coord_key
         else:
-            # Reuse cached x_grid/y_grid — only update z values.
+            # Reuse cached x_grid/y_grid - only update z values.
             z = surface_field.values
             if surface_field.dims != (self._surface_scene.y_dim, self._surface_scene.x_dim):
                 axis_map = {dim: idx for idx, dim in enumerate(surface_field.dims)}
@@ -279,7 +232,7 @@ class Viewport3DPanel(QtWidgets.QWidget):
         if surface_view is None or self._surface_scene is None:
             return
 
-        self._set_mode("surface")
+        self._activate_primary_renderer("surface")
         self.canvas.native.setVisible(True)
         self.canvas.bgcolor = resolved_state[f"{surface_view.id}:background_color"]
         self.renderer_surface.update_surface_style(
@@ -415,11 +368,71 @@ class Viewport3DPanel(QtWidgets.QWidget):
             "view_3d",
             "commit",
             panel_id=self._panel_id,
-            active_mode=self._active_mode,
+            active_primary_renderer=self._active_primary_renderer,
             width_px=self.width(),
             height_px=self.height(),
             duration_ms=round((time.monotonic() - started) * 1000.0, 3),
         )
+
+    def _on_mouse_press(self, ev):
+        self._mouse_start = ev.pos
+        perf_log(
+            "view_3d",
+            "mouse_press",
+            panel_id=self._panel_id,
+            pos=[float(ev.pos[0]), float(ev.pos[1])],
+        )
+
+    def _on_mouse_release(self, ev):
+        if self._active_morphology_geometry is None or self.on_entity_selected is None or self._mouse_start is None:
+            return
+        dx = ev.pos[0] - self._mouse_start[0]
+        dy = ev.pos[1] - self._mouse_start[1]
+        self._mouse_start = None
+        if dx * dx + dy * dy > self.DRAG_THRESHOLD ** 2:
+            return
+        x, y = ev.pos
+        _, h = self.canvas.size
+        ps = self.canvas.pixel_scale
+        xf, yf = int(x * ps), int((h - y - 1) * ps)
+        entity_id = self.renderer_morph.pick(xf, yf, self.canvas)
+        perf_log(
+            "view_3d",
+            "mouse_release",
+            panel_id=self._panel_id,
+            pos=[float(ev.pos[0]), float(ev.pos[1])],
+            drag_dx=float(dx),
+            drag_dy=float(dy),
+            picked_entity_id=entity_id,
+        )
+        if entity_id:
+            self.on_entity_selected(entity_id)
+
+    def _register_primary_renderer(self, key: str, clear: Callable[[], None]) -> None:
+        if key in self._primary_renderer_clearers:
+            raise ValueError(f"Primary 3D renderer '{key}' is already registered")
+        self._primary_renderer_clearers[key] = clear
+
+    def _activate_primary_renderer(self, key: str | None) -> None:
+        if key is not None and key not in self._primary_renderer_clearers:
+            raise ValueError(f"Unknown primary 3D renderer '{key}'")
+        if self._active_primary_renderer == key:
+            return
+        if key is None:
+            for clear in self._primary_renderer_clearers.values():
+                clear()
+        elif self._active_primary_renderer is not None:
+            self._primary_renderer_clearers[self._active_primary_renderer]()
+        self._active_primary_renderer = key
+
+    def _clear_morphology_renderer(self) -> None:
+        self.renderer_morph.clear()
+        self._active_morphology_geometry = None
+
+    def _clear_surface_renderer(self) -> None:
+        self.renderer_surface.clear()
+        self._surface_scene = None
+        self._surface_coord_key = None
 
 
 class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
@@ -533,6 +546,43 @@ class IndependentCanvas3DHostPanel(QtWidgets.QGroupBox):
         self.viewport.commit()
 
 
+def _manual_tick_levels(xmin: float, xmax: float, major: float | None, minor: float | None):
+    if major is None:
+        return None
+    if xmax < xmin:
+        xmin, xmax = xmax, xmin
+    major_ticks = _build_tick_values(xmin, xmax, major)
+    minor_ticks = _build_tick_values(xmin, xmax, minor) if minor is not None and minor > 0 else []
+    major_values = {round(value, 9) for value in major_ticks}
+    minor_ticks = [value for value in minor_ticks if round(value, 9) not in major_values]
+    return [
+        [(value, _format_tick_label(value, major)) for value in major_ticks],
+        [(value, "") for value in minor_ticks],
+    ]
+
+
+def _build_tick_values(xmin: float, xmax: float, spacing: float | None) -> list[float]:
+    if spacing is None or spacing <= 0:
+        return []
+    start = math.ceil((xmin - 1e-9) / spacing) * spacing
+    values = []
+    value = start
+    while value <= xmax + 1e-9:
+        values.append(round(value, 9))
+        value += spacing
+    return values
+
+
+def _format_tick_label(value: float, spacing: float) -> str:
+    if spacing >= 1 and abs(value - round(value)) < 1e-9:
+        return str(int(round(value)))
+    decimals = max(0, min(6, int(math.ceil(-math.log10(spacing))) if spacing < 1 else 0))
+    text = f"{value:.{decimals}f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
 class LinePlotPanel(pg.PlotWidget):
     _DOWNSAMPLING_METHOD = "peak"
 
@@ -556,7 +606,7 @@ class LinePlotPanel(pg.PlotWidget):
         self._legend_signature: tuple[str, ...] | None = None
         # Per-refresh fast-path caches. Each gates one piece of work that does
         # not depend on the data tail. Cleared via _clear_render_caches() when
-        # structure changes (view None, _clear_series, mode transitions).
+        # structure changes such as view None, series clearing, or renderer swaps.
         self._cache_structural_signature: tuple[Any, ...] | None = None
         self._cache_pens: dict[str, tuple[Any, Any]] = {}
         self._cache_y_range_applied: tuple[float | None, float | None] | None = None
@@ -585,155 +635,24 @@ class LinePlotPanel(pg.PlotWidget):
         view: LinePlotViewSpec | None,
         field: Field | None,
         state: dict[str, Any],
-        geometry_lookup: dict[str, MorphologyGeometry],
-        operator_lookup: dict[str, OperatorSpec] | None = None,
     ) -> None:
-        operator_lookup = {} if operator_lookup is None else operator_lookup
         if view is None or field is None:
-            self._clear_series()
-            self._plot_item.setData([], [])
-            self._set_resolved_title("")
-            self._reset_view_ranges()
-            self._clear_render_caches()
+            self._refresh_empty()
             return
 
-        background = resolve_binding(view.background_color, state)
-        if background is not None and background != self._cache_background:
-            self.setBackground(background)
-            self._cache_background = background
+        self._apply_background(view, state)
 
-        if view.operator_id is not None:
-            self._clear_series()
-            operator = operator_lookup.get(view.operator_id)
-            if not isinstance(operator, GridSliceOperatorSpec):
-                self._plot_item.setData([], [])
-                return
-            line = line_from_grid_slice_operator(field, operator, state)
-            if line is None:
-                self._plot_item.setData([], [])
-                return
-            x, y, x_dim, slice_dim, slice_value = line
-            x, y = self._trim_line_data(view, x, y)
-            structural_sig = (
-                "operator", view.id, x_dim, view.x_unit, view.y_label, view.y_unit,
-                view.title, slice_dim, round(float(slice_value), 6),
-            )
-            if structural_sig != self._cache_structural_signature:
-                self.setLabel("bottom", x_dim, view.x_unit)
-                self.setLabel("left", view.y_label, view.y_unit)
-                title = view.title or field.id
-                self._set_resolved_title(f"{title} at {slice_dim} = {slice_value:.3f}")
-                self._cache_structural_signature = structural_sig
-                self._cache_pens.clear()
-            resolved_color = resolve_binding(view.pen, state)
-            cached_pen = self._cache_pens.get("__single__")
-            if cached_pen is None or cached_pen[0] != resolved_color:
-                pen = pg.mkPen(resolved_color, width=2)
-                self._cache_pens["__single__"] = (resolved_color, pen)
-                self._plot_item.setPen(pen)
-            self._plot_item.setData(x, y)
-            self._apply_view_ranges(view, x)
+        sliced = self._select_field_for_view(view, field, state)
+        if sliced is None:
             return
 
-        resolved_selectors = {}
-        for dim, selector in view.selectors.items():
-            resolved = resolve_binding(selector, state)
-            if resolved is None:
-                self._plot_item.setData([], [])
-                return
-            filtered = self._filter_selector_for_field(field, dim, resolved)
-            if filtered is None:
-                self._clear_series()
-                self._plot_item.setData([], [])
-                return
-            resolved_selectors[dim] = filtered
-
-        try:
-            sliced = field.select(resolved_selectors)
-        except KeyError:
-            self._clear_series()
-            self._plot_item.setData([], [])
-            return
         x_dim = view.x_dim or sliced.dims[-1]
         if view.series_dim is not None:
             self._plot_item.setData([], [])
             self._refresh_series(view, sliced, x_dim, state)
             return
 
-        self._clear_series()
-        if len(sliced.dims) != 1 or sliced.dims[0] != x_dim:
-            raise ValueError(f"LinePlotViewSpec '{view.id}' must resolve to a 1D field along '{x_dim}'")
-
-        x = np.asarray(sliced.coord(x_dim), dtype=np.float32)
-        y = np.asarray(sliced.values, dtype=np.float32)
-        x, y = self._trim_line_data(view, x, y)
-        title = view.title or field.id
-        entity_id = state.get("selected_entity_id")
-        entity_label: str | None = None
-        if entity_id:
-            for geometry in geometry_lookup.values():
-                if entity_id in geometry.entity_ids:
-                    entity_label = geometry.label_for(entity_id)
-                    title = f"{title}: {entity_label}"
-                    break
-        structural_sig = (
-            "single", view.id, view.x_label or x_dim, view.x_unit,
-            view.y_label, view.y_unit, title,
-        )
-        if structural_sig != self._cache_structural_signature:
-            self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
-            self.setLabel("left", view.y_label, view.y_unit)
-            self._set_resolved_title(title)
-            self._cache_structural_signature = structural_sig
-            self._cache_pens.clear()
-        resolved_color = resolve_binding(view.pen, state)
-        cached_pen = self._cache_pens.get("__single__")
-        if cached_pen is None or cached_pen[0] != resolved_color:
-            pen = pg.mkPen(resolved_color, width=2)
-            self._cache_pens["__single__"] = (resolved_color, pen)
-            self._plot_item.setPen(pen)
-        self._plot_item.setData(x, y)
-        self._apply_view_ranges(view, x)
-
-    def _filter_selector_for_field(self, field: Field, dim: str, selector: Any) -> Any | None:
-        coord = field.coord(dim)
-        if isinstance(selector, str):
-            return selector if np.any(coord.astype(str) == selector) else None
-        if isinstance(selector, (list, tuple, np.ndarray)):
-            selector_array = np.asarray(selector)
-            if selector_array.ndim != 1 or selector_array.size == 0:
-                return None if selector_array.size == 0 else selector
-            if np.issubdtype(selector_array.dtype, np.integer) or np.issubdtype(selector_array.dtype, np.floating):
-                return selector
-            coord_labels = set(coord.astype(str).tolist())
-            filtered = [value for value in selector_array.astype(str).tolist() if value in coord_labels]
-            return filtered or None
-        return selector
-
-    def _ensure_legend(self, enabled: bool) -> None:
-        if enabled and self.plotItem.legend is None:
-            self.addLegend(offset=(10, 10))
-        elif not enabled and self.plotItem.legend is not None:
-            self.plotItem.legend.scene().removeItem(self.plotItem.legend)
-            self.plotItem.legend = None
-            self._legend_signature = None
-
-    def _clear_series(self) -> None:
-        if self._series_items:
-            for item in self._series_items.values():
-                self.removeItem(item)
-            self._series_items.clear()
-        if self.plotItem.legend is not None:
-            self.plotItem.legend.clear()
-        self._legend_signature = None
-
-    def _clear_render_caches(self) -> None:
-        self._cache_structural_signature = None
-        self._cache_pens.clear()
-        self._cache_y_range_applied = None
-        self._cache_x_range_applied = None
-        self._cache_tick_signature = None
-        self._cache_background = None
+        self._refresh_single_trace(view, sliced, x_dim, state, source_field_id=field.id)
 
     def paintEvent(self, event) -> None:
         started = time.monotonic()
@@ -750,15 +669,140 @@ class LinePlotPanel(pg.PlotWidget):
                 duration_ms=duration_ms,
             )
 
+    def _refresh_empty(self) -> None:
+        self._clear_series()
+        self._plot_item.setData([], [])
+        self._set_resolved_title("")
+        self._reset_view_ranges()
+        self._clear_render_caches()
+
+    def _apply_background(self, view: LinePlotViewSpec, state: dict[str, Any]) -> None:
+        background = resolve_binding(view.background_color, state)
+        if background is not None and background != self._cache_background:
+            self.setBackground(background)
+            self._cache_background = background
+
+    def _select_field_for_view(
+        self,
+        view: LinePlotViewSpec,
+        field: Field,
+        state: dict[str, Any],
+    ) -> Field | None:
+        resolved_selectors = {}
+        for dim, selector in view.selectors.items():
+            resolved = resolve_binding(selector, state)
+            if resolved is None:
+                self._plot_item.setData([], [])
+                return None
+            filtered = self._filter_selector_for_field(field, dim, resolved)
+            if filtered is None:
+                self._clear_series()
+                self._plot_item.setData([], [])
+                return None
+            resolved_selectors[dim] = filtered
+
+        try:
+            return field.select(resolved_selectors)
+        except KeyError:
+            self._clear_series()
+            self._plot_item.setData([], [])
+            return None
+
+    def _filter_selector_for_field(self, field: Field, dim: str, selector: Any) -> Any | None:
+        coord = field.coord(dim)
+        if isinstance(selector, str):
+            return selector if np.any(coord.astype(str) == selector) else None
+        if isinstance(selector, (list, tuple, np.ndarray)):
+            selector_array = np.asarray(selector)
+            if selector_array.ndim != 1 or selector_array.size == 0:
+                return None if selector_array.size == 0 else selector
+            if np.issubdtype(selector_array.dtype, np.integer) or np.issubdtype(selector_array.dtype, np.floating):
+                return selector
+            coord_labels = set(coord.astype(str).tolist())
+            filtered = [value for value in selector_array.astype(str).tolist() if value in coord_labels]
+            return filtered or None
+        return selector
+
+    def _refresh_single_trace(
+        self,
+        view: LinePlotViewSpec,
+        field: Field,
+        x_dim: str,
+        state: dict[str, Any],
+        *,
+        source_field_id: str,
+    ) -> None:
+        self._clear_series()
+        if len(field.dims) != 1 or field.dims[0] != x_dim:
+            raise ValueError(f"LinePlotViewSpec '{view.id}' must resolve to a 1D field along '{x_dim}'")
+
+        x = np.asarray(field.coord(x_dim), dtype=np.float32)
+        y = np.asarray(field.values, dtype=np.float32)
+        x, y = self._trim_line_data(view, x, y)
+        title = view.title or source_field_id
+        structural_sig = (
+            "single", view.id, view.x_label or x_dim, view.x_unit,
+            view.y_label, view.y_unit, title,
+        )
+        self._apply_single_trace_structure(
+            structural_sig,
+            x_label=view.x_label or x_dim,
+            x_unit=view.x_unit,
+            y_label=view.y_label,
+            y_unit=view.y_unit,
+            title=title,
+        )
+        self._apply_single_pen(resolve_binding(view.pen, state))
+        self._plot_item.setData(x, y)
+        self._apply_view_ranges(view, x)
+
+    def _apply_single_trace_structure(
+        self,
+        structural_sig: tuple[Any, ...],
+        *,
+        x_label: str,
+        x_unit: str | None,
+        y_label: str,
+        y_unit: str | None,
+        title: str,
+    ) -> None:
+        if structural_sig == self._cache_structural_signature:
+            return
+        self.setLabel("bottom", x_label, x_unit)
+        self.setLabel("left", y_label, y_unit)
+        self._set_resolved_title(title)
+        self._cache_structural_signature = structural_sig
+        self._cache_pens.clear()
+
+    def _apply_single_pen(self, resolved_color) -> None:
+        cached_pen = self._cache_pens.get("__single__")
+        if cached_pen is None or cached_pen[0] != resolved_color:
+            pen = pg.mkPen(resolved_color, width=2)
+            self._cache_pens["__single__"] = (resolved_color, pen)
+            self._plot_item.setPen(pen)
+
     def _refresh_series(self, view: LinePlotViewSpec, field: Field, x_dim: str, state: dict[str, Any]) -> None:
         series_dim = view.series_dim
         if series_dim is None:
             raise ValueError("series_dim is required for multi-series refresh")
+        x, values, series_labels = self._series_plot_data(view, field, x_dim, series_dim)
+        self._apply_series_structure(view, field.id, x_dim, series_labels)
+        self._remove_stale_series(series_labels)
+        range_x = self._update_series_items(view, x, values, series_labels, state)
+        self._update_series_legend(series_labels)
+        self._apply_view_ranges(view, range_x)
+
+    def _series_plot_data(
+        self,
+        view: LinePlotViewSpec,
+        field: Field,
+        x_dim: str,
+        series_dim: str,
+    ) -> tuple[np.ndarray, np.ndarray, list[str]]:
         if set(field.dims) != {series_dim, x_dim} or field.values.ndim != 2:
             raise ValueError(
                 f"LinePlotViewSpec '{view.id}' with series_dim='{series_dim}' must resolve to a 2D field over ({series_dim}, {x_dim})"
             )
-
         axis_map = {dim: idx for idx, dim in enumerate(field.dims)}
         values = field.values
         if values.dtype != np.float32:
@@ -770,46 +814,57 @@ class LinePlotPanel(pg.PlotWidget):
         x = x_coord if x_coord.dtype == np.float32 else np.asarray(x_coord, dtype=np.float32)
         series_labels = [str(label) for label in field.coord(series_dim)]
         x, values = self._trim_series_data(view, x, values)
+        return x, values, series_labels
 
-        title = view.title or field.id
+    def _apply_series_structure(
+        self,
+        view: LinePlotViewSpec,
+        field_id: str,
+        x_dim: str,
+        series_labels: list[str],
+    ) -> None:
+        title = view.title or field_id
         structural_sig = (
             "series", view.id, view.x_label or x_dim, view.x_unit,
             view.y_label, view.y_unit, title, view.show_legend,
             tuple(series_labels),
         )
-        if structural_sig != self._cache_structural_signature:
-            self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
-            self.setLabel("left", view.y_label, view.y_unit)
-            self._set_resolved_title(title)
-            self._ensure_legend(view.show_legend)
-            self._cache_structural_signature = structural_sig
-            self._cache_pens.clear()
+        if structural_sig == self._cache_structural_signature:
+            return
+        self.setLabel("bottom", view.x_label or x_dim, view.x_unit)
+        self.setLabel("left", view.y_label, view.y_unit)
+        self._set_resolved_title(title)
+        self._ensure_legend(view.show_legend)
+        self._cache_structural_signature = structural_sig
+        self._cache_pens.clear()
 
+    def _ensure_legend(self, enabled: bool) -> None:
+        if enabled and self.plotItem.legend is None:
+            self.addLegend(offset=(10, 10))
+        elif not enabled and self.plotItem.legend is not None:
+            self.plotItem.legend.scene().removeItem(self.plotItem.legend)
+            self.plotItem.legend = None
+            self._legend_signature = None
+
+    def _remove_stale_series(self, series_labels: list[str]) -> None:
         stale = set(self._series_items.keys()) - set(series_labels)
         for label in stale:
             self.removeItem(self._series_items[label])
             del self._series_items[label]
             self._cache_pens.pop(label, None)
 
+    def _update_series_items(
+        self,
+        view: LinePlotViewSpec,
+        x: np.ndarray,
+        values: np.ndarray,
+        series_labels: list[str],
+        state: dict[str, Any],
+    ) -> np.ndarray:
         visible_xmin: float | None = None
         visible_xmax: float | None = None
         for idx, label in enumerate(series_labels):
-            if label in view.series_colors:
-                color = view.series_colors[label]
-            elif view.series_palette:
-                color = view.series_palette[idx % len(view.series_palette)]
-            else:
-                color = view.pen
-            resolved_color = resolve_binding(color, state)
-            cached = self._cache_pens.get(label)
-            if cached is None or cached[0] != resolved_color:
-                pen = pg.mkPen(resolved_color, width=2)
-                self._cache_pens[label] = (resolved_color, pen)
-                pen_changed = True
-            else:
-                pen = cached[1]
-                pen_changed = False
-
+            pen, pen_changed = self._series_pen(view, label, idx, state)
             item = self._series_items.get(label)
             if item is None:
                 item = self.plot([], [], pen=pen)
@@ -826,6 +881,28 @@ class LinePlotPanel(pg.PlotWidget):
                 visible_xmin = series_xmin if visible_xmin is None else min(visible_xmin, series_xmin)
                 visible_xmax = series_xmax if visible_xmax is None else max(visible_xmax, series_xmax)
 
+        if visible_xmin is None or visible_xmax is None:
+            return np.asarray([], dtype=np.float32)
+        return np.asarray([visible_xmin, visible_xmax], dtype=np.float32)
+
+    def _series_pen(self, view: LinePlotViewSpec, label: str, idx: int, state: dict[str, Any]):
+        color = self._series_color(view, label, idx)
+        resolved_color = resolve_binding(color, state)
+        cached = self._cache_pens.get(label)
+        if cached is not None and cached[0] == resolved_color:
+            return cached[1], False
+        pen = pg.mkPen(resolved_color, width=2)
+        self._cache_pens[label] = (resolved_color, pen)
+        return pen, True
+
+    def _series_color(self, view: LinePlotViewSpec, label: str, idx: int):
+        if label in view.series_colors:
+            return view.series_colors[label]
+        if view.series_palette:
+            return view.series_palette[idx % len(view.series_palette)]
+        return view.pen
+
+    def _update_series_legend(self, series_labels: list[str]) -> None:
         if self.plotItem.legend is not None:
             legend_signature = tuple(series_labels)
             if legend_signature != self._legend_signature:
@@ -835,67 +912,6 @@ class LinePlotPanel(pg.PlotWidget):
                 self._legend_signature = legend_signature
         else:
             self._legend_signature = None
-        if visible_xmin is None or visible_xmax is None:
-            range_x = np.asarray([], dtype=np.float32)
-        else:
-            range_x = np.asarray([visible_xmin, visible_xmax], dtype=np.float32)
-        self._apply_view_ranges(view, range_x)
-
-    def _reset_view_ranges(self) -> None:
-        vb = self.plotItem.getViewBox()
-        vb.enableAutoRange(x=True, y=True)
-        vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
-        self._reset_tick_spacing()
-        self._cache_x_range_applied = None
-        self._cache_y_range_applied = None
-        self._cache_tick_signature = None
-
-    def _apply_view_ranges(self, view: LinePlotViewSpec, x: np.ndarray) -> None:
-        vb = self.plotItem.getViewBox()
-        xmin = 0.0
-        xmax = 0.0
-        data_xmin = 0.0
-        data_xmax = 0.0
-
-        if view.y_min is not None or view.y_max is not None:
-            y_target = (view.y_min, view.y_max)
-            if y_target != self._cache_y_range_applied:
-                vb.enableAutoRange(y=False)
-                vb.setLimits(yMin=view.y_min, yMax=view.y_max)
-                if view.y_min is not None and view.y_max is not None:
-                    vb.setYRange(float(view.y_min), float(view.y_max), padding=0)
-                self._cache_y_range_applied = y_target
-        else:
-            if self._cache_y_range_applied is not None:
-                vb.enableAutoRange(y=True)
-                vb.setLimits(yMin=None, yMax=None)
-                self._cache_y_range_applied = None
-
-        if len(x):
-            data_xmin = float(np.min(x))
-            data_xmax = float(np.max(x))
-
-        if view.rolling_window is not None and len(x):
-            xmax = data_xmax
-            xmin = max(data_xmin, xmax - float(view.rolling_window))
-            if xmax <= xmin:
-                applied = (xmin, xmin + max(float(view.rolling_window), 1e-6))
-            else:
-                applied = (xmin, xmax)
-            if applied != self._cache_x_range_applied:
-                vb.enableAutoRange(x=False)
-                vb.setXRange(applied[0], applied[1], padding=0)
-                self._cache_x_range_applied = applied
-        else:
-            if len(x):
-                xmin = data_xmin
-                xmax = data_xmax
-            if self._cache_x_range_applied is not None:
-                vb.enableAutoRange(x=True)
-                vb.setLimits(xMin=None, xMax=None)
-                self._cache_x_range_applied = None
-
-        self._apply_tick_spacing(view, xmin, xmax)
 
     def _trim_line_data(self, view: LinePlotViewSpec, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         if not view.trim_to_rolling_window or view.rolling_window is None or len(x) == 0:
@@ -929,6 +945,57 @@ class LinePlotPanel(pg.PlotWidget):
                 mask[first_visible - 1] = True
         return mask
 
+    def _apply_view_ranges(self, view: LinePlotViewSpec, x: np.ndarray) -> None:
+        self._apply_y_range(view)
+        xmin, xmax = self._apply_x_range(view, x)
+        self._apply_tick_spacing(view, xmin, xmax)
+
+    def _apply_y_range(self, view: LinePlotViewSpec) -> None:
+        vb = self.plotItem.getViewBox()
+        if view.y_min is not None or view.y_max is not None:
+            y_target = (view.y_min, view.y_max)
+            if y_target != self._cache_y_range_applied:
+                vb.enableAutoRange(y=False)
+                vb.setLimits(yMin=view.y_min, yMax=view.y_max)
+                if view.y_min is not None and view.y_max is not None:
+                    vb.setYRange(float(view.y_min), float(view.y_max), padding=0)
+                self._cache_y_range_applied = y_target
+        else:
+            if self._cache_y_range_applied is not None:
+                vb.enableAutoRange(y=True)
+                vb.setLimits(yMin=None, yMax=None)
+                self._cache_y_range_applied = None
+
+    def _apply_x_range(self, view: LinePlotViewSpec, x: np.ndarray) -> tuple[float, float]:
+        vb = self.plotItem.getViewBox()
+        if view.rolling_window is not None and len(x):
+            data_xmin = float(np.min(x))
+            data_xmax = float(np.max(x))
+            xmin = max(data_xmin, data_xmax - float(view.rolling_window))
+            applied = (xmin, data_xmax) if data_xmax > xmin else (xmin, xmin + max(float(view.rolling_window), 1e-6))
+            if applied != self._cache_x_range_applied:
+                vb.enableAutoRange(x=False)
+                vb.setXRange(applied[0], applied[1], padding=0)
+                self._cache_x_range_applied = applied
+            return applied
+        else:
+            if self._cache_x_range_applied is not None:
+                vb.enableAutoRange(x=True)
+                vb.setLimits(xMin=None, xMax=None)
+                self._cache_x_range_applied = None
+            if len(x):
+                return float(np.min(x)), float(np.max(x))
+            return 0.0, 0.0
+
+    def _reset_view_ranges(self) -> None:
+        vb = self.plotItem.getViewBox()
+        vb.enableAutoRange(x=True, y=True)
+        vb.setLimits(xMin=None, xMax=None, yMin=None, yMax=None)
+        self._reset_tick_spacing()
+        self._cache_x_range_applied = None
+        self._cache_y_range_applied = None
+        self._cache_tick_signature = None
+
     def _apply_tick_spacing(self, view: LinePlotViewSpec, xmin: float, xmax: float) -> None:
         axis = self.plotItem.getAxis("bottom")
         if view.x_major_tick_spacing is not None or view.x_minor_tick_spacing is not None:
@@ -946,7 +1013,7 @@ class LinePlotPanel(pg.PlotWidget):
                 grid_lo, grid_hi = xmin, xmax
             sig = (major, minor, grid_lo, grid_hi)
             if sig != self._cache_tick_signature:
-                axis.setTicks(self._manual_tick_levels(xmin, xmax, major, minor))
+                axis.setTicks(_manual_tick_levels(xmin, xmax, major, minor))
                 self._cache_tick_signature = sig
         else:
             if self._cache_tick_signature != "auto":
@@ -958,39 +1025,22 @@ class LinePlotPanel(pg.PlotWidget):
         axis.setTicks(None)
         axis.setTickSpacing()
 
-    def _manual_tick_levels(self, xmin: float, xmax: float, major: float | None, minor: float | None):
-        if major is None:
-            return None
-        if xmax < xmin:
-            xmin, xmax = xmax, xmin
-        major_ticks = self._build_tick_values(xmin, xmax, major)
-        minor_ticks = self._build_tick_values(xmin, xmax, minor) if minor is not None and minor > 0 else []
-        major_values = {round(value, 9) for value in major_ticks}
-        minor_ticks = [value for value in minor_ticks if round(value, 9) not in major_values]
-        return [
-            [(value, self._format_tick_label(value, major)) for value in major_ticks],
-            [(value, "") for value in minor_ticks],
-        ]
+    def _clear_series(self) -> None:
+        if self._series_items:
+            for item in self._series_items.values():
+                self.removeItem(item)
+            self._series_items.clear()
+        if self.plotItem.legend is not None:
+            self.plotItem.legend.clear()
+        self._legend_signature = None
 
-    def _build_tick_values(self, xmin: float, xmax: float, spacing: float | None) -> list[float]:
-        if spacing is None or spacing <= 0:
-            return []
-        start = math.ceil((xmin - 1e-9) / spacing) * spacing
-        values = []
-        value = start
-        while value <= xmax + 1e-9:
-            values.append(round(value, 9))
-            value += spacing
-        return values
-
-    def _format_tick_label(self, value: float, spacing: float) -> str:
-        if spacing >= 1 and abs(value - round(value)) < 1e-9:
-            return str(int(round(value)))
-        decimals = max(0, min(6, int(math.ceil(-math.log10(spacing))) if spacing < 1 else 0))
-        text = f"{value:.{decimals}f}"
-        if "." in text:
-            text = text.rstrip("0").rstrip(".")
-        return text
+    def _clear_render_caches(self) -> None:
+        self._cache_structural_signature = None
+        self._cache_pens.clear()
+        self._cache_y_range_applied = None
+        self._cache_x_range_applied = None
+        self._cache_tick_signature = None
+        self._cache_background = None
 
 
 class LinePlotHostPanel(QtWidgets.QGroupBox):
@@ -1012,11 +1062,9 @@ class LinePlotHostPanel(QtWidgets.QGroupBox):
         view: LinePlotViewSpec | None,
         field: Field | None,
         state: dict[str, Any],
-        geometry_lookup: dict[str, MorphologyGeometry],
-        operator_lookup: dict[str, OperatorSpec] | None = None,
     ) -> None:
         started = time.monotonic()
-        self.line_plot_panel.refresh(view, field, state, geometry_lookup, operator_lookup)
+        self.line_plot_panel.refresh(view, field, state)
         if view is None:
             self.setTitle("")
             return
@@ -1081,8 +1129,81 @@ class StateGraphPanel(QtWidgets.QWidget):
         lo.setContentsMargins(0, 0, 0, 0)
         lo.addWidget(self._canvas.native)
 
-    def _node_dict(self, view: "StateGraphViewSpec") -> dict[str, tuple[float, float]]:
-        return {name: (float(x), float(y)) for name, x, y in view.node_positions}
+    def refresh(
+        self,
+        view: "StateGraphViewSpec",
+        node_field: "Field | None",
+        edge_field: "Field | None",
+    ) -> None:
+        started = time.monotonic()
+        sig = (view.node_positions, view.edges, view.node_size, view.background_color,
+               view.node_color_map, view.edge_color_map)
+        if sig != self._spec_sig or self._markers is None:
+            self._build_visuals(view)
+            self._spec_sig = sig
+
+        n = len(self._node_order)
+        if n == 0:
+            return
+
+        if node_field is not None:
+            nv = self._read_field_values(node_field, self._node_order, "state")
+            nc = self._apply_cmap(nv, _state_node_colormap_name(view.node_color_map), view.node_color_limits)
+            if self._node_color_buf is None or self._node_color_buf.shape != nc.shape:
+                self._node_color_buf = np.empty_like(nc)
+            self._node_color_buf[:, :] = nc
+        else:
+            if self._node_color_buf is None or self._node_color_buf.shape != (n, 4):
+                self._node_color_buf = np.empty((n, 4), dtype=np.float32)
+            self._node_color_buf[:, :] = [0.5, 0.5, 0.5, 1.0]
+        self._markers.set_data(
+            pos=self._node_pos, face_color=self._node_color_buf,
+            size=float(view.node_size), edge_color=_MARKER_EDGE_COLOR, edge_width=1.5,
+        )
+        if self._label_visual is not None and self._label_color_buf is not None:
+            lums = self._node_color_buf[:, :3] @ _LABEL_LUM_WEIGHTS
+            self._label_color_buf[:, :3] = (lums < 0.45)[:, np.newaxis]
+            self._label_visual.color = self._label_color_buf
+
+        n_edges = len(view.edges)
+        if self._edge_visual is not None and n_edges > 0:
+            if edge_field is not None:
+                ev = self._read_field_values(edge_field, self._edge_order, "edge")
+                ec = self._apply_cmap(ev, view.edge_color_map, view.edge_color_limits)
+                if self._edge_color_buf is None or self._edge_color_buf.shape != ec.shape:
+                    self._edge_color_buf = np.empty_like(ec)
+                self._edge_color_buf[:, :] = ec
+            else:
+                if self._edge_color_buf is None or self._edge_color_buf.shape != (n_edges, 4):
+                    self._edge_color_buf = np.empty((n_edges, 4), dtype=np.float32)
+                self._edge_color_buf[:, :] = [0.55, 0.55, 0.55, 0.85]
+            if self._edge_segment_color_buf is None or self._edge_segment_color_buf.shape != (n_edges * 2, 4):
+                self._edge_segment_color_buf = np.empty((n_edges * 2, 4), dtype=np.float32)
+            self._edge_segment_color_buf[0::2, :] = self._edge_color_buf
+            self._edge_segment_color_buf[1::2, :] = self._edge_color_buf
+            self._edge_visual.set_data(color=self._edge_segment_color_buf)
+
+        self._canvas.update()
+        duration_ms = round((time.monotonic() - started) * 1000.0, 3)
+        if duration_ms >= 5.0:
+            perf_log(
+                "state_graph", "refresh",
+                panel_id=self._perf_panel_id,
+                view_id=self._perf_view_id,
+                duration_ms=duration_ms,
+            )
+
+    def paintEvent(self, event) -> None:
+        started = time.monotonic()
+        super().paintEvent(event)
+        duration_ms = round((time.monotonic() - started) * 1000.0, 3)
+        if duration_ms >= 5.0:
+            perf_log(
+                "state_graph", "paint",
+                panel_id=self._perf_panel_id,
+                view_id=self._perf_view_id,
+                duration_ms=duration_ms,
+            )
 
     def _build_visuals(self, view: "StateGraphViewSpec") -> None:
         vscene = self._vscene
@@ -1173,6 +1294,9 @@ class StateGraphPanel(QtWidgets.QWidget):
             parent=self._view.scene,
         )
 
+    def _node_dict(self, view: "StateGraphViewSpec") -> dict[str, tuple[float, float]]:
+        return {name: (float(x), float(y)) for name, x, y in view.node_positions}
+
     def _read_field_values(self, field: "Field", names: list[str], dim: str) -> np.ndarray:
         coord_key = tuple(str(s) for s in field.coord(dim).tolist())
         name_key = tuple(names)
@@ -1203,82 +1327,6 @@ class StateGraphPanel(QtWidgets.QWidget):
             lut = _colormap_samples("grays")
         idx = np.clip((norm * (len(lut) - 1)).astype(np.int32), 0, len(lut) - 1)
         return lut[idx].astype(np.float32, copy=False)
-
-    def refresh(
-        self,
-        view: "StateGraphViewSpec",
-        node_field: "Field | None",
-        edge_field: "Field | None",
-    ) -> None:
-        started = time.monotonic()
-        sig = (view.node_positions, view.edges, view.node_size, view.background_color,
-               view.node_color_map, view.edge_color_map)
-        if sig != self._spec_sig or self._markers is None:
-            self._build_visuals(view)
-            self._spec_sig = sig
-
-        n = len(self._node_order)
-        if n == 0:
-            return
-
-        if node_field is not None:
-            nv = self._read_field_values(node_field, self._node_order, "state")
-            nc = self._apply_cmap(nv, _state_node_colormap_name(view.node_color_map), view.node_color_limits)
-            if self._node_color_buf is None or self._node_color_buf.shape != nc.shape:
-                self._node_color_buf = np.empty_like(nc)
-            self._node_color_buf[:, :] = nc
-        else:
-            if self._node_color_buf is None or self._node_color_buf.shape != (n, 4):
-                self._node_color_buf = np.empty((n, 4), dtype=np.float32)
-            self._node_color_buf[:, :] = [0.5, 0.5, 0.5, 1.0]
-        self._markers.set_data(
-            pos=self._node_pos, face_color=self._node_color_buf,
-            size=float(view.node_size), edge_color=_MARKER_EDGE_COLOR, edge_width=1.5,
-        )
-        if self._label_visual is not None and self._label_color_buf is not None:
-            lums = self._node_color_buf[:, :3] @ _LABEL_LUM_WEIGHTS
-            self._label_color_buf[:, :3] = (lums < 0.45)[:, np.newaxis]
-            self._label_visual.color = self._label_color_buf
-
-        n_edges = len(view.edges)
-        if self._edge_visual is not None and n_edges > 0:
-            if edge_field is not None:
-                ev = self._read_field_values(edge_field, self._edge_order, "edge")
-                ec = self._apply_cmap(ev, view.edge_color_map, view.edge_color_limits)
-                if self._edge_color_buf is None or self._edge_color_buf.shape != ec.shape:
-                    self._edge_color_buf = np.empty_like(ec)
-                self._edge_color_buf[:, :] = ec
-            else:
-                if self._edge_color_buf is None or self._edge_color_buf.shape != (n_edges, 4):
-                    self._edge_color_buf = np.empty((n_edges, 4), dtype=np.float32)
-                self._edge_color_buf[:, :] = [0.55, 0.55, 0.55, 0.85]
-            if self._edge_segment_color_buf is None or self._edge_segment_color_buf.shape != (n_edges * 2, 4):
-                self._edge_segment_color_buf = np.empty((n_edges * 2, 4), dtype=np.float32)
-            self._edge_segment_color_buf[0::2, :] = self._edge_color_buf
-            self._edge_segment_color_buf[1::2, :] = self._edge_color_buf
-            self._edge_visual.set_data(color=self._edge_segment_color_buf)
-
-        self._canvas.update()
-        duration_ms = round((time.monotonic() - started) * 1000.0, 3)
-        if duration_ms >= 5.0:
-            perf_log(
-                "state_graph", "refresh",
-                panel_id=self._perf_panel_id,
-                view_id=self._perf_view_id,
-                duration_ms=duration_ms,
-            )
-
-    def paintEvent(self, event) -> None:
-        started = time.monotonic()
-        super().paintEvent(event)
-        duration_ms = round((time.monotonic() - started) * 1000.0, 3)
-        if duration_ms >= 5.0:
-            perf_log(
-                "state_graph", "paint",
-                panel_id=self._perf_panel_id,
-                view_id=self._perf_view_id,
-                duration_ms=duration_ms,
-            )
 
 
 class StateGraphHostPanel(QtWidgets.QGroupBox):
@@ -1470,15 +1518,6 @@ class ControlsPanel(QtWidgets.QWidget):
         self._state = state
         self._rebuild_grid(force=True)
 
-    def _invoke_action(self, action: ActionSpec, state: dict[str, Any]) -> None:
-        if self.on_action_invoked is None:
-            return
-        payload = {
-            key: resolve_binding(value, state)
-            for key, value in action.payload.items()
-        }
-        self.on_action_invoked(action, payload)
-
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._rebuild_grid(force=False)
@@ -1491,13 +1530,6 @@ class ControlsPanel(QtWidgets.QWidget):
         if self.width() < self._MULTI_COLUMN_MIN_WIDTH:
             return 1
         return 2
-
-    def _clear_grid(self) -> None:
-        while self._grid.count():
-            item = self._grid.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
 
     def _rebuild_grid(self, *, force: bool) -> None:
         column_count = self._desired_column_count()
@@ -1546,124 +1578,172 @@ class ControlsPanel(QtWidgets.QWidget):
 
         self._grid.setRowStretch(row_index, 1)
 
-    @staticmethod
-    def _slider_raw_to_value(raw: int, *, min_value: float, max_value: float, steps: int, scale: str) -> float:
-        frac = raw / max(1, steps)
-        if scale == "log" and min_value > 0 and max_value > min_value:
-            return float(min_value * ((max_value / min_value) ** frac))
-        return float(min_value + (max_value - min_value) * frac)
-
-    @staticmethod
-    def _slider_value_to_raw(value: Any, *, min_value: float, max_value: float, steps: int, scale: str) -> int:
-        try:
-            numeric = float(value)
-        except Exception:
-            return 0
-        if max_value <= min_value:
-            return 0
-        if scale == "log" and min_value > 0 and max_value > min_value:
-            if numeric <= 0:
-                return 0
-            frac = math.log(numeric / min_value) / math.log(max_value / min_value)
-        else:
-            frac = (numeric - min_value) / (max_value - min_value)
-        return int(round(min(max(frac, 0.0), 1.0) * steps))
+    def _clear_grid(self) -> None:
+        while self._grid.count():
+            item = self._grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
     def _build_control_row(self, control: ControlSpec, state: dict[str, Any]) -> QtWidgets.QWidget:
-        row = QtWidgets.QWidget()
-        row_layout = QtWidgets.QHBoxLayout(row)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.addWidget(QtWidgets.QLabel(control.label))
-        key = control.resolved_state_key()
-        current = state.get(key, control.default_value())
+        row, row_layout = self._control_row_shell(control)
+        current = self._control_current_value(control, state)
         value_spec = control.value_spec
         presentation = control.presentation or ControlPresentationSpec()
 
         if isinstance(value_spec, ScalarValueSpec) and value_spec.value_type == "float":
-            kind = presentation.kind or "slider"
-            if kind != "slider":
-                raise ValueError(f"Unsupported presentation kind '{kind}' for scalar float control '{control.id}'")
-            slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
-            steps = int(presentation.steps or 100)
-            slider.setRange(0, steps)
-            mn = float(value_spec.min if value_spec.min is not None else 0.0)
-            mx = float(value_spec.max if value_spec.max is not None else 1.0)
-            value_label = QtWidgets.QLabel("")
-
-            def on_change(raw: int, *, spec=control, label=value_label, min_value=mn, max_value=mx, steps_value=steps):
-                scale = (spec.presentation or ControlPresentationSpec()).scale
-                value = self._slider_raw_to_value(
-                    raw,
-                    min_value=min_value,
-                    max_value=max_value,
-                    steps=steps_value,
-                    scale=scale,
-                )
-                label.setText(f"{value:.3g}")
-                self.on_value_changed(spec, value)
-
-            v0 = self._slider_value_to_raw(
-                current,
-                min_value=mn,
-                max_value=mx,
-                steps=steps,
-                scale=presentation.scale,
-            )
-            slider.setValue(max(0, min(steps, v0)))
-            slider.valueChanged.connect(on_change)
-            initial_value = self._slider_raw_to_value(
-                slider.value(),
-                min_value=mn,
-                max_value=mx,
-                steps=steps,
-                scale=presentation.scale,
-            )
-            value_label.setText(f"{initial_value:.3g}")
-            row_layout.addWidget(slider, 1)
-            row_layout.addWidget(value_label)
-            self.widgets[control.id] = slider
-
+            self._add_float_control(row_layout, control, value_spec, presentation, current)
         elif isinstance(value_spec, ScalarValueSpec) and value_spec.value_type == "int":
-            kind = presentation.kind or "spinbox"
-            if kind != "spinbox":
-                raise ValueError(f"Unsupported presentation kind '{kind}' for scalar int control '{control.id}'")
-            spin = QtWidgets.QSpinBox()
-            spin.setRange(
-                int(value_spec.min if value_spec.min is not None else 0),
-                int(value_spec.max if value_spec.max is not None else 100),
-            )
-            spin.setValue(int(current))
-            spin.valueChanged.connect(lambda value, spec=control: self.on_value_changed(spec, int(value)))
-            row_layout.addWidget(spin)
-            self.widgets[control.id] = spin
-
+            self._add_int_control(row_layout, control, value_spec, presentation, current)
         elif isinstance(value_spec, BoolValueSpec):
-            kind = presentation.kind or "checkbox"
-            if kind != "checkbox":
-                raise ValueError(f"Unsupported presentation kind '{kind}' for bool control '{control.id}'")
-            checkbox = QtWidgets.QCheckBox()
-            checkbox.setChecked(bool(current))
-            checkbox.toggled.connect(lambda value, spec=control: self.on_value_changed(spec, bool(value)))
-            row_layout.addWidget(checkbox)
-            self.widgets[control.id] = checkbox
-
+            self._add_bool_control(row_layout, control, presentation, current)
         elif isinstance(value_spec, ChoiceValueSpec):
-            kind = presentation.kind or "dropdown"
-            if kind != "dropdown":
-                raise ValueError(f"Unsupported presentation kind '{kind}' for choice control '{control.id}'")
-            combo = QtWidgets.QComboBox()
-            combo.addItems([str(option) for option in value_spec.options])
-            if str(current) in value_spec.options:
-                combo.setCurrentIndex(value_spec.options.index(str(current)))
-            combo.currentIndexChanged.connect(
-                lambda idx, spec=control, options=value_spec.options: self.on_value_changed(spec, options[int(idx)])
-            )
-            row_layout.addWidget(combo)
-            self.widgets[control.id] = combo
+            self._add_choice_control(row_layout, control, value_spec, presentation, current)
         else:
             raise ValueError(f"Unsupported value spec for control '{control.id}'")
 
         return row
+
+    def _control_row_shell(self, control: ControlSpec) -> tuple[QtWidgets.QWidget, QtWidgets.QHBoxLayout]:
+        row = QtWidgets.QWidget()
+        row_layout = QtWidgets.QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.addWidget(QtWidgets.QLabel(control.label))
+        return row, row_layout
+
+    def _control_current_value(self, control: ControlSpec, state: dict[str, Any]):
+        return state.get(control.resolved_state_key(), control.default_value())
+
+    def _validate_control_kind(self, *, kind: str | None, default: str, expected: str, control: ControlSpec, label: str):
+        resolved_kind = kind or default
+        if resolved_kind != expected:
+            raise ValueError(f"Unsupported presentation kind '{resolved_kind}' for {label} control '{control.id}'")
+        return resolved_kind
+
+    def _add_float_control(
+        self,
+        row_layout: QtWidgets.QHBoxLayout,
+        control: ControlSpec,
+        value_spec: ScalarValueSpec,
+        presentation: ControlPresentationSpec,
+        current: Any,
+    ) -> None:
+        self._validate_control_kind(
+            kind=presentation.kind,
+            default="slider",
+            expected="slider",
+            control=control,
+            label="scalar float",
+        )
+        slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+        steps = int(presentation.steps or 100)
+        slider.setRange(0, steps)
+        min_value = float(value_spec.min if value_spec.min is not None else 0.0)
+        max_value = float(value_spec.max if value_spec.max is not None else 1.0)
+        value_label = QtWidgets.QLabel("")
+
+        def on_change(raw: int, *, spec=control, label=value_label) -> None:
+            scale = (spec.presentation or ControlPresentationSpec()).scale
+            value = self._slider_raw_to_value(
+                raw,
+                min_value=min_value,
+                max_value=max_value,
+                steps=steps,
+                scale=scale,
+            )
+            label.setText(f"{value:.3g}")
+            self.on_value_changed(spec, value)
+
+        raw_value = self._slider_value_to_raw(
+            current,
+            min_value=min_value,
+            max_value=max_value,
+            steps=steps,
+            scale=presentation.scale,
+        )
+        slider.setValue(max(0, min(steps, raw_value)))
+        slider.valueChanged.connect(on_change)
+        initial_value = self._slider_raw_to_value(
+            slider.value(),
+            min_value=min_value,
+            max_value=max_value,
+            steps=steps,
+            scale=presentation.scale,
+        )
+        value_label.setText(f"{initial_value:.3g}")
+        row_layout.addWidget(slider, 1)
+        row_layout.addWidget(value_label)
+        self.widgets[control.id] = slider
+
+    def _add_int_control(
+        self,
+        row_layout: QtWidgets.QHBoxLayout,
+        control: ControlSpec,
+        value_spec: ScalarValueSpec,
+        presentation: ControlPresentationSpec,
+        current: Any,
+    ) -> None:
+        self._validate_control_kind(
+            kind=presentation.kind,
+            default="spinbox",
+            expected="spinbox",
+            control=control,
+            label="scalar int",
+        )
+        spin = QtWidgets.QSpinBox()
+        spin.setRange(
+            int(value_spec.min if value_spec.min is not None else 0),
+            int(value_spec.max if value_spec.max is not None else 100),
+        )
+        spin.setValue(int(current))
+        spin.valueChanged.connect(lambda value, spec=control: self.on_value_changed(spec, int(value)))
+        row_layout.addWidget(spin)
+        self.widgets[control.id] = spin
+
+    def _add_bool_control(
+        self,
+        row_layout: QtWidgets.QHBoxLayout,
+        control: ControlSpec,
+        presentation: ControlPresentationSpec,
+        current: Any,
+    ) -> None:
+        self._validate_control_kind(
+            kind=presentation.kind,
+            default="checkbox",
+            expected="checkbox",
+            control=control,
+            label="bool",
+        )
+        checkbox = QtWidgets.QCheckBox()
+        checkbox.setChecked(bool(current))
+        checkbox.toggled.connect(lambda value, spec=control: self.on_value_changed(spec, bool(value)))
+        row_layout.addWidget(checkbox)
+        self.widgets[control.id] = checkbox
+
+    def _add_choice_control(
+        self,
+        row_layout: QtWidgets.QHBoxLayout,
+        control: ControlSpec,
+        value_spec: ChoiceValueSpec,
+        presentation: ControlPresentationSpec,
+        current: Any,
+    ) -> None:
+        self._validate_control_kind(
+            kind=presentation.kind,
+            default="dropdown",
+            expected="dropdown",
+            control=control,
+            label="choice",
+        )
+        combo = QtWidgets.QComboBox()
+        combo.addItems([str(option) for option in value_spec.options])
+        if str(current) in value_spec.options:
+            combo.setCurrentIndex(value_spec.options.index(str(current)))
+        combo.currentIndexChanged.connect(
+            lambda idx, spec=control, options=value_spec.options: self.on_value_changed(spec, options[int(idx)])
+        )
+        row_layout.addWidget(combo)
+        self.widgets[control.id] = combo
 
     def _build_xy_pad_row(self, control: ControlSpec, state: dict[str, Any]) -> QtWidgets.QWidget:
         wrapper = QtWidgets.QWidget()
@@ -1698,6 +1778,38 @@ class ControlsPanel(QtWidgets.QWidget):
         self.widgets[action.id] = button
         return button
 
+    @staticmethod
+    def _slider_raw_to_value(raw: int, *, min_value: float, max_value: float, steps: int, scale: str) -> float:
+        frac = raw / max(1, steps)
+        if scale == "log" and min_value > 0 and max_value > min_value:
+            return float(min_value * ((max_value / min_value) ** frac))
+        return float(min_value + (max_value - min_value) * frac)
+
+    @staticmethod
+    def _slider_value_to_raw(value: Any, *, min_value: float, max_value: float, steps: int, scale: str) -> int:
+        try:
+            numeric = float(value)
+        except Exception:
+            return 0
+        if max_value <= min_value:
+            return 0
+        if scale == "log" and min_value > 0 and max_value > min_value:
+            if numeric <= 0:
+                return 0
+            frac = math.log(numeric / min_value) / math.log(max_value / min_value)
+        else:
+            frac = (numeric - min_value) / (max_value - min_value)
+        return int(round(min(max(frac, 0.0), 1.0) * steps))
+
+    def _invoke_action(self, action: ActionSpec, state: dict[str, Any]) -> None:
+        if self.on_action_invoked is None:
+            return
+        payload = {
+            key: resolve_binding(value, state)
+            for key, value in action.payload.items()
+        }
+        self.on_action_invoked(action, payload)
+
 
 class ControlsHostPanel(QtWidgets.QGroupBox):
     def __init__(self, controls_panel: ControlsPanel, *, panel_id: str, title: str = "Controls", parent=None):
@@ -1722,112 +1834,3 @@ class ControlsHostPanel(QtWidgets.QGroupBox):
             self.setTitle("Actions")
         else:
             self.setTitle("Controls")
-
-
-def resolve_binding(value, state: dict[str, Any]):
-    if isinstance(value, StateBinding):
-        return state.get(value.key)
-    return value
-
-
-def surface_scene_from_field(field: Field, geometry: GridGeometry | None) -> SurfaceSceneData:
-    if geometry is None:
-        y_dim, x_dim = field.dims[0], field.dims[1]
-        y_coords = field.coord(y_dim)
-        x_coords = field.coord(x_dim)
-    else:
-        y_dim, x_dim = geometry.dims[0], geometry.dims[1]
-        y_coords = geometry.coords[y_dim]
-        x_coords = geometry.coords[x_dim]
-
-    if field.dims != (y_dim, x_dim):
-        axis_map = {dim: idx for idx, dim in enumerate(field.dims)}
-        z = np.transpose(field.values, axes=(axis_map[y_dim], axis_map[x_dim]))
-    else:
-        z = field.values
-
-    x_grid, y_grid = np.meshgrid(np.asarray(x_coords, dtype=np.float32), np.asarray(y_coords, dtype=np.float32))
-    return SurfaceSceneData(
-        field_id=field.id,
-        x_dim=x_dim,
-        y_dim=y_dim,
-        x_grid=x_grid,
-        y_grid=y_grid,
-        z=np.asarray(z, dtype=np.float32),
-        coords={
-            x_dim: np.asarray(x_coords, dtype=np.float32),
-            y_dim: np.asarray(y_coords, dtype=np.float32),
-        },
-    )
-
-
-def resolve_grid_slice_position(
-    coords: dict[str, np.ndarray],
-    *,
-    axis_state_key: str | None,
-    position_state_key: str | None,
-    state: dict[str, Any],
-    default_axis: str,
-):
-    if not axis_state_key or not position_state_key:
-        return None
-    axis = state.get(axis_state_key, default_axis)
-    if axis not in coords:
-        axis = default_axis if default_axis in coords else next(iter(coords))
-    normalized = min(1.0, max(0.0, float(state.get(position_state_key, 0.0))))
-    axis_coords = np.asarray(coords[axis], dtype=np.float32)
-    idx = max(0, min(len(axis_coords) - 1, int(round(normalized * (len(axis_coords) - 1)))))
-    return axis, idx, float(axis_coords[idx])
-
-
-def overlay_from_grid_slice_operator(
-    surface_scene: SurfaceSceneData,
-    operator: GridSliceOperatorSpec,
-    resolved_state: dict[str, Any],
-):
-    resolved = resolve_grid_slice_position(
-        surface_scene.coords,
-        axis_state_key=operator.axis_state_key,
-        position_state_key=operator.position_state_key,
-        state=resolved_state,
-        default_axis=surface_scene.x_dim,
-    )
-    if resolved is None:
-        return None
-    axis, _idx, value = resolved
-    return {
-        "operator_id": operator.id,
-        "axis": "x" if axis == surface_scene.x_dim else "y",
-        "value": value,
-        "color": resolved_state[f"{operator.id}:color"],
-        "alpha": resolved_state[f"{operator.id}:alpha"],
-        "fill_alpha": resolved_state[f"{operator.id}:fill_alpha"],
-        "width": resolved_state[f"{operator.id}:width"],
-    }
-
-
-def line_from_grid_slice_operator(field: Field, operator: GridSliceOperatorSpec, state: dict[str, Any]):
-    if field.values.ndim != 2:
-        raise ValueError("grid slice operators require a 2D field")
-    resolved = resolve_grid_slice_position(
-        {dim: field.coord(dim) for dim in field.dims},
-        axis_state_key=operator.axis_state_key,
-        position_state_key=operator.position_state_key,
-        state=state,
-        default_axis=field.dims[-1],
-    )
-    if resolved is None:
-        return None
-    slice_dim, idx, slice_value = resolved
-    other_dims = [dim for dim in field.dims if dim != slice_dim]
-    if len(other_dims) != 1:
-        raise ValueError("grid slice operators require exactly one non-sliced dimension")
-    x_dim = other_dims[0]
-    sliced = field.select({slice_dim: idx})
-    return (
-        np.asarray(sliced.coord(x_dim), dtype=np.float32),
-        np.asarray(sliced.values, dtype=np.float32),
-        x_dim,
-        slice_dim,
-        slice_value,
-    )

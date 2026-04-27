@@ -12,6 +12,10 @@ metadata:
 
 Read `AGENTS.md` and `docs/architecture/core-model.md` first.
 
+This skill checks architecture drift and layering smells. If the question is
+about whether files, functions, or methods are easy to read in order, also use
+`audit-source-organization`.
+
 Check each of the following patterns. Report findings with file and line number.
 
 ## 1. Import Layer Violations
