@@ -9,6 +9,7 @@ summary: Jaxley-backed live session and morphology scene builder.
 
 - `JaxleySession`: subclass this to build cells, configure the network, and emit live updates
 - `JaxleySceneBuilder`: converts Jaxley network compartment geometry into `MorphologyGeometry` plus the default morphology/trace views
+- `utils/`: Jaxley-specific SWC import, cache, layout, and geometry helpers
 
 By default, the backend splits:
 
@@ -19,7 +20,7 @@ The current sampled quantity is voltage by default, but those field ids are role
 
 To sample additional channel states per step, override two hooks instead of `advance()`:
 
-- `_sample_step() -> Any` — called once per simulation step; return whatever per-step data you need.
-- `_emit_batch(times_array, steps)` — called once per display update batch; `steps` is a list of whatever `_sample_step()` returned.
+- `_sample_step() -> Any` - called once per simulation step; return whatever per-step data you need.
+- `_emit_batch(times_array, steps)` - called once per display update batch; `steps` is a list of whatever `_sample_step()` returned.
 
 Use `_read_state(state_name)` inside `_sample_step()` to read any Jaxley channel variable at the display compartment indices. State keys follow Jaxley's `ChannelName_statename` convention (e.g. `'HH_m'`, `'HH_n'`, `'HH_h'`). All channel states are available in `self._state` after each step without any additional recording setup.

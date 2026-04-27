@@ -206,7 +206,7 @@ See `src/compneurovis/backends/neuron/scene.py` for the default scene constructi
 ## Loading from SWC
 
 ```python
-from compneurovis.neuronutils import load_swc_neuron
+from compneurovis.backends.neuron.utils import load_swc_neuron
 
 class MyCellSession(NeuronSession):
     def build_sections(self):
@@ -214,6 +214,7 @@ class MyCellSession(NeuronSession):
 ```
 
 `load_swc_neuron()` imports the SWC via NEURON's `Import3d` tool and returns a list of sections with 3-D coordinates already set.
+NEURON-specific helpers live under `compneurovis.backends.neuron.utils`.
 
 Next steps:
 

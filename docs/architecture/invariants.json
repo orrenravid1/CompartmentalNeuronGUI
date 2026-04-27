@@ -141,6 +141,96 @@
       "term": "XYControlSpec",
       "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
       "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "compneurovis.neuronutils",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "compneurovis.jaxleyutils",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "compneurovis.vispyutils",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/neuronutils",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/jaxleyutils",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/vispyutils",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "from compneurovis.frontends.vispy.renderers import",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "from compneurovis.frontends.vispy.panels import",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "from compneurovis.frontends.vispy.view3d import",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "from compneurovis.frontends.vispy.view_inputs import",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "compneurovis.frontends.vispy.renderers.overlays",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/frontends/vispy/renderers.py",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/frontends/vispy/panels.py",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/frontends/vispy/panel_helpers.py",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/frontends/vispy/viewport3d.py",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/frontends/vispy/viewport_visuals.py",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/frontends/vispy/view_data.py",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
+    },
+    {
+      "term": "src/compneurovis/frontends/vispy/renderers/overlays.py",
+      "paths": ["AGENTS.md", "docs", "examples", "skills", "src", "tests"],
+      "exclude_paths": ["docs/architecture/invariants.json"]
     }
   ],
   "commands": [

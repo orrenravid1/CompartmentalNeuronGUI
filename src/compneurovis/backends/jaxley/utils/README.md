@@ -5,7 +5,7 @@ summary: Helpers for constructing and positioning Jaxley cells for CompNeuroVis 
 
 # Jaxley Utils
 
-`compneurovis.jaxleyutils` contains small geometry/layout helpers for Jaxley workflows.
+`compneurovis.backends.jaxley.utils` contains small geometry/layout helpers for Jaxley workflows.
 
 Current helpers:
 

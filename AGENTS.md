@@ -8,12 +8,12 @@ CompNeuroVis is a neuroscience visualization toolkit with a core data model buil
 
 - `src/compneurovis/core`: data primitives, views, controls, and app/scene types
 - `src/compneurovis/session`: session base classes, protocol types, and pipe transport
-- `src/compneurovis/frontends/vispy`: current frontend window, panels, and renderers
-- `src/compneurovis/backends/neuron`: live NEURON session and morphology scene builder
-- `src/compneurovis/backends/jaxley`: live Jaxley session and morphology scene builder
+- `src/compneurovis/frontends/vispy`: current frontend window, panels, renderers, view adapters, and VisPy-only utilities
+- `src/compneurovis/backends/neuron`: live NEURON session, morphology scene builder, and NEURON-owned utilities
+- `src/compneurovis/backends/jaxley`: live Jaxley session, morphology scene builder, and Jaxley-owned utilities
 - `src/compneurovis/builders`: high-level app builders for neuron, surface, and replay workflows
-- `src/compneurovis/jaxleyutils`: Jaxley-specific SWC, cache, and geometry helpers
-- `src/compneurovis/neuronutils`: NEURON-specific SWC import, JSON round-trip, and layout helpers
+- `src/compneurovis/backends/neuron/utils`: NEURON-specific SWC import, JSON round-trip, and layout helpers
+- `src/compneurovis/backends/jaxley/utils`: Jaxley-specific SWC, cache, and geometry helpers
 
 Read the package-local `README.md` in those directories before making structural changes there.
 

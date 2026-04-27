@@ -1,5 +1,5 @@
-from compneurovis.jaxleyutils.layout import translate_cell_xyzr, translate_cells_xyzr
-from compneurovis.jaxleyutils.swc_utils import (
+from compneurovis.backends.jaxley.utils.layout import translate_cell_xyzr, translate_cells_xyzr
+from compneurovis.backends.jaxley.utils.swc_utils import (
     load_cached_swc_jaxley,
     load_cached_swc_multi_jaxley,
     load_swc_jaxley,

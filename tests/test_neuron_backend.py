@@ -4,7 +4,7 @@ import pytest
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.backends.neuron.session import NeuronSession
 from compneurovis.core import MorphologyGeometry
-from compneurovis.neuronutils import (
+from compneurovis.backends.neuron.utils import (
     define_shape_layout,
     export_section_json,
     generate_layout,
@@ -61,7 +61,7 @@ def test_neuron_scene_builder_splits_display_and_trace_fields():
     assert trace_view.field_id == NeuronSceneBuilder.HISTORY_FIELD_ID
 
 
-def test_neuronutils_package_exports_expected_helpers():
+def test_neuron_backend_utils_package_exports_expected_helpers():
     assert define_shape_layout is not None
     assert export_section_json is not None
     assert generate_layout is not None

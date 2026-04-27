@@ -1,62 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
 from compneurovis.core.field import Field
-from compneurovis.core.geometry import GridGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec
-from compneurovis.core.state import StateBinding
-
-
-@dataclass(slots=True)
-class SurfaceSceneData:
-    field_id: str
-    x_dim: str
-    y_dim: str
-    x_grid: np.ndarray
-    y_grid: np.ndarray
-    z: np.ndarray
-    coords: dict[str, np.ndarray]
-
-
-def resolve_binding(value, state: dict[str, Any]):
-    if isinstance(value, StateBinding):
-        return state.get(value.key)
-    return value
-
-
-def surface_scene_from_field(field: Field, geometry: GridGeometry | None) -> SurfaceSceneData:
-    if geometry is None:
-        y_dim, x_dim = field.dims[0], field.dims[1]
-        y_coords = field.coord(y_dim)
-        x_coords = field.coord(x_dim)
-    else:
-        y_dim, x_dim = geometry.dims[0], geometry.dims[1]
-        y_coords = geometry.coords[y_dim]
-        x_coords = geometry.coords[x_dim]
-
-    if field.dims != (y_dim, x_dim):
-        axis_map = {dim: idx for idx, dim in enumerate(field.dims)}
-        z = np.transpose(field.values, axes=(axis_map[y_dim], axis_map[x_dim]))
-    else:
-        z = field.values
-
-    x_grid, y_grid = np.meshgrid(np.asarray(x_coords, dtype=np.float32), np.asarray(y_coords, dtype=np.float32))
-    return SurfaceSceneData(
-        field_id=field.id,
-        x_dim=x_dim,
-        y_dim=y_dim,
-        x_grid=x_grid,
-        y_grid=y_grid,
-        z=np.asarray(z, dtype=np.float32),
-        coords={
-            x_dim: np.asarray(x_coords, dtype=np.float32),
-            y_dim: np.asarray(y_coords, dtype=np.float32),
-        },
-    )
+from compneurovis.frontends.vispy.view_inputs.surface import SurfaceSceneData
 
 
 def resolve_grid_slice_position(

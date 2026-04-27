@@ -33,7 +33,7 @@ The right-side controls host is only shown when the resolved layout actually con
 
 Before the first `Scene` arrives, the frontend stays in an explicit loading state rather than briefly showing an empty fallback plot layout. That avoids a visible startup jump for worker-backed live apps.
 
-At the window seam, host widgets and inner widgets are named separately on purpose. `VispyFrontendWindow` exposes `view_hosts` / `viewports`, `line_plot_host_panels` / `line_plot_panels`, and `controls_host` / `controls_panel`. The older ambiguous singular conveniences were removed so tests and user code have to say which layer they mean.
+At the window seam, host widgets and inner widgets are named separately on purpose. `VispyFrontendWindow` exposes `view_hosts` / `viewports`, `line_plot_host_panels` / `line_plot_panels`, and `controls_host_panels` / `controls_panels`. The older ambiguous singular conveniences were removed so tests and user code have to say which layer they mean.
 
 ## Refresh Planning
 
@@ -41,11 +41,11 @@ The frontend never redraws everything on every update. `RefreshPlanner` maps inc
 
 ```
 CONTROLS                     -> one ControlsHostPanel / ControlsPanel pair
-MORPHOLOGY(view_id)          -> one Viewport3DPanel (morphology path)
-SURFACE_VISUAL(view_id)      -> one Viewport3DPanel (surface mesh + colormap)
-SURFACE_AXES_GEOMETRY(view_id) -> one Viewport3DPanel (axis/tick positions + labels)
-SURFACE_AXES_STYLE(view_id)    -> one Viewport3DPanel (axis/tick colors + font sizes)
-OPERATOR_OVERLAY(view_id)    -> one Viewport3DPanel (hosted grid-operator overlays)
+MORPHOLOGY(view_id)          -> one 3-D host visual adapter
+SURFACE_VISUAL(view_id)      -> one 3-D host visual adapter (surface mesh + colormap)
+SURFACE_AXES_GEOMETRY(view_id) -> one 3-D host visual adapter (axis/tick positions + labels)
+SURFACE_AXES_STYLE(view_id)    -> one 3-D host visual adapter (axis/tick colors + font sizes)
+OPERATOR_OVERLAY(view_id)    -> one 3-D host visual adapter (hosted grid-operator overlays)
 LINE_PLOT(view_id)           -> one LinePlotHostPanel / LinePlotPanel pair
 STATE_GRAPH(view_id)         -> one StateGraphHostPanel / StateGraphPanel pair
 ```
@@ -117,14 +117,22 @@ That means the current built-in independent host behavior is:
 An app can already mount multiple such hosts in one window. This list describes
 the current host implementation, not a global one-view limit.
 
-Inside the current `Viewport3DPanel`, morphology and surface rendering are
-primary renderers, not interaction modes. The host tracks an active primary
-renderer through a small registry and clears the previously active renderer
-when a different primary renderer is activated. Surface axes and grid-slice
-projections remain overlays owned by the surface renderer. This keeps the
-current independent-canvas behavior explicit while leaving room for future 3-D
-renderer types such as volumes, point clouds, vector fields, or meshes without
-adding more string-based "modes" to the host.
+`Viewport3DPanel` is the generic canvas/camera host. It owns VisPy canvas
+creation, camera setup, active visual selection, generic click dispatch, and
+commit timing. It does not construct or refresh morphology, surface, volume,
+point-cloud, vector-field, or mesh renderers directly.
+
+Concrete 3-D content lives in mounted visual adapters. The built-ins are
+`Morphology3DVisual` and `Surface3DVisual` in `view3d/visuals.py`; each owns
+its renderer object, cached scene state, refresh entrypoints, and any
+content-specific overlays or picking logic. The current independent-canvas host
+mounts the built-in adapters into the viewport and activates one visual at a
+time for its hosted view. Switching visuals clears the previously active
+adapter through the generic viewport contract.
+
+That keeps the current independent-canvas behavior explicit while leaving room
+for future 3-D visual types such as volumes, point clouds, vector fields, or
+meshes without adding content-specific fields or methods to `Viewport3DPanel`.
 
 This is the intended extension point for future alternatives such as:
 
@@ -211,8 +219,16 @@ See the `add-view-panel` skill for the full workflow. The key steps:
 
 1. Add a `ViewSpec` subclass in `src/compneurovis/core/views.py`
 2. Extend `RefreshPlanner` so it can target the new panel per bound `view_id` when needed
-3. Implement the panel in `src/compneurovis/frontends/vispy/panels.py`
+3. Implement the panel in the appropriate module under `src/compneurovis/frontends/vispy/panels/`
 4. Add a `_refresh_<panel>()` method in `VispyFrontendWindow` and call it from `_apply_refresh_targets()`
 5. Wire visibility into `_update_panel_visibility()` and `LayoutSpec` as needed
 
-Reference: `MorphologyRenderer` and `SurfaceRenderer` in `src/compneurovis/frontends/vispy/renderers/`.
+Reference modules:
+
+- `src/compneurovis/frontends/vispy/renderers/morphology.py`
+- `src/compneurovis/frontends/vispy/renderers/surface.py`
+- `src/compneurovis/frontends/vispy/view3d/viewport.py`
+- `src/compneurovis/frontends/vispy/view3d/visuals.py`
+
+Frontend-internal imports should target the concrete module that owns the class
+or helper, not the package root.

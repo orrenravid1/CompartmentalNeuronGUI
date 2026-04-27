@@ -19,7 +19,7 @@ from jaxley.connect import connect
 from jaxley.synapses import IonotropicSynapse
 
 from compneurovis import ControlPresentationSpec, ControlSpec, JaxleySession, ScalarValueSpec, build_jaxley_app, run_app
-from compneurovis.jaxleyutils import translate_cells_xyzr
+from compneurovis.backends.jaxley.utils import translate_cells_xyzr
 
 
 def float_control(

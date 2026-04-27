@@ -16,7 +16,7 @@ import random
 from neuron import h
 
 from compneurovis import NeuronSession, build_neuron_app, run_app
-from compneurovis.neuronutils import load_swc_multi
+from compneurovis.backends.neuron.utils import load_swc_multi
 
 
 class CElegansSession(NeuronSession):

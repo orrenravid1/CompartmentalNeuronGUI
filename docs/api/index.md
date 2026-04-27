@@ -20,7 +20,8 @@ The generated pages here are intentionally narrower than the full source tree. T
 
 - the top-level `compneurovis` package
 - builder entrypoints
-- backend session and scene-builder modules for NEURON and Jaxley
+- backend session, scene-builder, and backend-owned utility modules for NEURON
+  and Jaxley
 
 Use these pages when you already know roughly what you want and need signatures, types, or hook names.
 
@@ -28,4 +29,4 @@ Good entry pages inside this section:
 
 - [Public API](public-api.md) for top-level exports
 - [Builders](builders.md) for high-level app construction helpers
-- [Backend Sessions](backends.md) for `NeuronSession`, `JaxleySession`, and scene-builder hooks
+- [Backend Sessions](backends.md) for `NeuronSession`, `JaxleySession`, scene-builder hooks, and backend-owned utility packages

@@ -13,7 +13,8 @@ metadata:
 Read `docs/concepts/controls-actions-state.md` first.
 
 Reference implementations: `src/compneurovis/core/controls.py` for public
-specs and `src/compneurovis/frontends/vispy/panels.py` for widget dispatch.
+specs and `src/compneurovis/frontends/vispy/panels/controls.py` for widget
+dispatch.
 
 ## Model
 
@@ -45,7 +46,7 @@ dictionary: `{"x": float, "y": float}`.
    - Add import names and `__all__` entries together.
    - Remove obsolete exports instead of adding compatibility aliases when the change is intentionally breaking.
 
-4. **Build or update widget dispatch** in `src/compneurovis/frontends/vispy/panels.py`.
+4. **Build or update widget dispatch** in `src/compneurovis/frontends/vispy/panels/controls.py`.
    - Dispatch from `isinstance(control.value_spec, ...)`.
    - Infer the default presentation when `control.presentation is None`.
    - Raise a clear `ValueError` for unsupported `presentation.kind`.

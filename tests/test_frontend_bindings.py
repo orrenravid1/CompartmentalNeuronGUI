@@ -38,10 +38,37 @@ from compneurovis import (
 from compneurovis.backends.neuron import NeuronSession
 from compneurovis.backends.neuron.scene import NeuronSceneBuilder
 from compneurovis.frontends.vispy import frontend as frontend_module
-from compneurovis.frontends.vispy.frontend import RefreshPlanner, RefreshTarget
-from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, LinePlotHostPanel, LinePlotPanel, StateGraphPanel, Viewport3DPanel, _state_label_color_for_fill, _state_node_colormap_name
-from compneurovis.frontends.vispy.renderers import MorphologyRenderer
-from compneurovis.session import BufferedSession, Error, FieldAppend, FieldReplace, Reset, SetControl, StatePatch, resolve_interaction_target_source
+from compneurovis.frontends.vispy.refresh_planning import RefreshPlanner, RefreshTarget
+from compneurovis.frontends.vispy.panels.controls import (
+    ControlsHostPanel,
+    ControlsPanel,
+)
+from compneurovis.frontends.vispy.panels.line_plot import (
+    LinePlotHostPanel,
+    LinePlotPanel,
+)
+from compneurovis.frontends.vispy.panels.state_graph import (
+    StateGraphPanel,
+    _state_label_color_for_fill,
+    _state_node_colormap_name,
+)
+from compneurovis.frontends.vispy.renderers.morphology import MorphologyRenderer
+from compneurovis.frontends.vispy.view3d.viewport import Viewport3DPanel
+from compneurovis.frontends.vispy.view3d.visuals import (
+    MORPHOLOGY_3D_VISUAL_KEY,
+    SURFACE_3D_VISUAL_KEY,
+    Surface3DVisual,
+)
+from compneurovis.session import (
+    BufferedSession,
+    Error,
+    FieldAppend,
+    FieldReplace,
+    Reset,
+    SetControl,
+    StatePatch,
+    resolve_interaction_target_source,
+)
 
 
 def view_3d_panel(panel_id: str, view_id: str, **kwargs) -> PanelSpec:
@@ -54,6 +81,10 @@ def line_plot_panel_spec(panel_id: str, view_id: str, **kwargs) -> PanelSpec:
 
 def controls_panel_spec(panel_id: str = "controls-panel", **kwargs) -> PanelSpec:
     return PanelSpec(id=panel_id, kind="controls", **kwargs)
+
+
+def view_3d_visual(window: VispyFrontendWindow, view_id: str, visual_key: str):
+    return window._view_host(view_id).visual(visual_key)
 
 
 def make_layout(title: str, *, panels: tuple[PanelSpec, ...]) -> LayoutSpec:
@@ -349,19 +380,22 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     window = VispyFrontendWindow(build_surface_cross_section_app())
     window.timer.stop()
-    window.viewport.refresh_surface_visual = Mock()
-    window.viewport.refresh_surface_axes_geometry = Mock()
-    window.viewport.refresh_surface_axes_style = Mock()
-    window.viewport.refresh_operator_overlays = Mock()
+    surface_visual = view_3d_visual(window, "surface-view", SURFACE_3D_VISUAL_KEY)
+    surface_visual.refresh_visual = Mock()
+    surface_visual.refresh_axes_geometry = Mock()
+    surface_visual.refresh_axes_style = Mock()
+    surface_visual.refresh_operator_overlays = Mock()
     window.viewport.commit = Mock()
     window.line_plot_panel("surface-line").refresh = Mock()
+    window._line_plot_last_refresh_s["surface-line"] = 10.0
 
-    window._on_control_changed(window.scene.controls["slice_position"], 0.4)
+    with patch.object(frontend_module.time, "monotonic", return_value=10.01):
+        window._on_control_changed(window.scene.controls["slice_position"], 0.4)
 
-    window.viewport.refresh_surface_visual.assert_not_called()
-    window.viewport.refresh_surface_axes_geometry.assert_not_called()
-    window.viewport.refresh_surface_axes_style.assert_not_called()
-    window.viewport.refresh_operator_overlays.assert_called_once()
+    surface_visual.refresh_visual.assert_not_called()
+    surface_visual.refresh_axes_geometry.assert_not_called()
+    surface_visual.refresh_axes_style.assert_not_called()
+    surface_visual.refresh_operator_overlays.assert_called_once()
     window.viewport.commit.assert_called_once()
     assert "surface-line" in window._dirty_line_plot_views
     window.line_plot_panel("surface-line").refresh.assert_not_called()
@@ -497,9 +531,10 @@ def test_field_replace_with_identical_coords_does_not_refresh_surface_axes_geome
     field = window.scene.fields["surface"]
     original_x_coord = field.coords["x"]
     original_y_coord = field.coords["y"]
-    window.viewport.refresh_surface_visual = Mock()
-    window.viewport.refresh_surface_axes_geometry = Mock()
-    window.viewport.refresh_operator_overlays = Mock()
+    surface_visual = view_3d_visual(window, "surface-view", SURFACE_3D_VISUAL_KEY)
+    surface_visual.refresh_visual = Mock()
+    surface_visual.refresh_axes_geometry = Mock()
+    surface_visual.refresh_operator_overlays = Mock()
     window.viewport.commit = Mock()
     window._view_3d_last_refresh_s.clear()
     window.transport = Mock()
@@ -513,8 +548,8 @@ def test_field_replace_with_identical_coords_does_not_refresh_surface_axes_geome
 
     window._poll_transport()
 
-    window.viewport.refresh_surface_visual.assert_called_once()
-    window.viewport.refresh_surface_axes_geometry.assert_not_called()
+    surface_visual.refresh_visual.assert_called_once()
+    surface_visual.refresh_axes_geometry.assert_not_called()
     assert window.scene.fields["surface"].coords["x"] is original_x_coord
     assert window.scene.fields["surface"].coords["y"] is original_y_coord
 
@@ -526,18 +561,19 @@ def test_surface_axis_style_control_change_avoids_geometry_refresh():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     window = VispyFrontendWindow(build_surface_axes_binding_app())
     window.timer.stop()
-    window.viewport.refresh_surface_visual = Mock()
-    window.viewport.refresh_surface_axes_geometry = Mock()
-    window.viewport.refresh_surface_axes_style = Mock()
-    window.viewport.refresh_operator_overlays = Mock()
+    surface_visual = view_3d_visual(window, "surface-view", SURFACE_3D_VISUAL_KEY)
+    surface_visual.refresh_visual = Mock()
+    surface_visual.refresh_axes_geometry = Mock()
+    surface_visual.refresh_axes_style = Mock()
+    surface_visual.refresh_operator_overlays = Mock()
     window.viewport.commit = Mock()
 
     window._on_control_changed(window.scene.controls["tick_label_size"], 18.0)
 
-    window.viewport.refresh_surface_visual.assert_not_called()
-    window.viewport.refresh_surface_axes_geometry.assert_not_called()
-    window.viewport.refresh_surface_axes_style.assert_called_once()
-    window.viewport.refresh_operator_overlays.assert_not_called()
+    surface_visual.refresh_visual.assert_not_called()
+    surface_visual.refresh_axes_geometry.assert_not_called()
+    surface_visual.refresh_axes_style.assert_called_once()
+    surface_visual.refresh_operator_overlays.assert_not_called()
     window.viewport.commit.assert_called_once()
 
     window.close()
@@ -549,13 +585,14 @@ def test_surface_slice_overlay_moves_with_control_changes():
     window = VispyFrontendWindow(build_surface_cross_section_app())
     window.timer.stop()
 
-    overlay = window.viewport.renderer_surface._slice_overlays["surface-slice"]
+    surface_visual = view_3d_visual(window, "surface-view", SURFACE_3D_VISUAL_KEY)
+    overlay = surface_visual.renderer._slice_overlays["surface-slice"]
     initial_pos = np.array(overlay._line._pos, copy=True)
     window._on_control_changed(window.scene.controls["slice_position"], 1.0)
-    overlay = window.viewport.renderer_surface._slice_overlays["surface-slice"]
+    overlay = surface_visual.renderer._slice_overlays["surface-slice"]
     moved_pos = np.array(overlay._line._pos, copy=True)
     window._on_control_changed(window.scene.controls["slice_axis"], "y")
-    overlay = window.viewport.renderer_surface._slice_overlays["surface-slice"]
+    overlay = surface_visual.renderer._slice_overlays["surface-slice"]
     axis_switched_pos = np.array(overlay._line._pos, copy=True)
 
     assert not np.allclose(initial_pos, moved_pos)
@@ -568,6 +605,7 @@ def test_surface_slice_overlay_moves_with_control_changes():
 def test_surface_visual_reuses_same_surface_object_for_same_shape_updates():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = Viewport3DPanel()
+    surface_visual = Surface3DVisual(panel.view)
     x = np.linspace(-1.0, 1.0, 8, dtype=np.float32)
     y = np.linspace(-2.0, 2.0, 6, dtype=np.float32)
     values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
@@ -583,64 +621,63 @@ def test_surface_visual_reuses_same_surface_object_for_same_shape_updates():
         "surface-view:background_color": "white",
     }
 
-    panel.refresh_surface_visual(surface_view=view, surface_field=field, grid_geometry=geometry, resolved_state=state)
-    first_surface = panel.renderer_surface.surface
+    surface_visual.refresh_visual(surface_view=view, surface_field=field, grid_geometry=geometry, resolved_state=state)
+    first_surface = surface_visual.renderer.surface
 
-    panel.refresh_surface_visual(
+    surface_visual.refresh_visual(
         surface_view=view,
         surface_field=field.with_values(field.values + 1.0),
         grid_geometry=geometry,
         resolved_state=state,
     )
-    second_surface = panel.renderer_surface.surface
+    second_surface = surface_visual.renderer.surface
 
     assert first_surface is second_surface
     app.quit()
 
 
-def test_viewport_3d_panel_uses_primary_renderer_registry_not_modes():
+def test_viewport_3d_panel_mounts_generic_visuals():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = Viewport3DPanel()
-    panel.renderer_morph.clear = Mock()
-    panel.renderer_surface.clear = Mock()
-    volume_clear = Mock()
+    first = SimpleNamespace(clear=Mock(), pick_entity=Mock(return_value=None))
+    second = SimpleNamespace(clear=Mock(), pick_entity=Mock(return_value=None))
+    third = SimpleNamespace(clear=Mock(), pick_entity=Mock(return_value=None))
 
-    panel._register_primary_renderer("volume", volume_clear)
-    with pytest.raises(ValueError, match="already registered"):
-        panel._register_primary_renderer("volume", Mock())
+    panel.mount_visual("first", first)
+    panel.mount_visual("second", second)
+    panel.mount_visual("third", third)
+    with pytest.raises(ValueError, match="already mounted"):
+        panel.mount_visual("third", third)
+    with pytest.raises(ValueError, match="Unknown 3D visual"):
+        panel.activate_visual("missing")
 
-    panel._activate_primary_renderer("morphology")
-    assert panel._active_primary_renderer == "morphology"
-    panel.renderer_morph.clear.assert_not_called()
-    panel.renderer_surface.clear.assert_not_called()
-    volume_clear.assert_not_called()
+    panel.activate_visual("first")
+    assert panel.active_visual_key == "first"
+    first.clear.assert_not_called()
+    second.clear.assert_not_called()
 
-    panel._active_morphology_geometry = object()
-    panel._activate_primary_renderer("surface")
-    assert panel._active_primary_renderer == "surface"
-    panel.renderer_morph.clear.assert_called_once()
-    assert panel._active_morphology_geometry is None
-    panel.renderer_surface.clear.assert_not_called()
-    volume_clear.assert_not_called()
+    panel.activate_visual("second")
+    assert panel.active_visual_key == "second"
+    first.clear.assert_called_once()
+    second.clear.assert_not_called()
 
-    panel._surface_scene = object()
-    panel._surface_coord_key = ("surface",)
-    panel._activate_primary_renderer("volume")
-    assert panel._active_primary_renderer == "volume"
-    panel.renderer_surface.clear.assert_called_once()
-    assert panel._surface_scene is None
-    assert panel._surface_coord_key is None
-    volume_clear.assert_not_called()
+    panel.activate_visual("third")
+    assert panel.active_visual_key == "third"
+    second.clear.assert_called_once()
+    third.clear.assert_not_called()
 
-    panel._activate_primary_renderer(None)
-    assert panel._active_primary_renderer is None
-    volume_clear.assert_called_once()
+    panel.clear()
+    assert panel.active_visual_key is None
+    assert first.clear.call_count == 2
+    assert second.clear.call_count == 2
+    third.clear.assert_called_once()
     app.quit()
 
 
 def test_surface_axes_overlay_reuses_visual_objects_for_style_refresh():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     panel = Viewport3DPanel()
+    surface_visual = Surface3DVisual(panel.view)
     x = np.linspace(-1.0, 1.0, 8, dtype=np.float32)
     y = np.linspace(-2.0, 2.0, 6, dtype=np.float32)
     values = (np.sin(x[None, :]) + np.cos(y[:, None])).astype(np.float32)
@@ -678,9 +715,9 @@ def test_surface_axes_overlay_reuses_visual_objects_for_style_refresh():
         "surface-view:axis_alpha": 1.0,
     }
 
-    panel.refresh_surface_visual(surface_view=view, surface_field=field, grid_geometry=geometry, resolved_state=state)
-    panel.refresh_surface_axes_geometry(surface_view=view, resolved_state=state)
-    overlay = panel.renderer_surface.axes
+    surface_visual.refresh_visual(surface_view=view, surface_field=field, grid_geometry=geometry, resolved_state=state)
+    surface_visual.refresh_axes_geometry(surface_view=view, resolved_state=state)
+    overlay = surface_visual.renderer.axes
     visuals = {
         "axis_lines": overlay._axis_lines,
         "tick_lines": overlay._tick_lines,
@@ -698,7 +735,7 @@ def test_surface_axes_overlay_reuses_visual_objects_for_style_refresh():
     style_state["surface-view:axis_color"] = "red"
     style_state["surface-view:text_color"] = "blue"
     style_state["surface-view:axis_alpha"] = 0.5
-    panel.refresh_surface_axes_style(surface_view=view, resolved_state=style_state)
+    surface_visual.refresh_axes_style(surface_view=view, resolved_state=style_state)
 
     assert overlay._axis_lines is visuals["axis_lines"]
     assert overlay._tick_lines is visuals["tick_lines"]
@@ -1501,20 +1538,21 @@ def test_frontend_defers_3d_refresh_within_budget_interval():
     )
     window = VispyFrontendWindow(AppSpec(scene=scene, title="Deferred 3D view"))
     window.timer.stop()
-    window.viewport.refresh_morphology = Mock()
+    morphology_visual = view_3d_visual(window, "morphology", MORPHOLOGY_3D_VISUAL_KEY)
+    morphology_visual.refresh = Mock()
     window.viewport.commit = Mock()
     window._view_3d_last_refresh_s["morphology"] = 10.0
 
     with patch.object(frontend_module.time, "monotonic", return_value=10.01):
         window._apply_refresh_targets({RefreshTarget.morphology("morphology")})
 
-    window.viewport.refresh_morphology.assert_not_called()
+    morphology_visual.refresh.assert_not_called()
     assert window._dirty_view_3d_targets == {"morphology": {"morphology"}}
 
     with patch.object(frontend_module.time, "monotonic", return_value=10.11):
         window._flush_due_view_3d_refreshes()
 
-    window.viewport.refresh_morphology.assert_called_once()
+    morphology_visual.refresh.assert_called_once()
     window.viewport.commit.assert_called_once()
     assert not window._dirty_view_3d_targets
     window.close()
@@ -1560,7 +1598,8 @@ def test_frontend_can_force_3d_refresh_despite_budget():
     )
     window = VispyFrontendWindow(AppSpec(scene=scene, title="Forced 3D view"))
     window.timer.stop()
-    window.viewport.refresh_morphology = Mock()
+    morphology_visual = view_3d_visual(window, "morphology", MORPHOLOGY_3D_VISUAL_KEY)
+    morphology_visual.refresh = Mock()
     window.viewport.commit = Mock()
     window._view_3d_last_refresh_s["morphology"] = 10.0
 
@@ -1570,7 +1609,7 @@ def test_frontend_can_force_3d_refresh_despite_budget():
             force_view_3d=True,
         )
 
-    window.viewport.refresh_morphology.assert_called_once()
+    morphology_visual.refresh.assert_called_once()
     window.viewport.commit.assert_called_once()
     assert not window._dirty_view_3d_targets
     window.close()
@@ -1616,14 +1655,15 @@ def test_morphology_view_can_opt_out_of_frontend_refresh_throttle():
     )
     window = VispyFrontendWindow(AppSpec(scene=scene, title="Unthrottled 3D view"))
     window.timer.stop()
-    window.viewport.refresh_morphology = Mock()
+    morphology_visual = view_3d_visual(window, "morphology", MORPHOLOGY_3D_VISUAL_KEY)
+    morphology_visual.refresh = Mock()
     window.viewport.commit = Mock()
     window._view_3d_last_refresh_s["morphology"] = 10.0
 
     with patch.object(frontend_module.time, "monotonic", return_value=10.01):
         window._apply_refresh_targets({RefreshTarget.morphology("morphology")})
 
-    window.viewport.refresh_morphology.assert_called_once()
+    morphology_visual.refresh.assert_called_once()
     window.viewport.commit.assert_called_once()
     assert not window._dirty_view_3d_targets
     window.close()

@@ -95,7 +95,7 @@ nav:
       - Overview: api/index.md
       - Public API: api/public-api.md
       - Builders: api/builders.md
-      - Backend Sessions: api/backends.md
+      - Backend Sessions and Utilities: api/backends.md
   - Examples & Reference:
       - Example Index: reference/example-index.md
       - API Index: reference/api-index.md

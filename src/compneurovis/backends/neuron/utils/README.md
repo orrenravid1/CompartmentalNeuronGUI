@@ -5,12 +5,12 @@ summary: Helpers for importing, laying out, and serializing NEURON morphologies 
 
 # NEURON Utils
 
-`compneurovis.neuronutils` contains small NEURON-specific helpers used by the backend, builders, and morphology-loading examples.
+`compneurovis.backends.neuron.utils` contains small NEURON-specific helpers used by the backend, builders, and morphology-loading examples.
 
 Import them from the package entrypoint:
 
 ```python
-from compneurovis.neuronutils import generate_layout, load_swc_neuron
+from compneurovis.backends.neuron.utils import generate_layout, load_swc_neuron
 ```
 
 Current helpers:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import multiprocessing as mp
 import sys
 import time
@@ -13,12 +12,79 @@ from vispy import app as vispy_app, use
 
 use(app="pyqt6", gl="gl+")
 
-from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
-from compneurovis.core import ActionSpec, AppSpec, ControlSpec, GridSliceOperatorSpec, LinePlotViewSpec, StateGraphViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding, SurfaceViewSpec
-from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_STATE_GRAPH, PANEL_KIND_VIEW_3D
-from compneurovis.frontends.vispy.panels import ControlsHostPanel, ControlsPanel, IndependentCanvas3DHostPanel, LinePlotHostPanel, LinePlotPanel, StateGraphHostPanel, StateGraphPanel, Viewport3DPanel
-from compneurovis.session import LayoutReplace, PanelPatch, ScenePatch, SceneReady, EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, PipeTransport, Reset, SetControl, StatePatch, Status, configure_multiprocessing, resolve_interaction_target_source
-from compneurovis.frontends.vispy.panel_helpers import field_from_grid_slice_operator
+from compneurovis._perf import (
+    clear_perf_logging_configuration,
+    configure_perf_logging,
+    perf_log,
+)
+from compneurovis.core import (
+    ActionSpec,
+    AppSpec,
+    ControlSpec,
+    GridSliceOperatorSpec,
+    LinePlotViewSpec,
+    MorphologyGeometry,
+    MorphologyViewSpec,
+    PanelSpec,
+    Scene,
+    StateGraphViewSpec,
+    SurfaceViewSpec,
+)
+from compneurovis.core.scene import (
+    PANEL_KIND_CONTROLS,
+    PANEL_KIND_LINE_PLOT,
+    PANEL_KIND_STATE_GRAPH,
+    PANEL_KIND_VIEW_3D,
+)
+from compneurovis.frontends.vispy.panels.controls import (
+    ControlsHostPanel,
+    ControlsPanel,
+)
+from compneurovis.frontends.vispy.panels.line_plot import (
+    LinePlotHostPanel,
+    LinePlotPanel,
+)
+from compneurovis.frontends.vispy.panels.state_graph import (
+    StateGraphHostPanel,
+    StateGraphPanel,
+)
+from compneurovis.frontends.vispy.panels.view3d import (
+    IndependentCanvas3DHostPanel,
+)
+from compneurovis.frontends.vispy.view3d.viewport import Viewport3DPanel
+from compneurovis.session import (
+    EntityClicked,
+    FieldAppend,
+    FieldReplace,
+    InvokeAction,
+    KeyPressed,
+    LayoutReplace,
+    PanelPatch,
+    PipeTransport,
+    Reset,
+    ScenePatch,
+    SceneReady,
+    SetControl,
+    StatePatch,
+    Status,
+    configure_multiprocessing,
+    resolve_interaction_target_source,
+)
+from compneurovis.frontends.vispy.interaction_context import FrontendInteractionContext
+from compneurovis.frontends.vispy.refresh_planning import (
+    RefreshPlanner,
+    RefreshTarget,
+    _target_kind_counts,
+    binding_key,
+    resolve_value,
+)
+from compneurovis.frontends.vispy.view_inputs.grid_slice import (
+    field_from_grid_slice_operator,
+)
+from compneurovis.frontends.vispy.view3d.visuals import (
+    MORPHOLOGY_3D_VISUAL_KEY,
+    SURFACE_3D_VISUAL_KEY,
+)
 from compneurovis.session.base import resolve_startup_scene_source
 
 DEFAULT_LINE_PLOT_MAX_REFRESH_HZ = 15.0
@@ -45,321 +111,12 @@ def _coords_are_equal(left: dict[str, np.ndarray], right: dict[str, np.ndarray])
     return all(np.array_equal(np.asarray(left[key]), np.asarray(right[key])) for key in left)
 
 
-@dataclass(frozen=True, slots=True)
-class RefreshTarget:
-    kind: str
-    view_id: str | None = None
-
-    @classmethod
-    def controls(cls) -> "RefreshTarget":
-        return cls("controls")
-
-    @classmethod
-    def line_plot(cls, view_id: str) -> "RefreshTarget":
-        return cls("line_plot", view_id)
-
-    @classmethod
-    def morphology(cls, view_id: str) -> "RefreshTarget":
-        return cls("morphology", view_id)
-
-    @classmethod
-    def surface_visual(cls, view_id: str) -> "RefreshTarget":
-        return cls("surface_visual", view_id)
-
-    @classmethod
-    def surface_style(cls, view_id: str) -> "RefreshTarget":
-        return cls("surface_style", view_id)
-
-    @classmethod
-    def surface_axes_geometry(cls, view_id: str) -> "RefreshTarget":
-        return cls("surface_axes_geometry", view_id)
-
-    @classmethod
-    def surface_axes_style(cls, view_id: str) -> "RefreshTarget":
-        return cls("surface_axes_style", view_id)
-
-    @classmethod
-    def operator_overlay(cls, view_id: str) -> "RefreshTarget":
-        return cls("operator_overlay", view_id)
-
-    @classmethod
-    def state_graph(cls, view_id: str) -> "RefreshTarget":
-        return cls("state_graph", view_id)
-
-
-RefreshTarget.CONTROLS = RefreshTarget.controls()
-
-
 def _update_type_counts(updates: list[Any]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for update in updates:
         name = type(update).__name__
         counts[name] = counts.get(name, 0) + 1
     return counts
-
-
-def _target_kind_counts(targets: set[RefreshTarget]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for target in targets:
-        counts[target.kind] = counts.get(target.kind, 0) + 1
-    return counts
-
-
-class RefreshPlanner:
-    SURFACE_VISUAL_PROPS = frozenset({"field_id", "geometry_id"})
-    SURFACE_STYLE_PROPS = frozenset(
-        {
-            "color_map",
-            "color_limits",
-            "color_by",
-            "surface_color",
-            "surface_shading",
-            "surface_alpha",
-            "background_color",
-        }
-    )
-    SURFACE_AXES_GEOMETRY_PROPS = frozenset(
-        {
-            "field_id",
-            "geometry_id",
-            "render_axes",
-            "axes_in_middle",
-            "tick_count",
-            "tick_length_scale",
-            "axis_labels",
-        }
-    )
-    SURFACE_AXES_STYLE_PROPS = frozenset(
-        {
-            "tick_label_size",
-            "axis_label_size",
-            "axis_color",
-            "text_color",
-            "axis_alpha",
-        }
-    )
-    GRID_SLICE_COMPUTE_PROPS = frozenset({"field_id", "geometry_id", "axis_state_key", "position_state_key"})
-    GRID_SLICE_STYLE_PROPS = frozenset({"color", "alpha", "fill_alpha", "width"})
-    LINE_PLOT_PROPS = frozenset(
-        {
-            "field_id",
-            "operator_id",
-            "x_dim",
-            "series_dim",
-            "selectors",
-            "x_label",
-            "y_label",
-            "x_unit",
-            "y_unit",
-            "pen",
-            "background_color",
-            "title",
-            "show_legend",
-            "series_colors",
-            "series_palette",
-            "rolling_window",
-            "trim_to_rolling_window",
-            "max_refresh_hz",
-            "y_min",
-            "y_max",
-            "x_major_tick_spacing",
-            "x_minor_tick_spacing",
-        }
-    )
-
-    def __init__(self, scene: Scene):
-        self.scene = scene
-
-    def _view_ids_in_3d_panels(self) -> tuple[str, ...]:
-        return tuple(
-            view_id
-            for panel in self.scene.layout.panels_of_kind(PANEL_KIND_VIEW_3D)
-            for view_id in panel.view_ids
-        )
-
-    def _view_3d(self, view_id: str):
-        return self.scene.views.get(view_id)
-
-    def morphology_views(self) -> dict[str, MorphologyViewSpec]:
-        return {
-            view_id: view
-            for view_id in self._view_ids_in_3d_panels()
-            if isinstance((view := self._view_3d(view_id)), MorphologyViewSpec)
-        }
-
-    def surface_views(self) -> dict[str, SurfaceViewSpec]:
-        return {
-            view_id: view
-            for view_id in self._view_ids_in_3d_panels()
-            if isinstance((view := self._view_3d(view_id)), SurfaceViewSpec)
-        }
-
-    def _panel_for_view(self, view_id: str, *, kind: str | None = None) -> PanelSpec | None:
-        return self.scene.layout.panel_for_view(view_id, kind=kind)
-
-    def grid_slice_operators_for_view(self, view_id: str) -> dict[str, GridSliceOperatorSpec]:
-        surface_view = self.surface_views().get(view_id)
-        if surface_view is None:
-            return {}
-        panel = self._panel_for_view(view_id, kind=PANEL_KIND_VIEW_3D)
-        if panel is None:
-            return {}
-        operators: dict[str, GridSliceOperatorSpec] = {}
-        for operator_id in panel.operator_ids:
-            operator = self.scene.operators.get(operator_id)
-            if not isinstance(operator, GridSliceOperatorSpec):
-                continue
-            if operator.field_id != surface_view.field_id:
-                continue
-            if operator.geometry_id not in {None, surface_view.geometry_id}:
-                continue
-            operators[operator_id] = operator
-        return operators
-
-    def line_views(self) -> dict[str, LinePlotViewSpec]:
-        return {
-            view_id: view
-            for panel in self.scene.layout.panels_of_kind(PANEL_KIND_LINE_PLOT)
-            for view_id in panel.view_ids
-            if isinstance((view := self.scene.views.get(view_id)), LinePlotViewSpec)
-        }
-
-    def state_graph_views(self) -> dict[str, "StateGraphViewSpec"]:
-        return {
-            view_id: view
-            for panel in self.scene.layout.panels_of_kind(PANEL_KIND_STATE_GRAPH)
-            for view_id in panel.view_ids
-            if isinstance((view := self.scene.views.get(view_id)), StateGraphViewSpec)
-        }
-
-    def full_refresh_targets(self) -> set[RefreshTarget]:
-        targets = {RefreshTarget.CONTROLS}
-        for view_id in self.morphology_views():
-            targets.add(RefreshTarget.morphology(view_id))
-        for view_id in self.surface_views():
-            targets.update(
-                {
-                    RefreshTarget.surface_visual(view_id),
-                    RefreshTarget.surface_axes_geometry(view_id),
-                    RefreshTarget.operator_overlay(view_id),
-                }
-            )
-        for view_id in self.line_views():
-            targets.add(RefreshTarget.line_plot(view_id))
-        for view_id in self.state_graph_views():
-            targets.add(RefreshTarget.state_graph(view_id))
-        return targets
-
-    def targets_for_state_change(self, state_key: str) -> set[RefreshTarget]:
-        targets: set[RefreshTarget] = set()
-
-        for view_id, morph_view in self.morphology_views().items():
-            if binding_key(morph_view.background_color) == state_key or binding_key(morph_view.color_limits) == state_key:
-                targets.add(RefreshTarget.morphology(view_id))
-
-        for view_id, surface_view in self.surface_views().items():
-            if any(binding_key(getattr(surface_view, prop)) == state_key for prop in self.SURFACE_VISUAL_PROPS if hasattr(surface_view, prop)):
-                targets.add(RefreshTarget.surface_visual(view_id))
-            if any(binding_key(getattr(surface_view, prop)) == state_key for prop in self.SURFACE_STYLE_PROPS if hasattr(surface_view, prop)):
-                targets.add(RefreshTarget.surface_style(view_id))
-            if any(
-                binding_key(getattr(surface_view, prop)) == state_key
-                for prop in self.SURFACE_AXES_GEOMETRY_PROPS
-                if hasattr(surface_view, prop)
-            ):
-                targets.add(RefreshTarget.surface_axes_geometry(view_id))
-            if any(
-                binding_key(getattr(surface_view, prop)) == state_key
-                for prop in self.SURFACE_AXES_STYLE_PROPS
-                if hasattr(surface_view, prop)
-            ):
-                targets.add(RefreshTarget.surface_axes_style(view_id))
-            operators = self.grid_slice_operators_for_view(view_id)
-            if any(
-                binding_key(getattr(operator, prop)) == state_key
-                for operator in operators.values()
-                for prop in self.GRID_SLICE_STYLE_PROPS
-            ):
-                targets.add(RefreshTarget.operator_overlay(view_id))
-            if any(state_key in {operator.axis_state_key, operator.position_state_key} for operator in operators.values()):
-                targets.add(RefreshTarget.operator_overlay(view_id))
-
-        for view_id, line_view in self.line_views().items():
-            if line_view.operator_id is not None:
-                operator = self.scene.operators.get(line_view.operator_id)
-                if isinstance(operator, GridSliceOperatorSpec) and state_key in {operator.axis_state_key, operator.position_state_key}:
-                    targets.add(RefreshTarget.line_plot(view_id))
-            if any(binding_key(value) == state_key for value in line_view.selectors.values()):
-                targets.add(RefreshTarget.line_plot(view_id))
-            if any(binding_key(getattr(line_view, prop)) == state_key for prop in ("pen", "background_color")):
-                targets.add(RefreshTarget.line_plot(view_id))
-
-        return targets
-
-    def targets_for_field_replace(self, field_id: str, coords_changed: bool = True) -> set[RefreshTarget]:
-        targets: set[RefreshTarget] = set()
-
-        for view_id, morph_view in self.morphology_views().items():
-            if morph_view.color_field_id == field_id:
-                targets.add(RefreshTarget.morphology(view_id))
-
-        for view_id, surface_view in self.surface_views().items():
-            if surface_view.field_id != field_id:
-                if any(operator.field_id == field_id for operator in self.grid_slice_operators_for_view(view_id).values()):
-                    targets.add(RefreshTarget.operator_overlay(view_id))
-                continue
-            targets.add(RefreshTarget.surface_visual(view_id))
-            if coords_changed or surface_view.color_limits is None:
-                targets.add(RefreshTarget.surface_axes_geometry(view_id))
-            if self.grid_slice_operators_for_view(view_id):
-                targets.add(RefreshTarget.operator_overlay(view_id))
-
-        for view_id, line_view in self.line_views().items():
-            if line_view.operator_id is not None:
-                operator = self.scene.operators.get(line_view.operator_id)
-                if isinstance(operator, GridSliceOperatorSpec) and operator.field_id == field_id:
-                    targets.add(RefreshTarget.line_plot(view_id))
-            elif getattr(line_view, "field_id", None) == field_id:
-                targets.add(RefreshTarget.line_plot(view_id))
-        for view_id, state_graph_view in self.state_graph_views().items():
-            if state_graph_view.node_field_id == field_id or state_graph_view.edge_field_id == field_id:
-                targets.add(RefreshTarget.state_graph(view_id))
-        return targets
-
-    def targets_for_view_patch(self, view_id: str, changed_props: set[str]) -> set[RefreshTarget]:
-        view = self.scene.views.get(view_id)
-        if isinstance(view, MorphologyViewSpec):
-            return {RefreshTarget.morphology(view_id)}
-        if isinstance(view, SurfaceViewSpec):
-            targets: set[RefreshTarget] = set()
-            if changed_props & self.SURFACE_VISUAL_PROPS:
-                targets.add(RefreshTarget.surface_visual(view_id))
-            if changed_props & self.SURFACE_STYLE_PROPS:
-                targets.add(RefreshTarget.surface_style(view_id))
-            if changed_props & self.SURFACE_AXES_GEOMETRY_PROPS:
-                targets.add(RefreshTarget.surface_axes_geometry(view_id))
-            if changed_props & self.SURFACE_AXES_STYLE_PROPS:
-                targets.add(RefreshTarget.surface_axes_style(view_id))
-            if changed_props & {"field_id", "geometry_id"}:
-                targets.add(RefreshTarget.operator_overlay(view_id))
-            if "max_refresh_hz" in changed_props:
-                targets.add(RefreshTarget.surface_visual(view_id))
-            return targets
-        if isinstance(view, LinePlotViewSpec) and changed_props & self.LINE_PLOT_PROPS:
-            return {RefreshTarget.line_plot(view_id)}
-        if isinstance(view, StateGraphViewSpec):
-            return {RefreshTarget.state_graph(view_id)}
-        return set()
-
-    def targets_for_operator_patch(self, operator_id: str, changed_props: set[str]) -> set[RefreshTarget]:
-        targets: set[RefreshTarget] = set()
-        for view_id in self.surface_views():
-            if operator_id in self.grid_slice_operators_for_view(view_id):
-                targets.add(RefreshTarget.operator_overlay(view_id))
-        for view_id, line_view in self.line_views().items():
-            if line_view.operator_id == operator_id and changed_props & self.GRID_SLICE_COMPUTE_PROPS:
-                targets.add(RefreshTarget.line_plot(view_id))
-        return targets
 
 
 class VispyFrontendWindow(QtWidgets.QMainWindow):
@@ -850,12 +607,18 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                         morphology_colors = latest.values
                     else:
                         morphology_colors = field.values
-        host.refresh_morphology(
-            view_id=view_id,
+        if morph_view is None or morphology_geometry is None:
+            return
+        resolved_state = self._resolved_morphology_state(morph_view)
+        visual = host.activate_visual(view_id, MORPHOLOGY_3D_VISUAL_KEY)
+        if visual is None:
+            return
+        host.set_background(resolved_state.get(f"{morph_view.id}:background_color", morph_view.background_color))
+        visual.refresh(
             morphology_geometry=morphology_geometry,
             morphology_view=morph_view,
             morphology_colors=morphology_colors,
-            resolved_state=self._resolved_morphology_state(morph_view) if morph_view is not None else {},
+            resolved_state=resolved_state,
         )
 
     def _refresh_surface_visual(self, view_id: str) -> None:
@@ -871,12 +634,18 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             surface_field = self.scene.fields[surface_view.field_id]
             if surface_view.geometry_id is not None:
                 grid_geometry = self.scene.geometries.get(surface_view.geometry_id)
-        host.refresh_surface_visual(
-            view_id=view_id,
+        if surface_view is None or surface_field is None:
+            return
+        resolved_state = self._resolved_surface_state(surface_view)
+        visual = host.activate_visual(view_id, SURFACE_3D_VISUAL_KEY)
+        if visual is None:
+            return
+        host.set_background(resolved_state[f"{surface_view.id}:background_color"])
+        visual.refresh_visual(
             surface_view=surface_view,
             surface_field=surface_field,
             grid_geometry=grid_geometry,
-            resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
+            resolved_state=resolved_state,
         )
 
     def _refresh_surface_axes_geometry(self, view_id: str) -> None:
@@ -884,10 +653,16 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if host is None:
             return
         surface_view = self._surface_view(view_id)
-        host.refresh_surface_axes_geometry(
-            view_id=view_id,
+        if surface_view is None:
+            return
+        resolved_state = self._resolved_surface_state(surface_view)
+        visual = host.activate_visual(view_id, SURFACE_3D_VISUAL_KEY)
+        if visual is None:
+            return
+        host.set_background(resolved_state[f"{surface_view.id}:background_color"])
+        visual.refresh_axes_geometry(
             surface_view=surface_view,
-            resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
+            resolved_state=resolved_state,
         )
 
     def _refresh_surface_axes_style(self, view_id: str) -> None:
@@ -895,10 +670,16 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if host is None:
             return
         surface_view = self._surface_view(view_id)
-        host.refresh_surface_axes_style(
-            view_id=view_id,
+        if surface_view is None:
+            return
+        resolved_state = self._resolved_surface_state(surface_view)
+        visual = host.activate_visual(view_id, SURFACE_3D_VISUAL_KEY)
+        if visual is None:
+            return
+        host.set_background(resolved_state[f"{surface_view.id}:background_color"])
+        visual.refresh_axes_style(
             surface_view=surface_view,
-            resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
+            resolved_state=resolved_state,
         )
 
     def _refresh_surface_style(self, view_id: str) -> None:
@@ -906,10 +687,16 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if host is None:
             return
         surface_view = self._surface_view(view_id)
-        host.refresh_surface_style(
-            view_id=view_id,
+        if surface_view is None:
+            return
+        resolved_state = self._resolved_surface_state(surface_view)
+        visual = host.activate_visual(view_id, SURFACE_3D_VISUAL_KEY)
+        if visual is None:
+            return
+        host.set_background(resolved_state[f"{surface_view.id}:background_color"])
+        visual.refresh_style(
             surface_view=surface_view,
-            resolved_state=self._resolved_surface_state(surface_view) if surface_view is not None else {},
+            resolved_state=resolved_state,
         )
 
     def _refresh_operator_overlays(self, view_id: str) -> None:
@@ -917,9 +704,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if host is None:
             return
         surface_view = self._surface_view(view_id)
+        if surface_view is None:
+            return
         operators = self._grid_slice_operators_for_view(view_id)
-        host.refresh_operator_overlays(
-            view_id=view_id,
+        visual = host.activate_visual(view_id, SURFACE_3D_VISUAL_KEY)
+        if visual is None:
+            return
+        visual.refresh_operator_overlays(
             surface_view=surface_view,
             operators=operators,
             resolved_operator_states={operator.id: self._resolved_grid_slice_state(operator) for operator in operators},
@@ -1553,84 +1344,6 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if self.transport is not None:
             self.transport.stop()
         super().closeEvent(event)
-
-
-def resolve_value(value, state: dict[str, Any]):
-    if isinstance(value, StateBinding):
-        return state.get(value.key)
-    return value
-
-
-def binding_key(value) -> str | None:
-    if isinstance(value, StateBinding):
-        return value.key
-    return None
-
-
-class FrontendInteractionContext:
-    def __init__(self, window: VispyFrontendWindow):
-        self.window = window
-
-    @property
-    def scene(self) -> Scene | None:
-        return self.window.scene
-
-    @property
-    def selected_entity_id(self) -> str | None:
-        value = self.window.state.get("selected_entity_id")
-        return str(value) if value is not None else None
-
-    def state(self, key: str, default: Any = None) -> Any:
-        return self.window.state.get(key, default)
-
-    def entity_info(self, entity_id: str | None = None) -> dict[str, Any] | None:
-        current_id = entity_id or self.selected_entity_id
-        if current_id is None or self.window.scene is None:
-            return None
-        for geometry in self.window.scene.geometries.values():
-            if not isinstance(geometry, MorphologyGeometry):
-                continue
-            try:
-                return geometry.entity_info(current_id)
-            except KeyError:
-                continue
-        return None
-
-    def set_state(self, key: str, value: Any) -> None:
-        self.window.state[key] = value
-        if self.window.refresh_planner is not None:
-            self.window._apply_refresh_targets(
-                self.window.refresh_planner.targets_for_state_change(key),
-                force_view_3d=True,
-            )
-
-    def show_status(self, message: str, timeout_ms: int | None = None) -> None:
-        self.window.statusBar().showMessage(message)
-        if timeout_ms is not None:
-            QtCore.QTimer.singleShot(timeout_ms, self.window.statusBar().clearMessage)
-
-    def clear_status(self) -> None:
-        self.window.statusBar().clearMessage()
-
-    def invoke_action(self, action_id: str, payload: dict[str, Any] | None = None) -> None:
-        if self.window.scene is None:
-            return
-        action = self.window.scene.actions.get(action_id)
-        if action is None:
-            return
-        resolved_payload = payload if payload is not None else {
-            key: resolve_value(value, self.window.state)
-            for key, value in action.payload.items()
-        }
-        self.window._send_action(action, resolved_payload)
-
-    def set_control(self, control_id: str, value: Any) -> None:
-        if self.window.scene is None:
-            return
-        control = self.window.scene.controls.get(control_id)
-        if control is None:
-            return
-        self.window._on_control_changed(control, value)
 
 
 def run_app(app_spec: AppSpec) -> None:

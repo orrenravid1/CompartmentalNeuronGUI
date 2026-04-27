@@ -9,3 +9,7 @@ summary: Backend-specific sessions and scene builders.
 
 - `neuron`
 - `jaxley`
+
+Backend-specific helpers live inside the owning backend package under `utils/`.
+Do not add simulator helper roots at the top level of `compneurovis`; keep those
+imports local to `compneurovis.backends.<backend>.utils`.

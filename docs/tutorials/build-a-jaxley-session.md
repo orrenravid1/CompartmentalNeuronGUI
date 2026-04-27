@@ -82,7 +82,7 @@ class MyJaxleySession(JaxleySession):
         ))
 ```
 
-All channel states are available in `self._state` after each step — no additional
+All channel states are available in `self._state` after each step - no additional
 recording calls in `setup_model()` are needed. `_read_state()` reads any state
 variable at the same compartment indices used for the morphology display.
 
@@ -157,6 +157,17 @@ def build_scene(self, *, geometry, display_values, time_value):
 ```
 
 This is usually the right layer for adjusting the default views without redoing the whole backend integration.
+
+## Loading and Positioning Cells
+
+Jaxley-specific SWC, cache, and geometry helpers live under
+`compneurovis.backends.jaxley.utils`.
+
+```python
+from compneurovis.backends.jaxley.utils import load_swc_jaxley, translate_cells_xyzr
+```
+
+Use that backend-owned package for Jaxley helpers.
 
 Next steps:
 

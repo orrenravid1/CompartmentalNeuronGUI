@@ -8,16 +8,26 @@ summary: Current PyQt6/VisPy frontend panels, renderers, and window orchestratio
 This package contains the current runnable frontend:
 
 - `renderers/`
-- `panel_helpers.py`
-- `panels.py`
+- `view3d/`
+- `panels/`
+- `view_inputs/`
+- `utils/`
 - `frontend.py`
 
 `renderers/` contains the VisPy-facing renderer classes, surface overlay
-visuals, and shared colormap sampling helpers. The package root re-exports the
-public renderer names so existing imports from
-`compneurovis.frontends.vispy.renderers` keep working.
-`panel_helpers.py` contains shared binding, surface-scene, and grid-slice
-projection helpers used by the widget panels.
+visuals, and shared colormap sampling helpers. Import renderer classes from the
+specific module that owns them.
+`view3d/` contains the generic VisPy canvas/camera host plus built-in 3-D
+visual adapters. The viewport mounts and activates 3-D visual objects, but it
+does not know which visual families exist.
+`panels/` contains the visible Qt panel families: 3-D hosts, line plots, state
+graphs, and controls. Import panel classes from the specific module that owns
+them.
+`view_inputs/` contains adapters from core `Field`, `OperatorSpec`, and
+frontend state objects into concrete panel or visual inputs. It is split into
+state-binding resolution, surface scene preparation, and grid-slice projection.
+`utils/` contains VisPy-only low-level visual primitives that are not generic
+core utilities.
 
 The frontend uses explicit refresh targets and long-lived renderer objects so state changes can update only the affected layers instead of forcing a full scene rebuild. Surface-axis overlays now split geometry refresh from style refresh and reuse pooled line/text visuals instead of rebuilding every tick label on each control drag.
 
@@ -47,12 +57,14 @@ on every live field update. `MorphologyViewSpec.max_refresh_hz` and
 many dirty views they present in one flush so one busy live panel does not
 starve the rest of the window.
 
-`Viewport3DPanel` treats morphology and surface rendering as primary renderers,
-not panel modes. The current independent-canvas host activates one primary
-renderer at a time through a small registry and lets renderer-owned overlays
-such as surface axes and grid-slice projections stay attached to that renderer.
-New 3-D visual families should extend the primary-renderer or overlay pattern
-instead of adding another panel mode string.
+`Viewport3DPanel` is intentionally generic. It owns the canvas, camera, active
+visual key, commit path, and generic click dispatch. Concrete content lives in
+mounted visual adapters such as `Morphology3DVisual` and `Surface3DVisual`.
+The current independent-canvas host mounts the built-in adapters and activates
+one visual at a time; renderer-owned details such as surface axes and
+grid-slice projections stay inside the surface adapter. New 3-D visual families
+should add another adapter that fits this contract, not another field or method
+on `Viewport3DPanel`.
 
 Grid operators such as `GridSliceOperatorSpec` are rendered as host-level
 overlays and can also feed other panels such as the line plot without turning

@@ -23,15 +23,7 @@ Highest-impact hotspots:
    - Planner and window duplicate scene navigation such as "which operators
      belong to this view."
 
-2. `src/compneurovis/frontends/vispy/panels.py`
-   - 1,883-line module carrying 3-D viewport, line plot, state graph, controls,
-     XY pad, and host widgets.
-   - `LinePlotPanel.refresh` has been split into named operator, selector,
-     single-trace, and series refresh phases.
-   - `ControlsPanel._build_control_row` now dispatches to one widget-family
-     builder per value spec.
-
-3. `src/compneurovis/core/scene.py`
+2. `src/compneurovis/core/scene.py`
    - `Scene` appears only at line 277 because `LayoutSpec` and panel
      normalization dominate the file.
    - `_normalize_explicit_panels` is 122 lines and mixes classification,
@@ -56,18 +48,25 @@ Highest-impact hotspots:
 
 - 2026-04-27: Split `src/compneurovis/frontends/vispy/renderers.py` into the
   `renderers/` package with `colormaps.py`, `morphology.py`, `surface.py`, and
-  overlay modules. The package root still re-exports the old import surface from
-  `compneurovis.frontends.vispy.renderers`.
+  overlay modules. The package root no longer re-exports renderer classes.
 - 2026-04-27: Split overlay implementation into `axes_overlay.py` and
-  `slice_overlay.py`, leaving `overlays.py` as a compatibility re-export.
-  Extracted overlay geometry construction from VisPy visual mutation.
-- 2026-04-27: Extracted `frontends/vispy/panel_helpers.py` from `panels.py` for
-  state binding, surface scene extraction, and grid-slice projection helpers.
+  `slice_overlay.py`. Extracted overlay geometry construction from VisPy visual
+  mutation.
+- 2026-04-27: Extracted `frontends/vispy/view_inputs/` from `panels.py` for
+  state binding, surface scene extraction, and grid-slice projection adapters.
 - 2026-04-27: Refactored `LinePlotPanel.refresh` and
   `ControlsPanel._build_control_row` into smaller phase/widget helpers.
-- 2026-04-27: Replaced the 3-D panel's internal "mode" state with an explicit
-  active-primary-renderer registry. Morphology and surface are now primary
-  renderers; surface axes and slice projections stay renderer-owned overlays.
+- 2026-04-27: Extracted the 3-D canvas host into generic `view3d/viewport.py` and
+  moved concrete morphology/surface behavior into mounted visual adapters in
+  `view3d/visuals.py`. `Viewport3DPanel` no longer constructs, stores, or
+  refreshes content-specific renderers.
+- 2026-04-27: Converted `frontends/vispy/panels.py` into the `panels/` package:
+  `view3d.py`, `line_plot.py`, `state_graph.py`, and `controls.py`. The package
+  root no longer re-exports panel classes; imports now target the owning module.
+- 2026-04-27: Moved simulator utility roots under their owning backend packages:
+  `backends/neuron/utils/` and `backends/jaxley/utils/`. Moved the VisPy-only
+  capped-cylinder primitive under `frontends/vispy/utils/`. Removed the old
+  top-level `neuronutils`, `jaxleyutils`, and `vispyutils` roots.
 
 ## Score Table
 
@@ -84,8 +83,10 @@ Scores use the `audit-source-organization` 0-16 rubric.
 | Frontend | `frontend.py` overall | 8 | Hard to maintain |
 | Frontend | `frontend.py` transport update reduction | 5 | Actively obscuring |
 | Frontend | `frontend.py` refresh scheduling | 6 | Hard to maintain |
-| Frontend | `panels.py` | 9 | Still too broad |
-| Frontend | `panel_helpers.py` | 14 | Good |
+| Frontend | `panels/` package | 14 | Good |
+| Frontend | `view_inputs/` package | 15 | Good |
+| Frontend | `view3d/viewport.py` | 15 | Good |
+| Frontend | `view3d/visuals.py` | 13 | Acceptable |
 | Frontend | `LinePlotPanel` | 12 | Acceptable |
 | Frontend | `StateGraphPanel` | 8 | Hard to maintain |
 | Frontend | `ControlsPanel` | 12 | Acceptable |
@@ -98,9 +99,9 @@ Scores use the `audit-source-organization` 0-16 rubric.
 | Backend | `backends/jaxley/scene.py` | 8 | Hard to maintain |
 | Builders | `builders/surface.py` | 10 | Acceptable but drifting |
 | Builders | `builders/replay.py` | 14 | Good |
-| Utilities | `vispyutils/cappedcylindercollection.py` | 8 | Hard to maintain |
-| Utilities | `neuronutils/json_utils.py` | 7 | Hard to maintain |
-| Utilities | `jaxleyutils/swc_utils.py` | 10 | Acceptable but drifting |
+| Utilities | `frontends/vispy/utils/cappedcylindercollection.py` | 8 | Hard to maintain |
+| Utilities | `backends/neuron/utils/json_utils.py` | 7 | Hard to maintain |
+| Utilities | `backends/jaxley/utils/swc_utils.py` | 10 | Acceptable but drifting |
 | Scripts | `scripts/pr_readiness.py` | 11 | Acceptable but drifting |
 
 ## Platform Findings
@@ -196,30 +197,27 @@ Recommended boundaries:
 - `panel_factory.py`: panel-kind dispatch and host construction.
 - Keep `frontend.py` as Qt window lifecycle plus wiring.
 
-### `panels.py`
+### `panels/` Package
 
-Problem: one module is carrying nearly every widget and grid projection helper.
-The broad order is understandable, but the file is too wide for top-down
-maintenance.
+Status: split into focused panel modules. The old broad module was converted
+into a package; panel imports now target the owning module.
 
 Findings:
 
-- `panels.py` has 1,883 lines because line-plot and control behavior is now
-  named inside the class instead of compressed into single methods. It remains
-  too broad as a module.
-- `LinePlotPanel.refresh` at `panels.py:579` is 30 lines and reads as a mode
+- `panels/line_plot.py` is 553 lines and centered on line plotting.
+- `LinePlotPanel.refresh` at `panels/line_plot.py:101` is 23 lines and reads as a mode
   dispatcher.
 - `LinePlotPanel._refresh_series` is 10 lines; its former phases now live in
   `_series_plot_data`, `_apply_series_structure`, `_update_series_items`, and
   `_update_series_legend`.
-- `StateGraphPanel.refresh` appears at `panels.py:1302` after private helpers
-  and `_build_visuals`; the public update entrypoint is buried.
-- `ControlsPanel._build_control_row` at `panels.py:1667` is 18 lines and
+- `StateGraphPanel.refresh` now appears in `panels/state_graph.py`, but
+  `_build_visuals` remains a 88-line implementation hotspot.
+- `ControlsPanel._build_control_row` in `panels/controls.py` is 18 lines and
   dispatches to `_add_float_control`, `_add_int_control`, `_add_bool_control`,
   and `_add_choice_control`.
-- State-graph helper functions at `panels.py:1139` sit between line-plot and
-  state-graph classes.
-- Grid-slice projection helpers now live in `panel_helpers.py` instead of being
+- State-graph helper functions now live beside `StateGraphPanel` instead of
+  sitting between unrelated panel classes.
+- Grid-slice projection helpers now live in `view_inputs/grid_slice.py` instead of being
   buried after the controls implementation.
 
 Recommended boundaries:
@@ -227,9 +225,11 @@ Recommended boundaries:
 - `panels/line_plot.py`
 - `panels/state_graph.py`
 - `panels/controls.py`
-- `panels/viewport3d.py`
-- Keep `panel_helpers.py` as the leaf module for field/binding/projection
-  helpers unless it grows large enough to split by concept.
+- `panels/view3d.py`
+- `view3d/viewport.py`
+- `view3d/visuals.py`
+- Keep `view_inputs/` split by adapter concept: `bindings.py`, `surface.py`,
+  and `grid_slice.py`.
 
 ### `renderers/` package
 
@@ -240,7 +240,7 @@ so the names-only module order exposes the renderer concepts directly:
 
 Findings:
 
-- `renderers/__init__.py` is a compatibility re-export layer.
+- `renderers/__init__.py` is only a package marker.
 - `renderers/colormaps.py` is a leaf helper module.
 - `renderers/morphology.py` now starts directly with `MorphologyRenderer`.
 - `renderers/surface.py` now starts directly with `SurfaceRenderer`.
@@ -327,7 +327,7 @@ Recommended boundary:
 
 ## Utility Findings
 
-### `vispyutils/cappedcylindercollection.py`
+### `frontends/vispy/utils/cappedcylindercollection.py`
 
 Problem: the outline hides most of the actual phases.
 
@@ -342,7 +342,7 @@ Recommended boundary:
 - Extract `_side_geometry`, `_cap_geometry`, `_side_transforms`, and
   `_cap_instance_data`.
 
-### `neuronutils/json_utils.py`
+### `backends/neuron/utils/json_utils.py`
 
 Problem: public function names are clear, but each hides many serialization
 phases.
@@ -359,7 +359,7 @@ Recommended boundary:
 - Separate extraction/serialization from file I/O.
 - Add helpers for mechanisms, ions, point processes, and geometry.
 
-### `jaxleyutils/swc_utils.py`
+### `backends/jaxley/utils/swc_utils.py`
 
 Problem: mostly coherent, but live loading and cache building duplicate graph
 navigation.
@@ -399,9 +399,10 @@ Use small, behavior-preserving PRs. Do not start by moving everything.
    - Do this after core layout is stable to avoid duplicate churn in builders.
 
 5. Frontend panel/render module split
-   - Split `panels.py` into panel-specific modules.
-   - Split renderer overlays/colormaps from primary renderer classes.
-   - Use import re-exports if needed to keep downstream imports stable.
+   - Completed the first split: `panels/`, `view3d/`, and `renderers/` now
+     mirror one another as focused subsystem packages.
+   - Next cleanup is inside `panels/state_graph.py` and `panels/controls.py`,
+     not a package-boundary problem.
 
 6. Transport worker loop cleanup
    - Extract a single worker loop with pipe/thread adapters.
@@ -410,7 +411,8 @@ Use small, behavior-preserving PRs. Do not start by moving everything.
 
 7. Utility cleanup
    - Refactor `CappedCylinderCollection.__init__`.
-   - Refactor `neuronutils/json_utils` into extraction/assembly/I/O helpers.
+   - Refactor `backends/neuron/utils/json_utils` into extraction/assembly/I/O
+     helpers.
 
 ## External Baseline: VisPy And Matplotlib
 
@@ -435,7 +437,9 @@ Measured source-size comparison:
 | Project | Representative file | Lines | Longest function/method | Notes |
 |---|---:|---:|---:|---|
 | CompNeuroVis | `frontends/vispy/frontend.py` | 1,648 | 184 | Window, update reducer, refresh scheduler, panel factory, and interaction adapter in one file. |
-| CompNeuroVis | `frontends/vispy/panels.py` | 1,883 | 88 | Many unrelated panel/widget families in one file; major line-plot/control methods are now named phases. |
+| CompNeuroVis | `frontends/vispy/panels/line_plot.py` | 553 | 32 | One panel family; phases are named and public refresh is near the top. |
+| CompNeuroVis | `frontends/vispy/panels/state_graph.py` | 284 | 88 | One panel family; `_build_visuals` remains the next local hotspot. |
+| CompNeuroVis | `frontends/vispy/panels/controls.py` | 496 | 54 | One panel family plus XY pad; widget-family builders are separated. |
 | CompNeuroVis | `frontends/vispy/renderers/` | 914 total | 62 | Split into renderer-specific modules; public overlay methods now delegate to named geometry helpers. |
 | VisPy | `app/canvas.py` | 828 | 103 | App/canvas subsystem; comparable to our frontend window but about half the size. |
 | VisPy | `visuals/image.py` | 701 | 64 | One primary visual concept. |
@@ -465,12 +469,12 @@ Practical bar:
 - Prefer the VisPy style: one dominant concept per module, private helpers close
   to that concept, and explicit subsystem packages once a file starts carrying
   multiple concepts.
-- Treat Matplotlib-style large files as acceptable only for mature public API
-  compatibility surfaces, not internal orchestration code.
+- Treat Matplotlib-style large files as acceptable only for mature public APIs,
+  not internal orchestration code.
 - For CompNeuroVis, a 700-1,200 line file may be acceptable only when it has one
   obvious owner concept. The renderer package is now closer to that bar;
-  `frontend.py` and `panels.py` still cross the line because they contain
-  several owner concepts.
+  `frontend.py` still crosses the line because it contains several owner
+  concepts.
 
 ## Files That Are Already In Good Shape
 

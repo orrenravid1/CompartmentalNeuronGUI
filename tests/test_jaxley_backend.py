@@ -8,7 +8,7 @@ import textwrap
 
 import pytest
 
-from compneurovis.jaxleyutils import parse_swc
+from compneurovis.backends.jaxley.utils import parse_swc
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,7 +52,7 @@ def test_load_swc_jaxley_small_celegans_files():
             f"""
             import json
             import jax
-            from compneurovis.jaxleyutils import load_swc_jaxley
+            from compneurovis.backends.jaxley.utils import load_swc_jaxley
 
             cell = load_swc_jaxley(r"{CELEGANS_DIR / filename}", ncomp=4, min_radius=1.0)
             print(json.dumps({{
@@ -78,7 +78,7 @@ def test_jaxley_swc_cache_roundtrip_matches_raw_load(tmp_path: Path):
             import json
             import numpy as np
             import jax
-            from compneurovis.jaxleyutils import (
+            from compneurovis.backends.jaxley.utils import (
                 load_cached_swc_jaxley,
                 load_swc_jaxley,
                 save_swc_jaxley_cache,
