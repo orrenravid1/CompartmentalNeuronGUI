@@ -39,11 +39,13 @@ summary: Generated map of the current package, examples, docs, and skills tree.
 - `src/compneurovis/frontends/__init__.py`
 - `src/compneurovis/frontends/vispy/__init__.py`
 - `src/compneurovis/frontends/vispy/frontend.py`
+- `src/compneurovis/frontends/vispy/interaction_context.py`
 - `src/compneurovis/frontends/vispy/panels/__init__.py`
 - `src/compneurovis/frontends/vispy/panels/controls.py`
 - `src/compneurovis/frontends/vispy/panels/line_plot.py`
 - `src/compneurovis/frontends/vispy/panels/state_graph.py`
 - `src/compneurovis/frontends/vispy/panels/view3d.py`
+- `src/compneurovis/frontends/vispy/refresh_planning.py`
 - `src/compneurovis/frontends/vispy/renderers/__init__.py`
 - `src/compneurovis/frontends/vispy/renderers/axes_overlay.py`
 - `src/compneurovis/frontends/vispy/renderers/colormaps.py`

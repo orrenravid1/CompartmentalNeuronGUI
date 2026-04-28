@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from vispy import scene
@@ -10,12 +11,24 @@ from compneurovis._perf import perf_log
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec
+from compneurovis.core.scene import PANEL_KIND_VIEW_3D
 from compneurovis.core.views import MorphologyViewSpec, SurfaceViewSpec
+from compneurovis.frontends.vispy.refresh_planning import resolve_value
 from compneurovis.frontends.vispy.view_inputs.grid_slice import overlay_from_grid_slice_operator
 from compneurovis.frontends.vispy.view_inputs.surface import SurfaceSceneData, surface_scene_from_field
 from compneurovis.frontends.vispy.renderers.morphology import MorphologyRenderer
 from compneurovis.frontends.vispy.renderers.surface import SurfaceRenderer
 from compneurovis.frontends.vispy.view3d.viewport import Viewport3DVisual
+
+if TYPE_CHECKING:
+    from compneurovis.core.scene import Scene
+
+
+@dataclass
+class View3DRefreshContext:
+    scene: "Scene"
+    state: dict[str, Any]
+    view_id: str
 
 
 MORPHOLOGY_3D_VISUAL_KEY = "morphology"
@@ -29,6 +42,45 @@ def builtin_3d_visuals(view, *, panel_id: str | None = None) -> dict[str, Viewpo
     }
 
 
+def _resolve_surface_state(view: SurfaceViewSpec, state: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "color_map", "color_limits", "color_by", "surface_color", "surface_shading",
+        "surface_alpha", "background_color", "render_axes", "axes_in_middle",
+        "tick_count", "tick_length_scale", "tick_label_size", "axis_label_size",
+        "axis_color", "text_color", "axis_alpha",
+    )
+    return {f"{view.id}:{k}": resolve_value(getattr(view, k), state) for k in keys}
+
+
+def _get_panel_slice_operators(ctx: View3DRefreshContext, view: SurfaceViewSpec) -> list[GridSliceOperatorSpec]:
+    panel = ctx.scene.layout.panel_for_view(ctx.view_id, kind=PANEL_KIND_VIEW_3D)
+    if panel is None:
+        return []
+    ops = []
+    for op_id in panel.operator_ids:
+        op = ctx.scene.operators.get(op_id)
+        if not isinstance(op, GridSliceOperatorSpec):
+            continue
+        if op.field_id != view.field_id or op.geometry_id not in {None, view.geometry_id}:
+            continue
+        ops.append(op)
+    return ops
+
+
+def _resolve_operator_state(op: GridSliceOperatorSpec, state: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        f"{op.id}:color":      resolve_value(op.color, state),
+        f"{op.id}:alpha":      resolve_value(op.alpha, state),
+        f"{op.id}:fill_alpha": resolve_value(op.fill_alpha, state),
+        f"{op.id}:width":      resolve_value(op.width, state),
+    }
+    if op.axis_state_key:
+        result[op.axis_state_key] = state.get(op.axis_state_key)
+    if op.position_state_key:
+        result[op.position_state_key] = state.get(op.position_state_key)
+    return result
+
+
 class Morphology3DVisual:
     def __init__(self, view, *, panel_id: str | None = None):
         self._panel_id = panel_id
@@ -38,6 +90,35 @@ class Morphology3DVisual:
     def clear(self) -> None:
         self.renderer.clear()
         self._active_geometry = None
+
+    def refresh_for_target(
+        self,
+        kind: str,
+        view: MorphologyViewSpec,
+        ctx: View3DRefreshContext,
+    ) -> None:
+        geometry = ctx.scene.geometries.get(view.geometry_id)
+        if not isinstance(geometry, MorphologyGeometry):
+            return
+        morphology_colors = None
+        if view.color_field_id:
+            field = ctx.scene.fields.get(view.color_field_id)
+            if field is not None:
+                if view.sample_dim and view.sample_dim in field.dims:
+                    morphology_colors = field.select({view.sample_dim: -1}).values
+                else:
+                    morphology_colors = field.values
+        resolved_state = {
+            f"{view.id}:background_color": resolve_value(view.background_color, ctx.state),
+            f"{view.id}:color_limits":     resolve_value(view.color_limits, ctx.state),
+            f"{view.id}:color_norm":       view.color_norm,
+        }
+        self.refresh(
+            morphology_geometry=geometry,
+            morphology_view=view,
+            morphology_colors=morphology_colors,
+            resolved_state=resolved_state,
+        )
 
     def refresh(
         self,
@@ -98,6 +179,38 @@ class Surface3DVisual:
         self.renderer.clear()
         self.scene_data = None
         self._coord_key = None
+
+    def refresh_for_target(
+        self,
+        kind: str,
+        view: SurfaceViewSpec,
+        ctx: View3DRefreshContext,
+    ) -> None:
+        resolved_state = _resolve_surface_state(view, ctx.state)
+        if kind == "surface_visual":
+            surface_field = ctx.scene.fields.get(view.field_id)
+            if surface_field is None:
+                return
+            grid_geometry = ctx.scene.geometries.get(view.geometry_id) if view.geometry_id else None
+            self.refresh_visual(
+                surface_view=view,
+                surface_field=surface_field,
+                grid_geometry=grid_geometry,
+                resolved_state=resolved_state,
+            )
+        elif kind == "surface_style":
+            self.refresh_style(surface_view=view, resolved_state=resolved_state)
+        elif kind == "surface_axes_geometry":
+            self.refresh_axes_geometry(surface_view=view, resolved_state=resolved_state)
+        elif kind == "surface_axes_style":
+            self.refresh_axes_style(surface_view=view, resolved_state=resolved_state)
+        elif kind == "operator_overlay":
+            operators = _get_panel_slice_operators(ctx, view)
+            self.refresh_operator_overlays(
+                surface_view=view,
+                operators=operators,
+                resolved_operator_states={op.id: _resolve_operator_state(op, ctx.state) for op in operators},
+            )
 
     def refresh_visual(
         self,
