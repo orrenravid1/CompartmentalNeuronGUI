@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "tool": "scripts/pr_readiness.py",
+  "workflow": "pr-readiness",
+  "generated_at_utc": "2026-05-06T06:39:31.397823+00:00",
+  "attestation_path": ".compneurovis/pr-readiness/1e8ebc086f133262653b4a50ac26849d77a59ea6.json",
+  "candidate_commit": "1e8ebc086f133262653b4a50ac26849d77a59ea6",
+  "candidate_tree": "0bb236657d257282b143dad8de6e6c351a1a94f9",
+  "candidate_subject": "chore: bump version to 0.3.0",
+  "expected_final_commit": {
+    "subject": "chore(pr-readiness): attest 1e8ebc086f13",
+    "trailers": {
+      "PR-Readiness-For": "1e8ebc086f133262653b4a50ac26849d77a59ea6",
+      "PR-Readiness-Tree": "0bb236657d257282b143dad8de6e6c351a1a94f9"
+    },
+    "changed_paths": [
+      ".compneurovis/pr-readiness/1e8ebc086f133262653b4a50ac26849d77a59ea6.json"
+    ]
+  },
+  "verification_commands": [
+    {
+      "argv": [
+        "python",
+        "scripts/check_architecture_invariants.py"
+      ],
+      "duration_seconds": 10.331
+    },
+    {
+      "argv": [
+        "python",
+        "scripts/check_packaging_metadata.py"
+      ],
+      "duration_seconds": 0.453
+    },
+    {
+      "argv": [
+        "python",
+        "scripts/generate_mcp_configs.py",
+        "--check"
+      ],
+      "duration_seconds": 0.18
+    },
+    {
+      "argv": [
+        "pytest"
+      ],
+      "duration_seconds": 52.964
+    },
+    {
+      "argv": [
+        "python",
+        "-m",
+        "compileall",
+        "src",
+        "examples",
+        "tests"
+      ],
+      "duration_seconds": 0.244
+    },
+    {
+      "argv": [
+        "python",
+        "scripts/generate_indexes.py",
+        "--check"
+      ],
+      "duration_seconds": 0.288
+    },
+    {
+      "argv": [
+        "python",
+        "-m",
+        "mkdocs",
+        "build",
+        "--strict"
+      ],
+      "duration_seconds": 9.404
+    }
+  ]
+}
