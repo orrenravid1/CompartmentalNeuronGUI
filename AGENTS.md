@@ -172,6 +172,7 @@ When recording new work, use the right file:
 Files:
 
 - Architecture overview: `docs/architecture/core-model.md`
+- Runtime architecture map: `docs/architecture/runtime-architecture-map.md`
 - Roadmap (phases, next steps, transition targets): `docs/architecture/design/roadmap.md`
 - Design decisions (settled doctrine and lessons): `docs/architecture/design/decisions.md`
 - Backlog (deferred features, infrastructure, cleanup): `docs/architecture/design/backlog.md`

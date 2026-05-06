@@ -366,6 +366,42 @@ Detailed proposal: [WebSocket Transport Proposal](proposals/websocket-transport-
 
 ---
 
+### Notebook Host / Python Notebook Compatibility
+
+Phase: 3
+
+The architecture proposal identifies Jupyter notebooks as a desired host, and
+the current core model is compatible with that direction. The current concrete
+implementation is not notebook-ready, though: `run_app(...)` launches the
+PyQt6/VisPy desktop frontend, `AppSpec` has no pluggable transport field,
+`PipeTransport` is local Python process/thread IPC, worker-backed sessions need
+importable session sources, and the base package currently carries desktop GUI
+dependencies.
+
+The right notebook path is a separate host/frontend over the shared
+`Scene`/`SessionUpdate` substrate, not reuse of the Qt window inside a notebook.
+Likely milestones:
+
+- split import and dependency boundaries so core/protocol imports do not require
+  Qt, VisPy, or pyqtgraph
+- introduce a real transport seam or notebook host runner before live notebook
+  backends are promised
+- render static scenes, controls, and line plots with notebook-native widgets
+  first
+- add live `FieldReplace`, `FieldAppend`, `StatePatch`, and `Status` handling
+  with notebook-specific throttling
+- defer full 3-D picking, tool parity, and desktop-layout parity until the basic
+  notebook host is proven
+
+Current architecture map:
+[Runtime Architecture Map](../runtime-architecture-map.md#notebook-compatibility)
+
+Deferral reason: notebook support is feasible, but dependency boundaries,
+transport seams, and event-loop behavior need deliberate design before it should
+be advertised as a supported host.
+
+---
+
 ### Repo-Local MCP Server
 
 Phase: infrastructure

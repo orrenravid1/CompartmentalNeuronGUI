@@ -77,6 +77,7 @@ nav:
   - Architecture:
       - Overview: architecture/index.md
       - Core Model: architecture/core-model.md
+      - Runtime Architecture Map: architecture/runtime-architecture-map.md
       - Session Protocol: architecture/session-protocol.md
       - VisPy Frontend: architecture/vispy-frontend.md
       - Release Process: architecture/release-process.md

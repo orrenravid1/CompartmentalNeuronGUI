@@ -134,6 +134,8 @@ Scope:
 
 - add alternate transports such as websocket-based transport
 - support alternate frontends such as Unity
+- support notebook hosts/frontends over the same scene/update substrate without
+  requiring the current PyQt6/VisPy desktop frontend
 - deepen editing-oriented workflows such as NeuroML visual authoring after the Phase 2 app-mode split exists
 - add more simulator/backend families beyond the current NEURON-first implementation
 - add headless/export workflows for serializing scenes, rendering images, or generating static web/report artifacts without an interactive event loop
@@ -142,6 +144,8 @@ Target outcomes:
 
 - frontend-agnostic protocol exercised by more than one frontend
 - transport-agnostic session model exercised by more than one transport
+- notebook display path for at least static scenes, controls, and live traces
+  before attempting full desktop-layout or picking parity
 - editor-style and export workflows living on the same core model rather than as separate infrastructure
 
 ## Next 5 Implementation Steps
@@ -235,6 +239,8 @@ These are the benchmark apps to use when validating architectural changes. If a 
 - What should be the stable naming for public app modes: `NeuronViewer`, `NeuronLiveApp`, `StaticApp`, `ReplayApp`, `DocumentApp`, `HeadlessApp`, or a smaller set of names?
 - Where should the `Tool` abstraction sit so native simulator tools, document-editor tools, and frontend interaction tools share enough structure without forcing one ontology?
 - Should document-edit update messages be introduced before the first serious NeuroML editor, or only when the editor implementation provides concrete pressure?
+- Should the first notebook milestone be a notebook-native inline frontend,
+  a notebook-controlled sidecar desktop window, or both as separate host modes?
 
 ## Update Rule
 
