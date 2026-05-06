@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name        = "compneurovis"
-version     = "0.2.0"
+version     = "0.3.0"
 description = "A VisPy/PyQt6 GUI for compartmental neuron visualization"
 authors     = ["Orren Ravid"]
 readme      = "README.md"

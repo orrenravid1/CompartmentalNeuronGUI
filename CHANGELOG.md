@@ -10,6 +10,8 @@ Use it together with:
 
 ## Unreleased
 
+## 0.3.0 - 2026-05-05
+
 ### Changed
 
 - Renamed the live-colored directed graph panel API to `StateGraphViewSpec` and `PANEL_KIND_STATE_GRAPH` for channel-state, finite-state-machine, and other state-transition visualizations.
