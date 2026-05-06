@@ -45,6 +45,8 @@ The main architectural mismatches still present in code. If work resumes after a
    distinguish the shared runtime/event substrate from sibling public modes such as `StaticApp`, `LiveApp`, simulator attachment/viewer APIs, document/editor apps, and headless/export flows.
    Near-term pressure point:
    a NeuroML editor, a static replay viewer, and a live NEURON tuning app should share scene/update/frontend infrastructure without pretending to be subclasses of the same simulator-facing workflow.
+   Active proposal:
+   [Backend, Transport, and Frontend Abstractions](proposals/backend-transport-frontend-proposal.md)
 
 3. Separate simulation cadence from presentation cadence
    Current issue:

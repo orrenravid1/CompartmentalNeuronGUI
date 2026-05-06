@@ -243,7 +243,7 @@ Current workaround: subclass `BufferedSession` directly, as in `examples/surface
 
 ---
 
-### Built-In Capability Registry
+### Built-In Binding / Capability Registry
 
 Phase: 2
 
@@ -251,14 +251,19 @@ Reset already exists as a default action in replay and simulator sessions, but
 common behaviors still reach the UI through a mix of protocol commands, session
 defaults, frontend special-casing, and direct `ActionSpec` wiring. Built-in
 behaviors such as reset, pause/resume, and future step/capture/export actions
-should become declarative capabilities rather than hand-wired actions.
+should become declarative built-in bindings first, and only later a generic
+capability system if repeated bindings prove the need.
 
 Intended direction:
-- apps or builders opt into capabilities
-- capabilities provide default label, button presence, shortcut, and command dispatch semantics
+- apps or builders opt into built-in behavior declarations
+- built-in bindings provide default label, button presence, shortcut, and
+  command dispatch semantics
 - custom `ActionSpec` remains available for truly app-specific behavior
 
 This should remove frontend special-casing and make common simulation affordances easy to add consistently across examples and real apps.
+
+Related runtime contract:
+[Backend, Transport, and Frontend Abstractions](proposals/backend-transport-frontend-proposal.md#capabilities-and-parts)
 
 ---
 
@@ -309,6 +314,40 @@ Long-term direction:
 - avoid baking one workflow model into `ActionSpec`
 
 Near-term priority: simplify the public authoring layer so real apps like the external pharynx workflow and signaling cascade can be expressed with mostly defaults, concise configuration, and small semantic callbacks.
+
+---
+
+### Backend / Transport / Frontend Runtime Naming
+
+Phase: 2
+
+The current runtime already behaves like a `Backend <-> Transport <->
+Frontend` system, but the public and internal vocabulary still exposes
+`Session`, `SessionCommand`, `SessionUpdate`, `PipeTransport`, and
+`VispyFrontendWindow` before the simpler mental model. That makes the core
+architecture harder to explain than it needs to be.
+
+The next cleanup should introduce explicit `Backend`, `Transport`, and
+`Frontend` protocols before any large rename. Current sessions can satisfy the
+backend protocol, `PipeTransport` can satisfy the transport protocol, and
+`VispyFrontendWindow` can remain the current desktop frontend implementation.
+The transport-facing shape should be a thin typed `Message` whose `intent`
+starts with command and update semantics. The concrete command/update
+dataclasses should remain precise as typed payload schemas, with registered
+message types carrying payload type and allowed-intent metadata. Transport
+bookkeeping such as ids, correlation ids, and delivery modes should stay out of
+the core `Message` until real transports force an envelope or policy layer.
+`Scene` stays a declarative payload/model, not shared mutable runtime state. The
+same proposal reserves `ResourceRef` and `Snapshot` for a later state/resource
+plane, and reserves `Capability` until concrete trace, control, selection, and
+morphology bindings prove a shared package contract. Runner or `AppRuntime`
+lifecycle code stays out of the core ownership model.
+
+Detailed proposal:
+[Backend, Transport, and Frontend Abstractions](proposals/backend-transport-frontend-proposal.md)
+
+Deferral reason: this should happen as a planned naming/protocol refactor, not
+as incidental churn during unrelated feature work.
 
 ---
 

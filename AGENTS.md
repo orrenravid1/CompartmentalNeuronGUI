@@ -182,6 +182,7 @@ Files:
 - Layout workbench proposal: `docs/architecture/design/proposals/layout-workbench-proposal.md`
 - Panel layout updates proposal: `docs/architecture/design/proposals/panel-layout-updates.md`
 - WebSocket transport proposal: `docs/architecture/design/proposals/websocket-transport-proposal.md`
+- Backend/transport/frontend abstraction proposal: `docs/architecture/design/proposals/backend-transport-frontend-proposal.md`
 - Release process: `docs/architecture/release-process.md`
 - PR readiness attestation: `docs/architecture/pr-readiness-attestation.md`
 - Session protocol: `docs/architecture/session-protocol.md`
