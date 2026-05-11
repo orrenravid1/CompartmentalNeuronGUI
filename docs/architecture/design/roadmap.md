@@ -14,10 +14,16 @@ For *why* decisions were made, see [Design Decisions](decisions.md). For deferre
 Stable governing principles. These should not change without deliberate discussion.
 
 - Keep `Field` as the primary data primitive.
-- Keep `Scene + optional Session + Frontend + Transport` as the top-level split.
-- Treat the core model and session protocol as an internal runtime substrate, not as the default scientific authoring surface.
+- Keep `AppSpec + optional Backend + Frontend + Transport` as the target
+  top-level split; the current `Scene`/`Session` names are slated for direct
+  breaking rename in the active backend/transport/frontend proposal.
+- Treat the core model and runtime protocol as an internal runtime substrate, not as the default scientific authoring surface.
 - Support multiple public app modes over that substrate: native simulator attachment, live simulation apps, static/replay visualization, document/editor workflows, and headless/export workflows.
-- Keep NEURON and other simulator users in their native programming model. CompNeuroVis should attach to simulator objects, observe references, expose controls, add tools, and render views rather than replacing simulator code with a framework-owned DSL.
+- Keep NEURON, Jaxley, MOOSE, and other simulator users in their native
+  programming model. CompNeuroVis should attach to native roots, paths, objects,
+  callbacks, or explicit adapters; observe references; expose controls; add
+  tools; and render views rather than replacing simulator code with a
+  framework-owned DSL or model base class.
 - Treat `NeuronSession` and other simulator sessions as integration implementations, not as the conceptual root of the whole framework.
 - Keep frontend state owned by the frontend, not by sessions.
 - Prefer typed append/patch messages over bundled full-state replacements when only part of the state changed.
@@ -25,6 +31,9 @@ Stable governing principles. These should not change without deliberate discussi
 - Prefer library-level cross-platform behavior over requiring unusual user script patterns.
 - Keep backend choice, feature choice, and layout choice orthogonal.
 - Keep declarative builders optional and composable. They should lower into the same substrate as native attachment APIs, not create isolated app families.
+- Treat physics engines as backend-side adapters when they participate in
+  simulation state. Unity can be a frontend when it renders, but Unity physics
+  belongs inside a backend or coupled backend.
 
 ## Current Transition Targets
 
@@ -34,9 +43,11 @@ The main architectural mismatches still present in code. If work resumes after a
    Current issue:
    real apps such as signaling-cascade and the external pharynx research workflow still expose too much `Scene`/session plumbing for the intended scientific user.
    Needed direction:
-   users should keep writing native simulator or scientific Python code, then attach CompNeuroVis features such as sections, traces, controls, tools, and layout declarations without needing to think about transport or low-level scene assembly.
+   users should keep writing native simulator or scientific Python code, then attach CompNeuroVis features such as sections, traces, controls, tools, ports, and layout declarations without needing to think about transport or low-level scene assembly. Attachment means adapters over native handles, paths, callbacks, and explicit targets, not a requirement to reshape the model into a CompNeuroVis-owned object.
    Near-term pressure point:
-   trace declarations should create recorders, fields, views, panels, retention policy, append behavior, and reset behavior automatically. Built-in behaviors such as reset/pause should become declarative capabilities with default buttons, shortcuts, and command wiring rather than ad hoc per-example or per-session action plumbing.
+   trace declarations should create recorders, fields, views, panels, append behavior, reset behavior, and later bounded-history policy automatically. Built-in behaviors such as reset/pause should become declarative bindings with default buttons, shortcuts, and command wiring rather than ad hoc per-example or per-session action plumbing.
+   Active proof:
+   [Composable Authoring Proof](proposals/composable-authoring-proof.md)
 
 2. Separate runtime substrate from app modes
    Current issue:
@@ -101,7 +112,7 @@ Status: not complete
 
 Scope:
 
-- add native simulator attachment APIs, starting with NEURON, so users can construct simulator models normally and then register sections, traces, controls, tools, and layout features
+- add native simulator attachment APIs, starting with NEURON, so users can construct simulator models normally and then register sections, traces, controls, tools, ports, and layout features through explicit native targets or callbacks
 - split the public app model into sibling modes over the same substrate: native simulator attachment, live simulation, static/replay, document/editor, and headless/export
 - replace the transitional fixed layout with a genuinely generic workbench/layout model
 - move closer to Blender/Unity/Unreal-style panel composition
@@ -140,6 +151,9 @@ Scope:
   requiring the current PyQt6/VisPy desktop frontend
 - deepen editing-oriented workflows such as NeuroML visual authoring after the Phase 2 app-mode split exists
 - add more simulator/backend families beyond the current NEURON-first implementation
+- support coupled neural-physics backend patterns where a neural simulator
+  and MuJoCo, Unity physics, or another body engine exchange state through
+  backend-owned ports and coupling policy
 - add headless/export workflows for serializing scenes, rendering images, or generating static web/report artifacts without an interactive event loop
 
 Target outcomes:
@@ -148,6 +162,8 @@ Target outcomes:
 - transport-agnostic session model exercised by more than one transport
 - notebook display path for at least static scenes, controls, and live traces
   before attempting full desktop-layout or picking parity
+- backend composition path for at least one neural-plus-physics design sketch
+  before any public co-simulation API is promised
 - editor-style and export workflows living on the same core model rather than as separate infrastructure
 
 ## Next 5 Implementation Steps
@@ -200,6 +216,9 @@ Phase 2 has meaningfully started only when all of the following are true:
 
 - default backend builders no longer imply that morphology coloring is inherently voltage-only
 - at least one native simulator attachment path exists for NEURON users who want to keep writing normal NEURON code and add CompNeuroVis features around it
+- native attachment APIs document what can be passed to `attach(...)`:
+  simulator roots, paths, native objects, explicit adapters, callbacks, or
+  ports, with ambiguous details expressed through explicit targets
 - at least one higher-level, feature-composable builder path exists for common scientific apps that do not start from simulator objects
 - trace declarations own field/view/panel/update/reset wiring for common line plots
 - control bindings can target callbacks or simulator object attributes without a per-example `apply_control` ladder for the common case
@@ -235,7 +254,8 @@ These are the benchmark apps to use when validating architectural changes. If a 
 
 ## Open Questions
 
-- Should startup scenes become part of the `Session` interface or live in builders?
+- Should startup app declarations become part of the `Backend` interface,
+  `RunSpec`/runner setup, or builder output?
 - Should plot configuration remain on `LinePlotViewSpec`, or do we need a higher-level plot panel model once multiple plot panels land?
 - How much renderer invalidation should be explicit vs inferred from dependencies?
 - What should be the stable naming for public app modes: `NeuronViewer`, `NeuronLiveApp`, `StaticApp`, `ReplayApp`, `DocumentApp`, `HeadlessApp`, or a smaller set of names?
@@ -243,6 +263,10 @@ These are the benchmark apps to use when validating architectural changes. If a 
 - Should document-edit update messages be introduced before the first serious NeuroML editor, or only when the editor implementation provides concrete pressure?
 - Should the first notebook milestone be a notebook-native inline frontend,
   a notebook-controlled sidecar desktop window, or both as separate host modes?
+- What co-simulation timing policy should be exposed first for neural-plus-body
+  workflows: lockstep fixed-dt, physics substeps per neural step, neural
+  substeps per physics step, asynchronous latest-state exchange, or
+  event/contact-driven exchange?
 
 ## Update Rule
 

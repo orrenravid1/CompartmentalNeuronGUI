@@ -93,6 +93,7 @@ nav:
               - Panel Layout Updates: architecture/design/proposals/panel-layout-updates.md
               - WebSocket Transport: architecture/design/proposals/websocket-transport-proposal.md
               - Backend, Transport, and Frontend: architecture/design/proposals/backend-transport-frontend-proposal.md
+              - Composable Authoring Proof: architecture/design/proposals/composable-authoring-proof.md
   - API Reference:
       - Overview: api/index.md
       - Public API: api/public-api.md

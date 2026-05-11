@@ -7,6 +7,9 @@ summary: Proposal to rename and clarify the runtime core around explicit Backend
 
 Status: proposal
 
+Related proof:
+[Composable Authoring Proof](composable-authoring-proof.md)
+
 This proposal turns the current runtime architecture into three named
 abstractions:
 
@@ -29,7 +32,27 @@ already behaves like a backend/transport/frontend system, but the code and docs
 still expose `Session`, update subclasses, and concrete VisPy/Pipe names before
 the simpler mental model. This proposal proves that the simpler model can cover
 today's static, replay, NEURON, Jaxley, desktop, future notebook, future
-WebSocket, document, and headless paths before code is renamed.
+WebSocket, document, and headless paths and can be implemented as a direct
+breaking refactor.
+
+## Migration Posture
+
+This proposal assumes the current branch can break public API. Backward
+compatibility should not drive the design.
+
+Rules:
+
+- Prefer direct renames over aliases.
+- Do not keep `Session` and `Backend` as parallel public vocabulary.
+- Do not keep old `Scene` and new `AppSpec` as parallel public vocabulary after
+  the app-contract split lands.
+- Do not add compatibility shims unless they are temporary scaffolding inside a
+  single implementation PR.
+- Update examples, docs, invariants, and public exports in the same sweep as the
+  breaking rename.
+
+The goal is one coherent vocabulary at the end of the refactor, not a migration
+layer.
 
 ## Core Claim
 
@@ -40,6 +63,16 @@ Backend owns model, data, simulation, replay, or document execution.
 Frontend owns presentation, interaction, and UI state.
 Transport moves Messages between them.
 ```
+
+`Backend` may be a simple adapter, a simulator wrapper, a replay source, or a
+coupled process that coordinates multiple simulation engines. For example, a
+C. elegans app may couple a neural simulator to a MuJoCo or Unity physics body
+model. That neural-physics coupling belongs inside a backend composition layer,
+not in the frontend transport.
+
+Simulator adapters attach to native simulator handles. They must not require a
+scientist to rewrite a NEURON, Jaxley, MOOSE, MuJoCo, or custom model into a
+CompNeuroVis-owned model class.
 
 The runtime diagram is only:
 
@@ -78,11 +111,16 @@ flowchart LR
     Transport[Transport<br/>moves messages]
     Frontend[Frontend<br/>owns presentation and UI state]
 
-    Frontend -->|Message| Transport
+    Frontend -->|Message flow<br/>runner takes outbound| Transport
     Transport -->|Message| Backend
     Backend -->|Message| Transport
     Transport -->|Message| Frontend
 ```
+
+Arrows in high-level architecture diagrams show logical message flow, not object
+references. Backends and frontends do not receive a transport object in their
+base protocol. A runner or transport worker calls `take_outbound_messages()`
+on the actor, then calls `Transport.send(...)` for each produced message.
 
 Future extensions hang off that core, but do not change the ownership model:
 
@@ -129,6 +167,7 @@ implemented today.
 | `ResourceRef` | Future state/resource extension | Not implemented yet; closest current forms are field ids, view ids, control ids, and state keys. | Stable reference to backend-owned or frontend-owned state. |
 | `Snapshot` | Future state/resource extension | Not implemented yet. Current code sends values through `AppSpecReady`, `FieldReplace`, `FieldAppend`, and `StatePatch`. | Versioned point-in-time value read from a resource. |
 | concrete bindings | Future feature-composition extension | Closest current forms are builders, actions, controls, views, panels, and backend-specific session helpers. | Start with `TraceBinding`, `ControlBinding`, `SelectionBinding`, and `MorphologyBinding`. |
+| `CoupledBackend` | Future backend composition pattern | Not implemented yet. Closest current shape is custom `BufferedSession` code that owns all stepping and sampling itself. | One backend runtime that coordinates neural, physics, replay, or analysis adapters through internal ports and a coupling policy. |
 | `Capability` | Reserved future vocabulary | Not implemented yet. | Promote only if concrete bindings prove a shared cross-boundary package contract. |
 
 Feasibility proof:
@@ -163,11 +202,11 @@ The first code step renames existing classes to the new vocabulary directly.
 
 ## Target Protocols
 
-The first implementation should add structural protocols around current classes
-without forcing a large rename. The long-term target should use message-oriented
-transport names so direction is not baked into the API. The core target is
-deliberately small: four nouns, typed payloads, and no transport policy fields
-inside the semantic message.
+The first implementation should introduce the target protocols through a
+breaking rename, not by layering compatibility names around current classes.
+Transport-facing names should be message-oriented so direction is not baked
+into the API. The core target is deliberately small: four nouns, typed payloads,
+and no transport policy fields inside the semantic message.
 
 ```python
 from __future__ import annotations
@@ -201,7 +240,7 @@ class Backend(Protocol):
     def initialize(self) -> None: ...
     def handle(self, message: Message[object]) -> None: ...
     def advance(self) -> None: ...
-    def drain_outbox(self) -> list[Message[object]]: ...
+    def take_outbound_messages(self) -> list[Message[object]]: ...
     def shutdown(self) -> None: ...
 
 
@@ -214,9 +253,8 @@ class Transport(Protocol):
 
 class Frontend(Protocol):
     def initialize(self) -> None: ...
-    def set_app_spec(self, app_spec: AppSpec) -> None: ...
     def handle(self, message: Message[object]) -> None: ...
-    def drain_outbox(self) -> list[Message[object]]: ...
+    def take_outbound_messages(self) -> list[Message[object]]: ...
     def render(self) -> None: ...
     def close(self) -> None: ...
 ```
@@ -224,30 +262,34 @@ class Frontend(Protocol):
 Example message shapes:
 
 ```python
-CONTROL_SET: MessageType[SetControl]
-FIELD_APPEND: MessageType[FieldAppend]
-APP_SPEC_READY: MessageType[AppSpecReady]
-APP_SPEC_PATCH: MessageType[AppSpecPatch]
+CONTROL_SET: MessageType[SetControl]       # allowed_intents={"command"}
+FIELD_APPEND: MessageType[FieldAppend]     # allowed_intents={"update"}
+APP_SPEC_READY: MessageType[AppSpecReady]  # allowed_intents={"update"}
+APP_SPEC_PATCH: MessageType[AppSpecPatch]  # allowed_intents={"update"}
+BACKEND_STOP: MessageType[StopBackend]     # allowed_intents={"command"}
 
 Message(type=CONTROL_SET, intent="command", payload=SetControl("gain", 0.8))
 Message(type=FIELD_APPEND, intent="update", payload=FieldAppend(...))
 Message(type=APP_SPEC_READY, intent="update", payload=AppSpecReady(app_spec))
+Message(type=APP_SPEC_PATCH, intent="update", payload=AppSpecPatch(...))
+Message(type=BACKEND_STOP, intent="command", payload=StopBackend())
 ```
 
 Notes:
 
 - `Backend` replaces the current `Session` role. `Session` is renamed to
   `Backend` or an appropriate concrete subclass name in the same sweep.
-- The target protocol shows explicit outboxes because that best matches current
-  `Session.emit(...)` / `read_updates()` pressure and future composable backend
-  callbacks. A pure return-value backend can still be adapted, but the codebase
-  should not support both emission models as equal long-term primitives.
-- `startup_scene`, `is_live`, and `idle_sleep` can stay on `Session`, backend
-  metadata, or runner adapters until a real code refactor proves which methods
-  belong in the stable protocol.
-- Current `Session.handle(command)` and `Session.read_updates()` are the
-  backend side of this target protocol, but still use the old directional
-  method names.
+- The target protocol has an explicit outbound pickup boundary because that
+  best matches current `Session.emit(...)` / `read_updates()` pressure and
+  future composable backend callbacks. A pure return-value backend can still be
+  adapted, but the codebase should not support both emission models as equal
+  long-term primitives.
+- `startup_scene`, `is_live`, and `idle_sleep` should not remain `Session`
+  compatibility hooks. During the breaking refactor, move them either into
+  backend metadata/runner policy or remove them from the stable protocol.
+- Current `Session.handle(command)` and `Session.read_updates()` prove the
+  backend-side shape, but the breaking refactor should rename the public methods
+  and payload bases to the target vocabulary.
 - `Transport` is already the effective `PipeTransport` interface for today's
   command/update directions. The target shape makes `Transport` move one
   typed message value, like WebSocket and Socket.IO transports move
@@ -257,9 +299,16 @@ Notes:
 - `Frontend` is intentionally smaller than `VispyFrontendWindow`. The desktop
   window has application/window lifecycle concerns in addition to frontend
   behavior.
-- Frontends should expose outgoing messages through `drain_outbox()` instead of
-  receiving a transport object directly in the base protocol. The `drain_`
-  prefix means the call consumes pending messages.
+- `APP_SPEC_READY` is the single runtime path for app materialization. A
+  concrete frontend may have a private helper such as `_set_app_spec(...)`, but
+  `set_app_spec(...)` is not part of the public `Frontend` protocol. Static
+  apps should be delivered by `AppRuntime` as an in-process
+  `Message(type=APP_SPEC_READY, intent="update", ...)`, not through a second
+  conceptual path.
+- Backends and frontends expose produced messages through
+  `take_outbound_messages()` instead of receiving a transport object directly in
+  the base protocol. The call returns and clears pending outbound messages
+  produced by that actor since the previous call.
 - Message type names should be registered typed constants, not arbitrary strings
   emitted freely from application code. `payload_type` allows runtime validation
   and `allowed_intents` prevents a payload such as `FieldAppend` from being sent
@@ -340,13 +389,15 @@ renames `Scene` to `AppSpec`.
 The target decomposition:
 
 ```python
+GeometrySpec: TypeAlias = MorphologyGeometry | GridGeometry
+
+
 @dataclass
 class FieldSpec:
     id: str
     dims: tuple[str, ...]
     dtype: str
     units: str | None = None
-    retention: RetentionPolicy | None = None
 
 
 @dataclass
@@ -364,12 +415,6 @@ class ViewCatalog:
 class InteractionCatalog:
     controls: dict[str, ControlSpec] = field(default_factory=dict)
     actions: dict[str, ActionSpec] = field(default_factory=dict)
-    tools: dict[str, ToolSpec] = field(default_factory=dict)
-
-
-@dataclass
-class LayoutSpec:
-    root: LayoutNode
 
 
 @dataclass
@@ -397,6 +442,22 @@ Each catalog answers one question:
   "morphology inspection", "validation" — not separate apps. `active` names
   the currently active layout.
 
+If `LayoutCatalog.active` is not `None`, it must name a key in `layouts`.
+Unknown active layouts are invalid app specs; the runtime/frontend should reject
+them rather than silently falling back.
+
+Phase 1 should keep this decomposition compile-ready:
+
+- `GeometrySpec` is a type alias over current geometry declarations
+  (`MorphologyGeometry | GridGeometry`) until a real geometry abstraction is
+  needed.
+- `LayoutSpec` is the current layout declaration. `LayoutNode` belongs to the
+  layout workbench proposal and should not be introduced in this phase.
+- `ToolSpec` is deferred until reusable tools/bindings are implemented. Phase 1
+  keeps controls and actions in `InteractionCatalog`.
+- `RetentionPolicy` is deferred until trace binding and bounded-history work.
+  Phase 1 should not put an undefined retention type on `FieldSpec`.
+
 ### AppSpec ownership rule
 
 `AppSpec` is not inherently owned by backend or frontend. It can be:
@@ -413,21 +474,37 @@ flowchart TD
     BackendContrib[Backend contributions]
     AppRuntime[AppRuntime / run_app]
     AppSpec[AppSpec]
+    Ready[APP_SPEC_READY Message]
     Frontend[Frontend materialization]
 
     AppCode --> AppSpec
     BackendContrib -.contributes to.-> AppSpec
     AppRuntime --> AppSpec
-    AppSpec --> Frontend
+    AppSpec --> Ready
+    Ready --> Frontend
 ```
 
-A live backend may still compile down to `Backend.initialize() → AppSpecReady(app_spec)`,
-but that is one implementation path, not the universal ownership model.
+A live backend may still compile down to `Backend.initialize() -> AppSpecReady(app_spec)`,
+but the backend is contributing a declarative payload, not becoming the owner of
+the entire app state.
+
+Backend initialization contract:
+
+- `Backend.initialize()` returns `None`.
+- If a backend contributes the initial app declaration, it emits
+  `Message(type=APP_SPEC_READY, intent="update", payload=AppSpecReady(...))`
+  as a pending outbound message during `initialize()`.
+- `AppRuntime` or the transport worker must call `take_outbound_messages()`
+  immediately after `initialize()` and deliver any `APP_SPEC_READY` message
+  before normal polling/advancing begins.
+- A static no-backend app follows the same semantic path: `AppRuntime` creates
+  an in-process `APP_SPEC_READY` message and calls `Frontend.handle(...)`.
 
 ### Field ownership
 
 `FieldSpec` belongs in `DataCatalog`. It is a declaration: id, dimensions,
-dtype, units, and optional retention policy. It does not contain field values.
+dtype, and optional units. It does not contain field values. Retention policy is
+deferred until trace binding and bounded-history work.
 
 Runtime data still moves through typed messages:
 
@@ -440,9 +517,10 @@ This prevents `AppSpec` from becoming a data container.
 
 ### Geometry ownership
 
-`GeometrySpec` belongs in `DataCatalog`. Static morphology can be included in
-the initial `AppSpec`. Dynamic geometry changes move through typed messages
-(`geometry.replace`, `geometry.patch`).
+`GeometrySpec` belongs in `DataCatalog`. In Phase 1 it is only a type alias over
+the existing `MorphologyGeometry | GridGeometry` declarations. Static morphology
+can be included in the initial `AppSpec`. Dynamic geometry changes move through
+typed messages (`geometry.replace`, `geometry.patch`).
 
 ### Control ownership
 
@@ -474,7 +552,7 @@ scene.geometries      -> AppSpec.data.geometries   (GeometrySpec, not GeometryDa
 scene.views           -> AppSpec.views.views
 scene.controls        -> AppSpec.interactions.controls
 scene.actions         -> AppSpec.interactions.actions
-scene.tools           -> AppSpec.interactions.tools
+scene.tools           -> deferred; no Phase 1 field until ToolSpec is real
 scene.layout          -> AppSpec.layout
 scene.panels          -> split: ViewCatalog if renderable, LayoutCatalog if container
 SceneReady            -> AppSpecReady
@@ -594,46 +672,35 @@ classDiagram
     class MessageType
     class MessageIntent
     class Payload
-    class CommandPayload
-    class UpdatePayload
-    class DataPayload
-    class AppSpecPayload
-    class LayoutPayload
-    class StatePayload
-    class StatusPayload
 
     Message --> MessageType
     Message --> MessageIntent
     Message --> Payload
-    Payload <|-- CommandPayload
-    Payload <|-- UpdatePayload
-    UpdatePayload <|-- DataPayload
-    UpdatePayload <|-- AppSpecPayload
-    UpdatePayload <|-- LayoutPayload
-    UpdatePayload <|-- StatePayload
-    UpdatePayload <|-- StatusPayload
 
-    CommandPayload <|-- Reset
-    CommandPayload <|-- SetControl
-    CommandPayload <|-- InvokeAction
-    CommandPayload <|-- KeyPressed
-    CommandPayload <|-- EntityClicked
-    CommandPayload <|-- StopBackend
-    CommandPayload <|-- FocusEntity
-
-    DataPayload <|-- FieldReplace
-    DataPayload <|-- FieldAppend
-    AppSpecPayload <|-- AppSpecReady
-    AppSpecPayload <|-- AppSpecPatch
-    LayoutPayload <|-- PanelPatch
-    LayoutPayload <|-- LayoutReplace
-    StatePayload <|-- StatePatch
-    StatePayload <|-- SelectionChanged
-    StatePayload <|-- VisibleRangeChanged
-    StatePayload <|-- ROIChanged
-    StatusPayload <|-- Status
-    StatusPayload <|-- Error
+    Payload <|-- Reset
+    Payload <|-- StopBackend
+    Payload <|-- SetControl
+    Payload <|-- InvokeAction
+    Payload <|-- KeyPressed
+    Payload <|-- EntityClicked
+    Payload <|-- FocusEntity
+    Payload <|-- FieldReplace
+    Payload <|-- FieldAppend
+    Payload <|-- AppSpecReady
+    Payload <|-- AppSpecPatch
+    Payload <|-- PanelPatch
+    Payload <|-- LayoutReplace
+    Payload <|-- StatePatch
+    Payload <|-- SelectionChanged
+    Payload <|-- VisibleRangeChanged
+    Payload <|-- ROIChanged
+    Payload <|-- Status
+    Payload <|-- Error
 ```
+
+The diagram intentionally avoids intent-specific or domain payload base classes.
+Payload schemas are ordinary typed schemas; valid message intents come from the
+`MessageType.allowed_intents` registry entry used to construct the message.
 
 Recommended naming policy:
 
@@ -689,7 +756,7 @@ Naming convention:
 | subject plus `set` | Command to assign a value owned by the receiver. |
 | subject plus `changed` | Update announcing a semantic state change by its owner. |
 
-Examples such as `field.append`, `field.replace`, `scene.patch`,
+Examples such as `field.append`, `field.replace`, `app_spec.patch`,
 `panel.patch`, `layout.replace`, and `control.set` should be read as message
 type names following this vocabulary, not as paths or transport methods.
 
@@ -780,7 +847,7 @@ frontend-owned:
 
 | Control concept | Owner | Crosses transport? |
 |---|---|---|
-| `ControlSpec` | `Scene` payload/config | Yes as part of scene initialization or scene patching. |
+| `ControlSpec` | `AppSpec.interactions` payload/config | Yes as part of app-spec initialization or app-spec patching. |
 | Widget display value and editing state | Frontend | Usually no, unless published as semantic state. |
 | Simulator parameter value | Backend | Yes when changed through a command such as `SetControl`. |
 | Binding behavior | Backend-side binding, callback, or future concrete binding | Not directly; behavior emits or handles messages. |
@@ -822,6 +889,66 @@ That gap is acceptable. The important refactor rule is that the names
 `Backend`, `Transport`, and `Frontend` must leave room for this resource plane
 without turning it into another top-level layer.
 
+## Native Attachment Contract
+
+`attach(...)` means "observe and control a native thing," not "convert this
+thing into a CompNeuroVis model."
+
+Target rule:
+
+```text
+native simulator root/path/object/callbacks
+-> domain adapter
+-> concrete bindings
+-> AppSpec declarations + backend behavior
+-> Messages to/from frontend
+```
+
+The attached object stays backend-owned. The frontend receives stable ids,
+declarative `AppSpec` entries, and messages. It must never receive native
+simulator objects directly.
+
+Acceptable attachment inputs should be deliberately broad:
+
+| Input shape | Meaning | Example |
+|---|---|---|
+| Native root path | Adapter resolves simulator objects by path. | `cnv.moose.attach("/model")` |
+| Native root object | Adapter starts from a simulator object. | `cnv.moose.attach(moose.element("/model"))` |
+| Explicit adapter | User supplies a domain adapter when automatic discovery is insufficient. | `cnv.attach(MyMooseAdapter(root="/model"))` |
+| Step/time callbacks | User keeps the model native and supplies runtime hooks. | `cnv.moose.attach(root="/model", step=step_fn, time=time_fn)` |
+| Read/write callbacks | Binding reads or writes values without assuming simulator internals. | `trace(read=lambda: soma(0.5).v)` |
+| Ports | Coupled backend exchanges signals between engines. | `brain.output("muscle_activation")` |
+
+Ambiguous simulator details should become explicit targets, callbacks, or ports
+rather than hidden framework magic:
+
+```python
+brain = cnv.moose.attach(
+    root="/model",
+    step=lambda dt: moose.start(dt),
+    time=lambda: moose.element("/clock").currentTime,
+)
+
+brain.trace("AVAL Vm", target="/model/AVAL/soma", attr="Vm")
+brain.control("stim amp", target="/model/stim", attr="level")
+brain.output("muscle_activation", read=read_muscle_activation)
+brain.input("sensory_drive", write=write_sensory_drive)
+```
+
+This keeps native authoring intact:
+
+- simulator construction remains normal simulator code
+- `attach` creates an adapter over existing handles, paths, or callbacks
+- traces, controls, views, and ports declare what CompNeuroVis observes or
+  mutates
+- backend-side bindings perform native reads/writes
+- frontend-side bindings render widgets and views over messages and ids
+
+If a simulator-specific adapter can discover morphology, compartments, clocks,
+or fields, it may provide defaults. If discovery is incomplete or ambiguous, the
+user must make the binding explicit. The architecture should prefer explicit
+targets over a fake universal model object.
+
 ## Capabilities And Parts
 
 Some feature units are not purely backend or frontend. A trace, selection tool,
@@ -834,11 +961,13 @@ TraceBinding
 ControlBinding
 SelectionBinding
 MorphologyBinding
+PhysicsBinding
+CouplingBinding
 ```
 
 ```mermaid
 flowchart LR
-    Binding[Concrete binding<br/>trace / control / selection / morphology]
+    Binding[Concrete binding<br/>trace / control / selection / morphology / physics / coupling]
     BackendSide[Backend-side behavior<br/>native/domain attachment]
     FrontendSide[Frontend-side behavior<br/>view/tool/presentation]
     Backend[Backend runtime]
@@ -866,6 +995,8 @@ Examples:
 | Selection | `entity.clicked`, future `selection.changed`, optional future `frontend/selection` resource | reacts to selected entity, emits derived trace/filter/state messages | picking, highlight, selection UI |
 | Control | `control.set`, future `control.changed`, optional future control resource | binds to simulator attribute, callback, or state path | widget, validation, display state |
 | Morphology | morphology geometry/field messages, optional future geometry resources | builds or updates geometry from native simulator state | 3-D renderer, camera, picking |
+| Physics | body geometry, pose, contact, force, and sensor messages | adapts MuJoCo, Unity physics, or another body engine into backend-owned state | optional body renderer, pose/contact views, inspection tools |
+| Coupling | internal backend ports, optional status/diagnostic messages | routes neural outputs to physics inputs and physics outputs back to neural inputs | usually none directly; optional visual diagnostics |
 | Status | status/error message schemas | emits status/error messages | status display |
 
 Inline authoring becomes syntactic sugar for creating concrete bindings around
@@ -901,6 +1032,20 @@ SelectionBinding
   backend side optionally reacts to semantic selection
 ```
 
+Simulator-specific attachment APIs lower to the same shape. They differ only in
+how the backend-side binding resolves native targets:
+
+```python
+brain = cnv.moose.attach("/model")
+
+brain.trace("soma Vm", target="/model/soma", attr="Vm")
+brain.control("stim level", target="/model/stim", attr="level")
+```
+
+No frontend-side binding should hold the MOOSE element, NEURON section, Jaxley
+object, or MuJoCo handle. Frontend behavior deals in ids, view state, widgets,
+and messages.
+
 This preserves the boundary rule:
 
 - backend parts do not own widgets
@@ -913,7 +1058,90 @@ This preserves the boundary rule:
 Current VisPy code is already partway toward this on the frontend side:
 panels, renderers, view adapters, controls, state bindings, and interaction
 contexts are composable frontend concerns. The proposal makes the same idea
-explicit on both sides without requiring today's classes to be renamed first.
+explicit on both sides while renaming today's classes directly.
+
+## Coupled Backends And Co-Simulation
+
+Some future apps need communication between simulators, not only communication
+between a backend and a frontend. The clearest example is an embodied C. elegans
+workflow:
+
+```text
+neural simulator -> muscle activation -> body physics
+body physics -> contacts, stretch, proprioception -> neural simulator
+both -> fields, traces, geometry, status -> frontend
+```
+
+That is a backend composition problem. A MuJoCo model or Unity physics process
+is backend-side when it participates in simulation state. Unity is a frontend
+only when it is rendering or interacting with the CompNeuroVis app as the
+presentation client.
+
+```mermaid
+flowchart LR
+    subgraph CoupledBackend[CoupledBackend]
+        Neural[Neural adapter<br/>NEURON / Jaxley / MOOSE / custom]
+        Coupler[Coupling policy<br/>ports, timing, transforms]
+        Physics[Physics adapter<br/>MuJoCo / Unity physics]
+
+        Neural -->|motor / muscle activation| Coupler
+        Coupler -->|actuators| Physics
+        Physics -->|contacts / pose / stretch| Coupler
+        Coupler -->|sensory drive / proprioception| Neural
+    end
+
+    Transport[Transport]
+    Frontend[Frontend]
+
+    CoupledBackend -->|Messages<br/>fields, geometry, traces, status| Transport
+    Transport --> Frontend
+    Frontend -->|Message flow<br/>runner takes outbound| Transport
+    Transport --> CoupledBackend
+```
+
+The frontend transport must not become the coupling bus between neural and
+physics engines. Coupling has simulation-time semantics, so the backend owns:
+
+- which engine is authoritative for the clock
+- whether stepping is lockstep fixed-dt, substepped, event-driven, or
+  latest-state asynchronous
+- how neural outputs are transformed into physics inputs
+- how contacts, stretch, pose, or force data become neural inputs
+- how much of that internal exchange becomes visible as app messages
+
+The composable authoring layer can still keep this simple:
+
+```python
+brain = cnv.moose.attach(
+    root="/model",
+    step=lambda dt: moose.start(dt),
+    time=lambda: moose.element("/clock").currentTime,
+)
+body = cnv.physics.mujoco(model_xml)
+
+app = cnv.coupled("c-elegans body")
+app.couple(brain.output("muscle_activation"), body.input("actuators"))
+app.couple(body.output("contacts"), brain.input("sensory_drive"))
+app.couple(body.output("stretch"), brain.input("proprioception"))
+
+app.trace("head neuron", brain.trace("AVAL.v"))
+app.body_view(body, color_by="contact_force")
+app.run()
+```
+
+This lowers to one `CoupledBackend` with internal ports. `TraceBinding`,
+`ControlBinding`, `PhysicsBinding`, and `CouplingBinding` contribute backend
+behavior and optional `AppSpec` declarations, but cross-boundary communication
+to the frontend still uses the normal `Message` path.
+
+This design preserves all backend possibilities:
+
+- a plain simulator backend remains one backend
+- a custom Python model remains one backend
+- a callback/live app can become a generated backend
+- a neural-plus-physics app becomes a coupled backend
+- WebSocket, notebook, VisPy, and headless choices remain frontend/transport
+  choices outside the coupling policy
 
 ## Current Runtime Flow Today
 
@@ -926,8 +1154,8 @@ sequenceDiagram
     F->>T: start()
     T->>B: construct backend from source
     T->>B: initialize()
-    B-->>T: AppSpec | None
-    T-->>F: AppSpecReady(app_spec)
+    B-->>T: Scene | None
+    T-->>F: SceneReady(scene)
 
     loop while app is open
         F->>T: poll_updates()
@@ -939,7 +1167,7 @@ sequenceDiagram
         B-->>T: read_updates()
     end
 
-    F-->>T: StopBackend
+    F-->>T: StopSession
     T-->>B: shutdown()
 ```
 
@@ -947,32 +1175,53 @@ This is exactly how `VispyFrontendWindow`, `PipeTransport`, and `Session`
 cooperate today. It is the current one-direction-per-message-family
 implementation, not the target `Message` envelope.
 
-Under the target names, the same flow becomes:
+Under the target names, both actors use the same queued outbound pickup
+contract. The runner or transport worker owns the transport reference; the
+frontend does not call `transport.send(...)` directly:
 
 ```mermaid
 sequenceDiagram
+    participant FR as Frontend runner
     participant F as Frontend
     participant T as Transport
+    participant BR as Backend runner
     participant B as Backend
 
-    F->>T: start()
-    T->>B: construct backend from source
-    T->>B: initialize()
-    B-->>T: Message(type=APP_SPEC_READY, intent="update")
-    T-->>F: Message(type=APP_SPEC_READY, intent="update")
+    FR->>F: initialize()
+    FR->>T: start()
+    BR->>B: construct backend from source
+    BR->>B: initialize()
+    BR->>B: take_outbound_messages()
+    B-->>BR: list[Message]<br/>includes APP_SPEC_READY when backend contributes AppSpec
+    BR->>T: send(each Message)
+    FR->>T: poll()
+    T-->>FR: list[Message]
+    FR->>F: handle(APP_SPEC_READY)
 
     loop while app is open
-        F->>T: poll_messages()
-        T-->>F: list[Message]
-        F->>F: handle messages + refresh targets
-        F-->>T: send(Message)
-        T-->>B: handle(Message)
-        T->>B: advance()
-        B-->>T: read_messages()
+        FR->>T: poll()
+        T-->>FR: list[Message]
+        FR->>F: handle messages + refresh targets
+        FR->>F: render()
+        FR->>F: take_outbound_messages()
+        F-->>FR: list[Message]
+        FR->>T: send(each Message)
+
+        BR->>T: poll()
+        T-->>BR: list[Message]
+        BR->>B: handle(each Message)
+        BR->>B: advance()
+        BR->>B: take_outbound_messages()
+        B-->>BR: list[Message]
+        BR->>T: send(each Message)
     end
 
-    F-->>T: Message(type=BACKEND_STOP, intent="command")
-    T-->>B: shutdown()
+    FR->>F: take_outbound_messages()
+    F-->>FR: list[Message]<br/>may include BACKEND_STOP
+    FR->>T: send(each Message)
+    BR->>T: poll()
+    T-->>BR: list[Message]<br/>includes BACKEND_STOP
+    BR->>B: shutdown()
 ```
 
 Resource reads are deliberately omitted from these runtime-flow diagrams because
@@ -1002,6 +1251,12 @@ flowchart TD
         SimFrontend[VisPy Frontend today<br/>Notebook/Web later]
     end
 
+    subgraph Coupled[Coupled simulation app]
+        CoupledBackend[CoupledBackend<br/>neural adapter + physics adapter + coupler]
+        CoupledTransport[Pipe / WebSocket / in-process]
+        CoupledFrontend[VisPy / notebook / headless diagnostics]
+    end
+
     subgraph Document[Document/editor app]
         DocBackend[DocumentBackend]
         DocTransport[InProcess or remote Transport]
@@ -1009,7 +1264,7 @@ flowchart TD
     end
 
     subgraph Headless[Headless/export app]
-        ExportBackend[Backend or static Scene]
+        ExportBackend[Backend or static AppSpec]
         NullTransport[No UI transport]
         ExportFrontend[Headless exporter]
     end
@@ -1017,6 +1272,7 @@ flowchart TD
     StaticBackend --> StaticTransport --> StaticFrontend
     ReplayBackend --> ReplayTransport --> ReplayFrontend
     SimBackend --> SimTransport --> SimFrontend
+    CoupledBackend --> CoupledTransport --> CoupledFrontend
     DocBackend --> DocTransport --> DocFrontend
     ExportBackend --> NullTransport --> ExportFrontend
 ```
@@ -1025,14 +1281,15 @@ Coverage table:
 
 | App mode | Backend | Transport | Frontend | Feasible with proposal? |
 |---|---|---|---|---|
-| Static scene | `NoBackend` or direct `SceneBackend` | none or in-process | VisPy, notebook, exporter | Yes. Static `AppSpec(scene=...)` already works; naming can make no-backend explicit. |
+| Static app spec | `NoBackend` or direct `AppSpec` | none or in-process | VisPy, notebook, exporter | Yes. Static apps do not need a backend. |
 | Replay | `ReplayBackend` | pipe or in-process | any frontend consuming update-intent messages | Yes. Current `ReplaySession` proves this. |
 | NEURON live | `NeuronBackend` | pipe today, WebSocket later | VisPy today, notebook later | Yes. Current `NeuronSession` proves backend shape. |
 | Jaxley live | `JaxleyBackend` | pipe today, WebSocket later | VisPy today, notebook later | Yes. Current `JaxleySession` proves backend shape. |
+| Neural + physics co-simulation | `CoupledBackend` containing simulator and physics adapters | pipe, WebSocket, or in-process | VisPy, notebook, or headless diagnostics | Yes as a planned backend composition pattern. Coupling stays inside the backend. |
 | Notebook static | optional backend | in-process/notebook transport | notebook frontend | Yes after frontend/dependency split. |
 | Notebook live | live backend | notebook comm or WebSocket | notebook frontend | Yes after transport seam and throttling. |
 | NeuroML editor | document backend | in-process or remote | editor frontend | Yes, but needs document update families. |
-| Headless export | backend or static scene | none/in-process | exporter frontend | Yes, if exporter consumes `Scene`, selected messages, and selected resources. |
+| Headless export | backend or static app spec | none/in-process | exporter frontend | Yes, if exporter consumes `AppSpec`, selected messages, and selected resources. |
 
 ## Transport Variants
 
@@ -1068,18 +1325,18 @@ Frontend is another independent axis.
 
 ```mermaid
 flowchart TD
-    SceneUpdates[Scene + Message stream + resources]
+    AppInput[AppSpec + Message stream + future resources]
     VisPy[VisPyFrontend<br/>current PyQt6 desktop]
     Notebook[NotebookFrontend<br/>future ipywidgets/inline plots]
     Web[WebFrontend<br/>future browser]
     Unity[UnityFrontend<br/>future non-Python client]
     Headless[HeadlessFrontend<br/>future image/export/report]
 
-    SceneUpdates --> VisPy
-    SceneUpdates --> Notebook
-    SceneUpdates --> Web
-    SceneUpdates --> Unity
-    SceneUpdates --> Headless
+    AppInput --> VisPy
+    AppInput --> Notebook
+    AppInput --> Web
+    AppInput --> Unity
+    AppInput --> Headless
 ```
 
 Frontend-owned responsibilities stay:
@@ -1101,7 +1358,7 @@ Backend is the model/runtime axis.
 ```mermaid
 flowchart TD
     Backend[Backend protocol]
-    Static[StaticBackend<br/>optional wrapper around Scene]
+    Static[StaticBackend<br/>optional wrapper around AppSpec]
     Replay[ReplayBackend<br/>current ReplaySession]
     Neuron[NeuronBackend<br/>current NeuronSession]
     Jaxley[JaxleyBackend<br/>current JaxleySession]
@@ -1138,33 +1395,38 @@ Backend should not own:
 One question is whether every app must have a backend. The answer should be no.
 The abstraction still works if `Backend` is optional.
 
-Current static surface apps already pass `AppSpec(scene=...)` without a session.
-That can be described as:
+Current static surface apps already pass a run config containing a `Scene`
+without a session. After the breaking rename, that should become a `RunSpec` or
+`AppConfig` containing a direct `AppSpec` without a backend. That can be
+described as:
 
 ```mermaid
 flowchart LR
-    Scene[Scene]
+    AppSpec[AppSpec]
+    Ready[APP_SPEC_READY Message]
     Frontend[Frontend]
     User[User]
 
-    Scene --> Frontend
+    AppSpec --> Ready
+    Ready --> Frontend
     Frontend --> User
     User -->|frontend-only state controls| Frontend
 ```
 
-For uniform runtime APIs, a future `StaticBackend` can wrap a scene and emit no
-live updates:
+For uniform runtime APIs, a future `StaticBackend` can wrap an `AppSpec` and
+emit no live updates:
 
 ```mermaid
 flowchart LR
-    StaticBackend[StaticBackend<br/>initialize returns Scene<br/>is_live false]
+    StaticBackend[StaticBackend<br/>initializes AppSpec<br/>no live advance]
     Transport[InProcessTransport]
     Frontend[Frontend]
 
-    StaticBackend --> Transport --> Frontend
+    StaticBackend -->|APP_SPEC_READY| Transport --> Frontend
 ```
 
-Both forms are compatible. The public API can keep the shorter static path.
+Both forms are valid target designs. The shorter static path should remain
+legal as a product choice, not as a backward-compatibility concession.
 
 ## Appendix: Notebook Feasibility
 
@@ -1183,8 +1445,8 @@ flowchart TD
 
     SameBackend --> DesktopTransport --> DesktopFrontend
     SameBackend --> NotebookTransport --> NotebookFrontend
-    NotebookFrontend --> NotebookTransport --> SameBackend
-    DesktopFrontend --> DesktopTransport --> SameBackend
+    NotebookFrontend -->|take outbound<br/>then send| NotebookTransport --> SameBackend
+    DesktopFrontend -->|take outbound<br/>then send| DesktopTransport --> SameBackend
     SameBackend --> SameMessages
     SameBackend -. later .-> FutureResources
 ```
@@ -1211,7 +1473,7 @@ flowchart LR
     Transport[Transport]
     EditorFrontend[EditorFrontend]
 
-    EditorFrontend -->|EditCommand / SelectCommand / SelectionChanged / ExportCommand| Transport
+    EditorFrontend -->|take outbound<br/>then send edit/select/export messages| Transport
     Transport --> DocBackend
     DocBackend -->|DocumentEditUpdate / ValidationUpdate / AppSpecPatch| Transport
     Transport --> EditorFrontend
@@ -1254,13 +1516,17 @@ flowchart TD
 
 ## Implementation Plan
 
-### Phase 1: Add Runtime Names Without Breaking Behavior
+Because this branch can break public API, the plan is a direct refactor rather
+than a compatibility migration. Each phase may break imports, examples, and
+docs; update them in the same phase instead of adding long-lived shims.
+
+### Phase 1: Break To The New Vocabulary And App Contract
 
 - Rename `Session` → `Backend` (or `BackendSession` for the abstract base),
   `NeuronSession` → `NeuronBackend`, `JaxleySession` → `JaxleyBackend`,
   `ReplaySession` → `ReplayBackend`, `BufferedSession` → `BufferedBackend`.
-- Rename `PipeTransport` to satisfy a new `Transport` protocol; the class name
-  can stay `PipeTransport` but the protocol is named `Transport`.
+- Keep `PipeTransport` as the concrete pipe variant while introducing
+  `Transport` as the protocol name.
 - Add a narrow `Frontend` protocol around the runner-independent parts of
   `VispyFrontendWindow`.
 - Rename `SessionCommand` → command-intent payload base; rename `SessionUpdate`
@@ -1269,10 +1535,19 @@ flowchart TD
   to `RunSpec` or `AppConfig`.
 - Rename `Scene` → `AppSpec`; decompose into `DataCatalog`, `ViewCatalog`,
   `InteractionCatalog`, and `LayoutCatalog` sub-catalogs.
+- Keep Phase 1 catalog types compile-ready: `GeometrySpec` is a type alias over
+  existing geometry declarations, `LayoutSpec` remains the current layout type,
+  `ToolSpec` is omitted, and retention policy is deferred.
 - Rename `SceneReady` → `AppSpecReady`; rename `ScenePatch` → `AppSpecPatch`.
 - Update architecture docs to teach `Backend <-> Transport <-> Frontend` and
   `AppSpec` as the declarative app contract.
+- Move or remove `startup_scene`, `is_live`, and `idle_sleep` as explicit
+  backend metadata or runner policy. Do not keep them as `Session`
+  compatibility hooks.
 - Clarify that `AppSpec` is not owned by backend or frontend.
+- Update tests, examples, public exports, imports, and authored docs in the same
+  Phase 1 sweep. The checkpoint means they pass after the rename and catalog
+  split are complete, not before.
 
 Checkpoint:
 
@@ -1287,13 +1562,14 @@ python scripts/check_architecture_invariants.py
 - Add `Message(type, intent, payload)` with typed `MessageType[T]` constants.
 - Give each `MessageType` a name, payload type, and allowed intents so message
   dispatch remains payload-aware instead of becoming arbitrary string routing.
-- Treat current `SessionCommand` and `SessionUpdate` dataclasses as payload
-  schemas under command/update message intents.
+- Rename the former `SessionCommand` and `SessionUpdate` dataclasses into
+  command/update payload schemas under the `Message` model.
 - Keep message type names discoverable through a central typed registry or
   equivalent typed constants.
 - Move transport-facing names toward `send(message)` and `poll()`.
-- Move backend and frontend emission toward explicit `drain_outbox()` semantics
-  before introducing composable callbacks or bindings.
+- Move backend and frontend emission toward explicit
+  `take_outbound_messages()` semantics before introducing composable callbacks
+  or bindings.
 - Keep `id`, `correlation_id`, delivery mode, resource refs, versions, and
   attachments out of the core `Message`.
 - Represent errors as update-intent messages with an `Error` payload type until
@@ -1309,37 +1585,28 @@ Checkpoint:
 ```bash
 pytest
 python -m compileall src examples tests
-```
-
-### Phase 3: Move Type Hints And AppSpec Toward The New Names
-
-- Update `RunSpec` (formerly `AppSpec`) to reference the new `Backend` type.
-- Add `RunSpec.transport` once the transport proposal is implemented.
-- Teach `VispyFrontendWindow` to accept a `Transport` protocol, not only
-  `PipeTransport`.
-- Add frontend initialization/lifecycle hooks outside the transport itself so
-  Qt, notebook, WebGL, or headless frontends can set up before app spec
-  materialization.
-
-Checkpoint:
-
-```bash
-pytest
-python -m compileall src examples tests
 python scripts/check_architecture_invariants.py
 ```
 
-### Phase 4: Prove Concrete Bindings Before Capability
+### Phase 3: Prove Concrete Bindings Before Capability
 
-- Add concrete `TraceBinding` machinery first because it exercises native
-  simulator attachment, typed field messages, line-plot rendering, reset
-  behavior, and inline authoring pressure. Each concrete binding should
-  contribute to explicit `AppSpec` catalogs (`DataCatalog`, `ViewCatalog`,
-  `InteractionCatalog`) rather than contributing to a monolithic `Scene`.
+- Add `SurfaceBinding` and `TraceBinding` as the first concrete binding slice.
+  `SurfaceBinding` proves static and animated grid workflows. `TraceBinding`
+  exercises native simulator attachment, typed field messages, line-plot
+  rendering, reset behavior, and inline authoring pressure. Each concrete
+  binding should contribute to explicit `AppSpec` catalogs (`DataCatalog`,
+  `ViewCatalog`, `InteractionCatalog`) rather than contributing to a
+  monolithic `Scene`.
 - Add `ControlBinding` for simulator attributes, callbacks, and state paths.
+- Add `ActionBinding` for semantic buttons, shortcuts, and backend/callback
+  invocations.
 - Add `SelectionBinding` for semantic frontend-originated state that a backend
   may react to.
 - Add `MorphologyBinding` only if morphology attachment shows the same shape.
+- Add `PhysicsBinding`, `PortBinding`, or `CouplingBinding` only after a real
+  embodied workflow provides pressure. The intended shape is one
+  `CoupledBackend` that owns neural/physics timing and internal ports, not a
+  frontend-mediated coupling bus.
 - Do not add generic `Capability`, `BackendPart`, or `FrontendPart` protocols
   yet. Promote them only after several concrete bindings repeat the same
   lifecycle, message, and installation structure.
@@ -1352,12 +1619,15 @@ python -m compileall src examples tests
 python scripts/check_architecture_invariants.py
 ```
 
-### Phase 5: Add New Concrete Implementations
+### Phase 4: Add Concrete Transport And Frontend Variants
 
 - `InProcessTransport` for tests, static/simple apps, and possibly notebooks.
 - `WebSocketTransport` from the existing proposal.
 - `NotebookFrontend` after dependency split.
 - `StaticBackend` only if it simplifies runtime APIs.
+- A WSL backend server may host a simple simulator backend or a
+  `CoupledBackend`; the transport should not care which one it is moving
+  messages for.
 - Use these implementations to decide whether message ids, correlation ids,
   delivery policy, or recovery belong in a `MessageEnvelope` or transport policy
   type.
@@ -1370,7 +1640,7 @@ python -m compileall src examples tests
 python scripts/check_architecture_invariants.py
 ```
 
-### Phase 6: Add State/Resource Plane Deliberately
+### Phase 5: Add Resource Plane Only Under Pressure
 
 - Add `ResourceRef`, `Snapshot`, and `ResourceTransport` only when a concrete
   workflow needs durable reads, lazy data access, or backend reads of semantic
@@ -1381,26 +1651,14 @@ python scripts/check_architecture_invariants.py
   or ROI only when backend behavior needs them.
 - Prefer simple update-intent messages for state mirroring before adding
   request/response reads.
-- Let frontend-owned semantic state publish update-intent messages such as
-  selection or visible range changes when command wording would be misleading.
 - Keep direct mutable shared objects out of the public model.
+- End the refactor by verifying public exports, docs, examples, invariants, and
+  generated indexes all use the new vocabulary.
 
 Checkpoint:
 
 ```bash
 pytest
-python scripts/check_architecture_invariants.py
-python -m compileall src examples tests
-```
-
-### Phase 7: Validate Public API Consistency
-
-All public concepts should use the new vocabulary by this phase. Verify that
-docs, examples, invariants, and generated indexes are consistent.
-
-Checkpoint:
-
-```bash
 python scripts/check_architecture_invariants.py
 python scripts/generate_indexes.py --check
 python -m mkdocs build --strict
@@ -1440,11 +1698,15 @@ python -m mkdocs build --strict
   control, selection, and morphology bindings prove a repeated shape.
 - Do not make `Capability` a fourth runtime layer beside `Backend`,
   `Transport`, and `Frontend`.
+- Do not use the frontend transport as the internal communication mechanism
+  between coupled simulators such as a neural backend and MuJoCo or Unity
+  physics. That is backend-owned co-simulation logic.
 - Do not let future backend parts and frontend parts bypass the message/resource
   boundary.
 - Do not add `AppRuntime`, `Host`, or runner code as a fourth state-ownership
   layer.
-- Do not rename everything before the protocols prove useful.
+- Do not create long-lived compatibility aliases for old public vocabulary in
+  this branch.
 
 ## Decision Tests
 
@@ -1480,7 +1742,7 @@ Before refactoring, every design step should satisfy these tests:
   discoverable enough to prevent arbitrary string dispatch?
 - Can errors stay as update-intent messages with `Error` payloads until a real
   request/response envelope exists?
-- Can `Scene` remain a declarative payload instead of becoming shared mutable
+- Can `AppSpec` remain a declarative payload instead of becoming shared mutable
   runtime state?
 - Can controls be explained without confusing frontend widget state with
   backend simulator parameters?
@@ -1488,6 +1750,15 @@ Before refactoring, every design step should satisfy these tests:
   `AppRuntime`, without treating it as a fourth ownership layer?
 - Can trace, selection, control, morphology, and status features first be
   expressed as concrete bindings rather than a generic capability framework?
+- Can a C. elegans neural simulator and a MuJoCo or Unity physics body exchange
+  muscle activation, contacts, stretch, and proprioception inside a
+  `CoupledBackend` without routing simulation coupling through the frontend
+  transport?
+- Can `attach(...)` accept native simulator roots, paths, objects, explicit
+  adapters, callbacks, or ports without requiring a CompNeuroVis-owned model
+  class?
+- Can ambiguous simulator details be expressed through explicit trace/control
+  targets, callbacks, or ports instead of hidden automatic discovery?
 - Can inline Python authoring lower into backend-side binding behavior without
   exposing native simulator objects to frontend-side binding behavior?
 - Can existing VisPy panels/renderers/controls inform future frontend-side
@@ -1515,6 +1786,10 @@ AppSpec-specific tests (from the AppSpec decomposition feedback):
   declarations?
 - Can current examples be mechanically migrated from `Scene` to `AppSpec`
   catalogs?
+- Can Phase 1 compile without undefined placeholder types such as `ToolSpec`,
+  `LayoutNode`, or `RetentionPolicy`?
+- Can `GeometrySpec` begin as an alias over current geometry declarations
+  without forcing a premature geometry hierarchy?
 - Can `AppSpecPatch` stay broad in v1 without immediate per-catalog patch
   classes?
 

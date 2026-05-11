@@ -328,23 +328,28 @@ Frontend` system, but the public and internal vocabulary still exposes
 architecture harder to explain than it needs to be.
 
 The next cleanup should introduce explicit `Backend`, `Transport`, and
-`Frontend` protocols before any large rename. Current sessions can satisfy the
-backend protocol, `PipeTransport` can satisfy the transport protocol, and
-`VispyFrontendWindow` can remain the current desktop frontend implementation.
+`Frontend` protocols through a direct breaking rename, not a long compatibility
+layer. Current sessions should become backend classes, `PipeTransport` should
+satisfy the transport protocol, and `VispyFrontendWindow` can remain the current
+desktop frontend implementation while gaining a narrow `Frontend` protocol.
 The transport-facing shape should be a thin typed `Message` whose `intent`
 starts with command and update semantics. The concrete command/update
 dataclasses should remain precise as typed payload schemas, with registered
 message types carrying payload type and allowed-intent metadata. Transport
 bookkeeping such as ids, correlation ids, and delivery modes should stay out of
 the core `Message` until real transports force an envelope or policy layer.
-`Scene` stays a declarative payload/model, not shared mutable runtime state. The
-same proposal reserves `ResourceRef` and `Snapshot` for a later state/resource
-plane, and reserves `Capability` until concrete trace, control, selection, and
-morphology bindings prove a shared package contract. Runner or `AppRuntime`
-lifecycle code stays out of the core ownership model.
+`Scene` is split into `AppSpec` catalogs so the app contract stays declarative,
+not shared mutable runtime state. The same proposal reserves `ResourceRef` and
+`Snapshot` for a later state/resource plane, and reserves `Capability` until
+concrete trace, control, selection, and morphology bindings prove a shared
+package contract. Runner or `AppRuntime` lifecycle code stays out of the core
+ownership model.
 
 Detailed proposal:
 [Backend, Transport, and Frontend Abstractions](proposals/backend-transport-frontend-proposal.md)
+
+Authoring proof:
+[Composable Authoring Proof](proposals/composable-authoring-proof.md)
 
 Deferral reason: this should happen as a planned naming/protocol refactor, not
 as incidental churn during unrelated feature work.
@@ -402,6 +407,40 @@ The protocol and scene model should stay frontend-agnostic. Future work may add:
 - more granular patch/update messages for remote scenes where bandwidth and serialization cost make bundled updates especially expensive
 
 Detailed proposal: [WebSocket Transport Proposal](proposals/websocket-transport-proposal.md)
+
+---
+
+### Coupled Backend / Co-Simulation Ports
+
+Phase: 3
+
+Embodied workflows may need a neural simulator and a body physics engine to
+exchange state while the app is running. A C. elegans workflow is the motivating
+case: neural state can drive muscles or actuators, while body physics can feed
+contacts, stretch, pose, force, or proprioception back into the neural model.
+
+This should be modeled as backend composition, not as frontend/transport
+coupling. The target shape is one `CoupledBackend` that
+owns:
+
+- neural adapter such as NEURON, Jaxley, MOOSE, or custom Python
+- physics adapter such as MuJoCo or Unity physics
+- typed internal ports for motor, contact, stretch, pose, and sensory signals
+- coupling policy for timing, substeps, transforms, and authority
+- optional fields, traces, geometry, and diagnostics exposed to the frontend
+
+Unity should be treated according to role: `UnityFrontend` when it renders the
+CompNeuroVis app, and `UnityPhysicsAdapter` when it runs physics that writes
+simulation state.
+
+Detailed proposals:
+[Backend, Transport, and Frontend Abstractions](proposals/backend-transport-frontend-proposal.md#coupled-backends-and-co-simulation)
+and
+[Composable Authoring Proof](proposals/composable-authoring-proof.md#coupled-neural-physics-proof)
+
+Deferral reason: the backend/transport/frontend refactor should leave a clean
+slot for this, but public co-simulation APIs should wait for a concrete embodied
+example so timing and port semantics are not invented in the abstract.
 
 ---
 
@@ -504,6 +543,9 @@ Phase: 2
 - Voltage-specific default field ids as architectural concepts
 - Voltage-specific default builder assumptions where they imply morphology coloring is inherently voltage-driven
 - Backend-labeled builder mental models where the backend name implies the app shape
+- Native attachment APIs that imply users must pass a CompNeuroVis-shaped model
+  object instead of native simulator roots, paths, objects, explicit adapters,
+  callbacks, or ports
 - Any user-facing workflow that requires understanding transport boundaries to place code correctly
 - Temporary layout behavior that still encodes "main 3-D view plus one plot plus one control stack" as the conceptual model
 
