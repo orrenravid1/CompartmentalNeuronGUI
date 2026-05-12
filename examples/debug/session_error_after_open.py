@@ -5,11 +5,12 @@ import time
 
 import numpy as np
 
-from compneurovis import AppSpec, Field, LayoutSpec, LinePlotViewSpec, Scene, run_app
-from compneurovis.session import BufferedSession, Error, FieldAppend
+from compneurovis import AppSpec, Field, LayoutSpec, LinePlotViewSpec, RunSpec, run_app
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import Error, FieldAppend
 
 
-class CrashAfterOpenSession(BufferedSession):
+class CrashAfterOpenBackend(BufferedBackend):
     def __init__(
         self,
         *,
@@ -25,7 +26,7 @@ class CrashAfterOpenSession(BufferedSession):
         self._time = 0.0
         self._warning_emitted = False
 
-    def initialize(self) -> Scene:
+    def initialize(self) -> AppSpec:
         field = Field(
             id="demo_trace",
             values=np.array([0.0], dtype=np.float32),
@@ -41,11 +42,11 @@ class CrashAfterOpenSession(BufferedSession):
             y_label="Signal",
             rolling_window=3.0,
         )
-        return Scene(
+        return AppSpec(
             fields={field.id: field},
             geometries={},
             views={"trace": view},
-            layout=LayoutSpec(title="Session Error Demo"),
+            layout=LayoutSpec(title="Backend Error Demo"),
         )
 
     def advance(self) -> None:
@@ -58,13 +59,13 @@ class CrashAfterOpenSession(BufferedSession):
             self.emit(
                 Error(
                     "Intentional nonfatal demo warning from "
-                    "CrashAfterOpenSession.advance()."
+                    "CrashAfterOpenBackend.advance()."
                 )
             )
 
         if self._step >= self.crash_after_updates:
             raise RuntimeError(
-                "Intentional demo failure from CrashAfterOpenSession.advance() "
+                "Intentional demo failure from CrashAfterOpenBackend.advance() "
                 "after the window opened."
             )
 
@@ -84,8 +85,8 @@ class CrashAfterOpenSession(BufferedSession):
 
 
 run_app(
-    AppSpec(
-        session=CrashAfterOpenSession,
-        title="Session Error Demo",
+    RunSpec(
+        backend=CrashAfterOpenBackend,
+        title="Backend Error Demo",
     )
 )

@@ -8,7 +8,7 @@ from vispy import scene
 from vispy.scene.cameras import TurntableCamera
 
 from compneurovis._perf import perf_log
-from compneurovis.core.scene import PanelSpec
+from compneurovis.core.app import PanelSpec
 
 
 class Viewport3DVisual(Protocol):

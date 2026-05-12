@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding
-from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
+from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, AppSpec, StateBinding
+from compneurovis.core.app import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
 
 
-class JaxleySceneBuilder:
-    """Build default morphology geometry and Scene objects for Jaxley sessions."""
+class JaxleyAppSpecBuilder:
+    """Build default morphology geometry and AppSpec objects for Jaxley sessions."""
 
     DISPLAY_FIELD_ID = "segment_display"
     HISTORY_FIELD_ID = "segment_history"
@@ -74,7 +74,7 @@ class JaxleySceneBuilder:
 
         ordered = nodes.sort_values("global_comp_index").reset_index(drop=True)
         if ordered.empty:
-            raise ValueError("JaxleySceneBuilder requires at least one compartment")
+            raise ValueError("JaxleyAppSpecBuilder requires at least one compartment")
 
         positions = ordered[["x", "y", "z"]].to_numpy(np.float32)
         lengths = np.maximum(ordered["length"].to_numpy(np.float32), 1e-6)
@@ -85,7 +85,7 @@ class JaxleySceneBuilder:
             idxs = branch.index.to_numpy()
             if xyzr is not None and int(branch_idx) < len(xyzr):
                 branch_xyzr = np.asarray(xyzr[int(branch_idx)], dtype=np.float32)
-                segments = JaxleySceneBuilder._split_xyzr_into_equal_length_segments(branch_xyzr, len(idxs))
+                segments = JaxleyAppSpecBuilder._split_xyzr_into_equal_length_segments(branch_xyzr, len(idxs))
                 branch_positions = []
                 branch_lengths = []
                 branch_radii = []
@@ -102,7 +102,7 @@ class JaxleySceneBuilder:
                         seg_dir = diff / seg_length
                     branch_positions.append(0.5 * (start + end))
                     branch_lengths.append(seg_length)
-                    branch_radii.append(max(JaxleySceneBuilder._segment_radius(segment), 1e-6))
+                    branch_radii.append(max(JaxleyAppSpecBuilder._segment_radius(segment), 1e-6))
                     branch_dirs.append(seg_dir)
                 positions[idxs] = np.asarray(branch_positions, dtype=np.float32)
                 lengths[idxs] = np.asarray(branch_lengths, dtype=np.float32)
@@ -166,7 +166,7 @@ class JaxleySceneBuilder:
         )
 
     @staticmethod
-    def build_scene(
+    def build_app_spec(
         *,
         geometry: MorphologyGeometry,
         display_values: np.ndarray,
@@ -188,11 +188,11 @@ class JaxleySceneBuilder:
         title: str = "CompNeuroVis",
         control_ids: tuple[str, ...] | None = None,
         action_ids: tuple[str, ...] | None = None,
-    ) -> Scene:
-        """Build the default morphology-plus-trace Scene for a Jaxley session."""
+    ) -> AppSpec:
+        """Build the default morphology-plus-trace AppSpec for a Jaxley backend."""
 
-        display_field_id = display_field_id or JaxleySceneBuilder.DISPLAY_FIELD_ID
-        history_field_id = history_field_id or JaxleySceneBuilder.HISTORY_FIELD_ID
+        display_field_id = display_field_id or JaxleyAppSpecBuilder.DISPLAY_FIELD_ID
+        history_field_id = history_field_id or JaxleyAppSpecBuilder.HISTORY_FIELD_ID
         history_unit = display_unit if history_unit is None else history_unit
         trace_y_unit = (history_unit or "") if trace_y_unit is None else trace_y_unit
         display_field = Field(
@@ -241,8 +241,8 @@ class JaxleySceneBuilder:
         }
         controls_dict = {} if controls is None else dict(controls)
         actions_dict = {} if actions is None else dict(actions)
-        control_ids = JaxleySceneBuilder._ordered_ids(controls_dict, control_ids)
-        action_ids = JaxleySceneBuilder._ordered_ids(actions_dict, action_ids)
+        control_ids = JaxleyAppSpecBuilder._ordered_ids(controls_dict, control_ids)
+        action_ids = JaxleyAppSpecBuilder._ordered_ids(actions_dict, action_ids)
         panels = [
             PanelSpec(
                 id="morphology-panel",
@@ -266,7 +266,7 @@ class JaxleySceneBuilder:
                 )
             )
             panel_grid.append(("controls-panel",))
-        return Scene(
+        return AppSpec(
             fields={display_field.id: display_field, trace_field.id: trace_field},
             geometries={geometry.id: geometry},
             views=views,

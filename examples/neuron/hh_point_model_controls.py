@@ -24,10 +24,11 @@ from compneurovis import (
     LinePlotViewSpec,
     PanelSpec,
     ScalarValueSpec,
-    Scene,
+    RunSpec,
     run_app,
 )
-from compneurovis.session import BufferedSession, FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, StatePatch, Status
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, StatePatch, Status
 
 
 TITLE = "HH point-model controls"
@@ -97,11 +98,11 @@ def float_slider(
         label=label,
         value_spec=ScalarValueSpec(default=default, min=min_value, max=max_value, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=steps),
-        send_to_session=True,
+        send_to_backend=True,
     )
 
 
-class HHPointModelSession(BufferedSession):
+class HHPointModelBackend(BufferedBackend):
     def __init__(self) -> None:
         super().__init__()
         self.dt = 0.025
@@ -130,10 +131,10 @@ class HHPointModelSession(BufferedSession):
             label: deque(maxlen=self.max_samples) for label in STATE_LABELS
         }
 
-    def initialize(self) -> Scene:
+    def initialize(self) -> AppSpec:
         self._build_model()
         self._reset_simulation()
-        return self._build_scene()
+        return self._build_app_spec()
 
     def advance(self) -> None:
         time_values: list[float] = []
@@ -442,7 +443,7 @@ class HHPointModelSession(BufferedSession):
         self.cm = float(DEFAULT_CONTROL_VALUES["cm"])
         self.celsius = float(DEFAULT_CONTROL_VALUES["celsius"])
 
-    def _build_scene(self) -> Scene:
+    def _build_app_spec(self) -> AppSpec:
         controls = self.control_specs()
         actions = self.action_specs()
         voltage_field = self._history_field(
@@ -463,7 +464,7 @@ class HHPointModelSession(BufferedSession):
             series_values=[list(self._state_history[label]) for label in STATE_LABELS],
         )
 
-        return Scene(
+        return AppSpec(
             fields={
                 voltage_field.id: voltage_field,
                 current_field.id: current_field,
@@ -557,5 +558,5 @@ class HHPointModelSession(BufferedSession):
         )
 
 
-app = AppSpec(session=HHPointModelSession, title=TITLE)
+app = RunSpec(backend=HHPointModelBackend, title=TITLE)
 run_app(app)

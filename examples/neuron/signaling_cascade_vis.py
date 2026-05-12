@@ -26,11 +26,12 @@ from compneurovis import (
     LinePlotViewSpec,
     PanelSpec,
     ScalarValueSpec,
-    Scene,
+    RunSpec,
     SeriesSpec,
     run_app,
 )
-from compneurovis.session import BufferedSession, FieldAppend, FieldReplace, Reset, SetControl
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import FieldAppend, FieldReplace, Reset, SetControl
 
 
 h.load_file("stdrun.hoc")
@@ -60,7 +61,7 @@ CONTROLS = (
         label="Ligand external_input (uM/ms)",
         value_spec=ScalarValueSpec(default=0.005, min=0.0, max=0.1, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("ligand", "external_input"),
     ),
     ControlSpec(
@@ -68,7 +69,7 @@ CONTROLS = (
         label="Ligand decay_rate (/ms)",
         value_spec=ScalarValueSpec(default=0.00955, min=1e-05, max=0.1, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200, scale="log"),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("ligand", "decay_rate"),
     ),
     ControlSpec(
@@ -76,7 +77,7 @@ CONTROLS = (
         label="Receptor Kd (uM)",
         value_spec=ScalarValueSpec(default=3.09, min=0.01, max=10.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200, scale="log"),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("receptor", "kd1"),
     ),
     ControlSpec(
@@ -84,7 +85,7 @@ CONTROLS = (
         label="Receptor efficacy1",
         value_spec=ScalarValueSpec(default=1.0, min=0.0, max=2.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("receptor", "efficacy1"),
     ),
     ControlSpec(
@@ -92,7 +93,7 @@ CONTROLS = (
         label="Receptor decay1 (/ms)",
         value_spec=ScalarValueSpec(default=0.275, min=0.0001, max=1.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200, scale="log"),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("receptor", "decay1"),
     ),
     ControlSpec(
@@ -100,7 +101,7 @@ CONTROLS = (
         label="Receptor capacity",
         value_spec=ScalarValueSpec(default=1.62, min=0.0, max=5.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("receptor", "capacity"),
     ),
     ControlSpec(
@@ -108,7 +109,7 @@ CONTROLS = (
         label="Receptor baseline_activity",
         value_spec=ScalarValueSpec(default=0.0, min=0.0, max=1.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("receptor", "baseline_activity"),
     ),
     ControlSpec(
@@ -116,7 +117,7 @@ CONTROLS = (
         label="Effector s_min",
         value_spec=ScalarValueSpec(default=0.0, min=0.0, max=1.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=100),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("effector", "s_min"),
     ),
     ControlSpec(
@@ -124,7 +125,7 @@ CONTROLS = (
         label="Effector s_max",
         value_spec=ScalarValueSpec(default=1.0, min=0.0, max=2.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=100),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("effector", "s_max"),
     ),
     ControlSpec(
@@ -132,14 +133,14 @@ CONTROLS = (
         label="Effector K (Hill midpoint)",
         value_spec=ScalarValueSpec(default=0.5, min=0.001, max=10.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200, scale="log"),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("effector", "K"),
     ),
     ControlSpec(
         id="n",
         label="Effector hill coefficient n",
         value_spec=ScalarValueSpec(default=3, min=1, max=6, value_type="int"),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("effector", "n"),
     ),
     ControlSpec(
@@ -147,7 +148,7 @@ CONTROLS = (
         label="Effector tau_on (ms)",
         value_spec=ScalarValueSpec(default=151.0, min=1.0, max=200.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("effector", "tau_on"),
     ),
     ControlSpec(
@@ -155,7 +156,7 @@ CONTROLS = (
         label="Effector tau_off (ms)",
         value_spec=ScalarValueSpec(default=140.0, min=1.0, max=200.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=200),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("effector", "tau_off"),
     ),
 )
@@ -171,7 +172,7 @@ def control_specs(*, display_dt: float = DEFAULT_DISPLAY_DT, dt: float = DEFAULT
             label="Simulation speed (ms sim/update)",
             value_spec=ScalarValueSpec(default=max(float(dt), float(display_dt)), min=float(dt), max=20.0, value_type="float"),
             presentation=ControlPresentationSpec(kind="slider", steps=199, scale="log"),
-            send_to_session=True,
+            send_to_backend=True,
         )
     }
     controls.update({control.id: control for control in CONTROLS})
@@ -197,7 +198,7 @@ def build_cascade_scene(
     time_history: list[float],
     series_history: dict[str, list[float]],
     controls: dict[str, ControlSpec],
-) -> Scene:
+) -> AppSpec:
     field = Field(
         id=FIELD_ID,
         values=np.asarray([series_history[series.key] for series in SERIES], dtype=np.float32),
@@ -227,7 +228,7 @@ def build_cascade_scene(
         x_minor_tick_spacing=1.0,
         max_refresh_hz=60,
     )
-    return Scene(
+    return AppSpec(
         fields={FIELD_ID: field},
         geometries={},
         views={VIEW_ID: view},
@@ -242,9 +243,9 @@ def build_cascade_scene(
     )
 
 
-class SignalingCascadeSession(BufferedSession):
+class SignalingCascadeBackend(BufferedBackend):
     @classmethod
-    def startup_scene(cls) -> Scene | None:
+    def startup_app_spec(cls) -> AppSpec | None:
         return build_cascade_scene(
             time_history=[0.0],
             series_history=zero_series_history(),
@@ -262,15 +263,15 @@ class SignalingCascadeSession(BufferedSession):
         super().__init__()
         self.dt = float(dt)
         if self.dt <= 0:
-            raise ValueError("SignalingCascadeSession dt must be positive")
+            raise ValueError("SignalingCascadeBackend dt must be positive")
         self.display_dt = float(display_dt)
         if self.display_dt <= 0:
-            raise ValueError("SignalingCascadeSession display_dt must be positive")
+            raise ValueError("SignalingCascadeBackend display_dt must be positive")
         self.display_dt = max(self.dt, self.display_dt)
         self.v_init = float(v_init)
         self.max_samples = int(max_samples)
         if self.max_samples <= 0:
-            raise ValueError("SignalingCascadeSession max_samples must be positive")
+            raise ValueError("SignalingCascadeBackend max_samples must be positive")
         self.parameters = {control.id: control.default_value() for control in CONTROLS}
         self._time_history: deque[float] = deque(maxlen=self.max_samples)
         self._series_history: dict[str, deque[float]] = {
@@ -427,5 +428,5 @@ class SignalingCascadeSession(BufferedSession):
             return False
 
 
-app = AppSpec(session=SignalingCascadeSession, title=TITLE)
+app = RunSpec(backend=SignalingCascadeBackend, title=TITLE)
 run_app(app)

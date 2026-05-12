@@ -2,23 +2,24 @@ from __future__ import annotations
 
 from functools import partial
 
-from compneurovis.core import ActionSpec, AppSpec, Scene
-from compneurovis.session import BufferedSession, FieldReplace, Reset
+from compneurovis.core import ActionSpec, AppSpec, RunSpec
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import FieldReplace, Reset
 
 
-class ReplaySession(BufferedSession):
-    """Session that replays a precomputed sequence of frame replacements."""
+class ReplayBackend(BufferedBackend):
+    """Backend that replays a precomputed sequence of frame replacements."""
 
-    def __init__(self, *, scene: Scene, field_id: str, frames, interval_live: bool = True):
+    def __init__(self, *, app_spec: AppSpec, field_id: str, frames, interval_live: bool = True):
         super().__init__()
-        self.scene = scene
+        self.app_spec = app_spec
         self.field_id = field_id
         self.frames = list(frames)
         self.index = 0
         self.interval_live = interval_live
 
     def initialize(self):
-        return self.scene
+        return self.app_spec
 
     def is_live(self) -> bool:
         return self.interval_live
@@ -40,18 +41,18 @@ class ReplaySession(BufferedSession):
         return None
 
 
-def build_replay_app(*, scene: Scene, field_id: str, frames) -> AppSpec:
-    """Build an app that replays precomputed frames through ReplaySession."""
+def build_replay_app(*, app_spec: AppSpec, field_id: str, frames) -> RunSpec:
+    """Build an app that replays precomputed frames through ReplayBackend."""
 
-    scene.actions.setdefault("reset", ActionSpec("reset", "Reset", shortcuts=("Space",)))
-    scene.layout.normalize_panels(
-        views=scene.views,
-        controls=scene.controls,
-        actions=scene.actions,
+    app_spec.actions.setdefault("reset", ActionSpec("reset", "Reset", shortcuts=("Space",)))
+    app_spec.layout.normalize_panels(
+        views=app_spec.views,
+        controls=app_spec.controls,
+        actions=app_spec.actions,
     )
 
-    return AppSpec(
-        scene=scene,
-        session=partial(ReplaySession, scene=scene, field_id=field_id, frames=frames),
-        title=scene.layout.title,
+    return RunSpec(
+        app_spec=app_spec,
+        backend=partial(ReplayBackend, app_spec=app_spec, field_id=field_id, frames=frames),
+        title=app_spec.layout.title,
     )

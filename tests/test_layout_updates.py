@@ -3,12 +3,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from compneurovis.core import Field, LayoutSpec, Scene
-from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D, PanelSpec
-from compneurovis.session import LayoutReplace, PanelPatch
+from compneurovis.core import Field, LayoutSpec, AppSpec
+from compneurovis.core.app import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D, PanelSpec
+from compneurovis.messages import LayoutReplace, PanelPatch
 
 
-def _minimal_scene(panels: tuple[PanelSpec, ...] | None = None) -> Scene:
+def _minimal_scene(panels: tuple[PanelSpec, ...] | None = None) -> AppSpec:
     field = Field(
         id="x",
         values=np.zeros(2, dtype=np.float32),
@@ -16,7 +16,7 @@ def _minimal_scene(panels: tuple[PanelSpec, ...] | None = None) -> Scene:
         coords={"t": np.array([0.0, 1.0], dtype=np.float32)},
     )
     layout = LayoutSpec(panels=panels or ())
-    return Scene(fields={"x": field}, geometries={}, views={}, layout=layout)
+    return AppSpec(fields={"x": field}, geometries={}, views={}, layout=layout)
 
 
 # ---------------------------------------------------------------------------

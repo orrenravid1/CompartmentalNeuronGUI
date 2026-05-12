@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from collections import deque
+from typing import Any, Callable, Deque, TypeAlias
+
+from compneurovis.core.app import AppSpec
+from compneurovis.messages import CommandPayload, UpdatePayload
+
+
+class Backend(ABC):
+    @classmethod
+    def startup_app_spec(cls) -> AppSpec | None:
+        return None
+
+    @abstractmethod
+    def initialize(self) -> AppSpec | None:
+        pass
+
+    @abstractmethod
+    def advance(self) -> None:
+        pass
+
+    @abstractmethod
+    def handle(self, command: CommandPayload) -> None:
+        pass
+
+    @abstractmethod
+    def take_outbound_messages(self) -> list[UpdatePayload]:
+        pass
+
+    def is_live(self) -> bool:
+        return True
+
+    def idle_sleep(self) -> float:
+        return 0.05
+
+    def shutdown(self) -> None:
+        pass
+
+
+class BufferedBackend(Backend):
+    def __init__(self) -> None:
+        self._updates: Deque[UpdatePayload] = deque()
+
+    def emit(self, update: UpdatePayload) -> None:
+        self._updates.append(update)
+
+    def take_outbound_messages(self) -> list[UpdatePayload]:
+        updates = list(self._updates)
+        self._updates.clear()
+        return updates
+
+
+BackendFactory: TypeAlias = Callable[[], Backend]
+BackendSource: TypeAlias = type[Backend] | BackendFactory
+
+
+def resolve_startup_app_spec_source(source: BackendSource | None) -> AppSpec | None:
+    if source is None:
+        return None
+    if isinstance(source, type):
+        if not issubclass(source, Backend):
+            raise TypeError(f"Expected Backend subclass, got {source!r}")
+        app_spec = source.startup_app_spec()
+    else:
+        if isinstance(source, Backend):
+            raise TypeError(
+                "Eager backend instances are not supported for worker-backed apps. "
+                "Pass a Backend subclass or a top-level zero-argument factory instead."
+            )
+        startup_fn = getattr(source, "startup_app_spec", None)
+        if not callable(startup_fn):
+            return None
+        app_spec = startup_fn()
+    if app_spec is not None and not isinstance(app_spec, AppSpec):
+        raise TypeError(f"Startup app spec source returned {type(app_spec)!r}, expected AppSpec | None")
+    return app_spec
+
+
+def resolve_backend_source(source: BackendSource) -> Backend:
+    if isinstance(source, type):
+        if not issubclass(source, Backend):
+            raise TypeError(f"Expected Backend subclass, got {source!r}")
+        return source()
+    if isinstance(source, Backend):
+        raise TypeError(
+            "Eager backend instances are not supported for worker-backed apps. "
+            "Pass a Backend subclass or a top-level zero-argument factory instead."
+        )
+    if callable(source):
+        backend = source()
+        if not isinstance(backend, Backend):
+            raise TypeError(f"Backend factory returned {type(backend)!r}, expected Backend")
+        return backend
+    raise TypeError(f"Unsupported backend source: {source!r}")
+
+
+def resolve_interaction_target_source(source: Any | None) -> Any | None:
+    if source is None:
+        return None
+    if isinstance(source, type):
+        return source()
+    if callable(source) and not any(hasattr(source, attr) for attr in ("on_action", "on_key_press", "on_entity_clicked")):
+        return source()
+    return source

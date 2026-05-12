@@ -6,52 +6,53 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 import numpy as np
 
-from compneurovis.backends.jaxley.scene import JaxleySceneBuilder
+from compneurovis.backends.jaxley.app_spec import JaxleyAppSpecBuilder
 from compneurovis.core.controls import ActionSpec, ControlSpec
-from compneurovis.core.scene import Scene
+from compneurovis.core.app import AppSpec
 from compneurovis.core.views import LinePlotViewSpec
-from compneurovis.session import BufferedSession, EntityClicked, FieldAppend, FieldReplace, HistoryCaptureMode, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
+from compneurovis.backends import BufferedBackend, HistoryCaptureMode
+from compneurovis.messages import EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
 
 if TYPE_CHECKING:  # pragma: no cover - optional dependency typing only
     import jaxley as jx
 
 
-class SessionInteractionContext:
-    def __init__(self, session: "JaxleySession"):
-        self.session = session
+class BackendInteractionContext:
+    def __init__(self, backend: "JaxleyBackend"):
+        self.backend = backend
 
     def set_state(self, key: str, value: Any) -> None:
-        self.session._ui_state[key] = value
-        self.session.emit(StatePatch({key: value}))
+        self.backend._ui_state[key] = value
+        self.backend.emit(StatePatch({key: value}))
 
     def state(self, key: str, default: Any = None) -> Any:
-        return self.session._ui_state.get(key, default)
+        return self.backend._ui_state.get(key, default)
 
     @property
     def selected_entity_id(self) -> str | None:
-        value = self.session._ui_state.get("selected_entity_id")
+        value = self.backend._ui_state.get("selected_entity_id")
         return str(value) if value is not None else None
 
     def entity_info(self, entity_id: str | None = None) -> dict[str, Any] | None:
         current_id = entity_id or self.selected_entity_id
-        if current_id is None or self.session.geometry is None:
+        if current_id is None or self.backend.geometry is None:
             return None
         try:
-            return self.session.geometry.entity_info(current_id)
+            return self.backend.geometry.entity_info(current_id)
         except KeyError:
             return None
 
     def show_status(self, message: str, timeout_ms: int | None = None) -> None:
-        self.session.emit(Status(message, timeout_ms))
+        self.backend.emit(Status(message, timeout_ms))
 
     def clear_status(self) -> None:
-        self.session.emit(Status("", 0))
+        self.backend.emit(Status("", 0))
 
     def invoke_action(self, action_id: str, payload: dict[str, Any] | None = None) -> None:
-        self.session._dispatch_action(action_id, payload or {})
+        self.backend._dispatch_action(action_id, payload or {})
 
 
-class JaxleySession(BufferedSession, ABC):
+class JaxleyBackend(BufferedBackend, ABC):
     """Base class for live Jaxley-backed CompNeuroVis sessions."""
 
     HISTORY_CAPTURE_ON_DEMAND = HistoryCaptureMode.ON_DEMAND
@@ -99,7 +100,7 @@ class JaxleySession(BufferedSession, ABC):
 
     @abstractmethod
     def build_cells(self) -> Iterable["jx.Cell"] | "jx.Cell":
-        """Return one Jaxley cell or an iterable of cells for the session."""
+        """Return one Jaxley cell or an iterable of cells for the backend."""
 
         pass
 
@@ -153,10 +154,10 @@ class JaxleySession(BufferedSession, ABC):
         return {}
 
     def display_field_id(self) -> str:
-        return JaxleySceneBuilder.DISPLAY_FIELD_ID
+        return JaxleyAppSpecBuilder.DISPLAY_FIELD_ID
 
     def history_field_id(self) -> str:
-        return JaxleySceneBuilder.HISTORY_FIELD_ID
+        return JaxleyAppSpecBuilder.HISTORY_FIELD_ID
 
     def display_unit(self) -> str | None:
         return "mV"
@@ -209,13 +210,13 @@ class JaxleySession(BufferedSession, ABC):
         del entity_id, context
         return True
 
-    def build_scene(self, *, geometry, display_values: np.ndarray, time_value: float) -> Scene:
-        """Build the initial Scene from sampled values and morphology geometry."""
+    def build_app_spec(self, *, geometry, display_values: np.ndarray, time_value: float) -> AppSpec:
+        """Build the initial AppSpec from sampled values and morphology geometry."""
 
         controls = self.control_specs()
         actions = self._resolved_action_specs()
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
-        scene = JaxleySceneBuilder.build_scene(
+        app_spec = JaxleyAppSpecBuilder.build_app_spec(
             geometry=geometry,
             display_values=display_values,
             trace_values=trace_values,
@@ -239,11 +240,11 @@ class JaxleySession(BufferedSession, ABC):
         )
         trace_updates = self.trace_view_updates()
         if trace_updates:
-            scene.replace_view("trace", trace_updates)
-        return scene
+            app_spec.replace_view("trace", trace_updates)
+        return app_spec
 
     def initialize(self):
-        """Initialize the Jaxley model, sample it once, and return the first Scene."""
+        """Initialize the Jaxley model, sample it once, and return the first AppSpec."""
 
         print(f"[{self.title}] Importing JAX and Jaxley...")
         import jax  # noqa: F401
@@ -280,7 +281,7 @@ class JaxleySession(BufferedSession, ABC):
         self._step_index = 0
 
         print(f"[{self.title}] Building morphology geometry...")
-        self.geometry = JaxleySceneBuilder.build_morphology_geometry(
+        self.geometry = JaxleyAppSpecBuilder.build_morphology_geometry(
             self.network.nodes,
             xyzr=self.network.xyzr,
             cell_names=self.cell_names(self.cells),
@@ -288,23 +289,23 @@ class JaxleySession(BufferedSession, ABC):
         display_values = self._read_display_values()
         self._entity_index_by_id = {entity_id: index for index, entity_id in enumerate(self.geometry.entity_ids)}
         self._initialize_trace_history(self._time, display_values)
-        scene = self.build_scene(
+        app_spec = self.build_app_spec(
             geometry=self.geometry,
             display_values=display_values,
             time_value=self._time,
         )
         self._field_max_samples[self.history_field_id()] = self._resolved_field_max_samples(
-            scene,
+            app_spec,
             field_id=self.history_field_id(),
             append_dim="time",
         )
         self._ui_state = {}
         print(f"[{self.title}] Ready.")
-        return scene
+        return app_spec
 
     def _read_display_values(self) -> np.ndarray:
         if self._rec_indices is None:
-            raise RuntimeError("JaxleySession recordings are not initialized")
+            raise RuntimeError("JaxleyBackend recordings are not initialized")
         values = [
             np.asarray(self._state[state_name])[int(index)]
             for state_name, index in zip(self._rec_states, self._rec_indices)
@@ -412,17 +413,17 @@ class JaxleySession(BufferedSession, ABC):
         if self.display_dt is None:
             return 1
         if self.display_dt <= 0:
-            raise ValueError("JaxleySession display_dt must be positive or None")
+            raise ValueError("JaxleyBackend display_dt must be positive or None")
         return max(1, int(math.ceil(float(self.display_dt) / float(self.dt))))
 
     def idle_sleep(self) -> float:
         return 0.0
 
-    def _resolved_field_max_samples(self, scene: Scene, *, field_id: str, append_dim: str) -> int:
+    def _resolved_field_max_samples(self, app_spec: AppSpec, *, field_id: str, append_dim: str) -> int:
         required = int(self.max_samples)
         if self.dt <= 0:
             return required
-        for view in scene.views.values():
+        for view in app_spec.views.values():
             if not isinstance(view, LinePlotViewSpec):
                 continue
             if view.field_id != field_id:
@@ -550,8 +551,8 @@ class JaxleySession(BufferedSession, ABC):
         times_array = np.asarray(times, dtype=np.float32)
         self._emit_batch(times_array, steps)
 
-    def _interaction_context(self) -> SessionInteractionContext:
-        return SessionInteractionContext(self)
+    def _interaction_context(self) -> BackendInteractionContext:
+        return BackendInteractionContext(self)
 
     def _dispatch_action(self, action_id: str, payload: dict[str, Any]) -> bool:
         if self.on_action(action_id, payload, self._interaction_context()):

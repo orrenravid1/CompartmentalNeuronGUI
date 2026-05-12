@@ -19,7 +19,7 @@ pytestmark = pytest.mark.jaxley
 def _load_example_text(example_path: Path) -> str:
     text = example_path.read_text(encoding="utf-8")
     return text.replace(
-        '\nif __name__ == "__main__":\n    run_app(build_jaxley_app(MultiCellSession))\n',
+        '\nif __name__ == "__main__":\n    run_app(build_jaxley_app(MultiCellBackend))\n',
         "\n",
     )
 
@@ -117,22 +117,22 @@ def test_jaxley_programmatic_geometry_has_no_compartment_gaps():
         import json
         import numpy as np
         import jax
-        from compneurovis.backends.jaxley.scene import JaxleySceneBuilder
+        from compneurovis.backends.jaxley.app_spec import JaxleyAppSpecBuilder
 
         example_path = r"{example_path}"
         text = {example_text!r}
         ns = {{}}
         exec(compile(text, example_path, "exec"), ns)
-        MultiCellSession = ns["MultiCellSession"]
+        MultiCellBackend = ns["MultiCellBackend"]
 
-        session = MultiCellSession()
-        cells = session.build_cells()
-        network = session.build_network(cells)
-        session.setup_model(network, cells)
-        geometry = JaxleySceneBuilder.build_morphology_geometry(
+        backend = MultiCellBackend()
+        cells = backend.build_cells()
+        network = backend.build_network(cells)
+        backend.setup_model(network, cells)
+        geometry = JaxleyAppSpecBuilder.build_morphology_geometry(
             network.nodes,
             xyzr=network.xyzr,
-            cell_names=session.cell_names(cells),
+            cell_names=backend.cell_names(cells),
         )
 
         z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float32)
@@ -168,26 +168,26 @@ def test_jaxley_multicell_example_controls_reconfigure_runtime():
         text = {example_text!r}
         ns = {{}}
         exec(compile(text, example_path, "exec"), ns)
-        MultiCellSession = ns["MultiCellSession"]
+        MultiCellBackend = ns["MultiCellBackend"]
 
-        session = MultiCellSession()
-        session.initialize()
+        backend = MultiCellBackend()
+        backend.initialize()
 
-        initial_gna = float(session.network.nodes["HH_gNa"].dropna().iloc[0])
-        initial_syn = float(session.network.edges["IonotropicSynapse_gS"].dropna().iloc[0])
-        initial_syn_s = float(session.network.edges["IonotropicSynapse_s"].dropna().iloc[0])
-        initial_i_max = float(np.max(np.asarray(session._externals["i"])))
+        initial_gna = float(backend.network.nodes["HH_gNa"].dropna().iloc[0])
+        initial_syn = float(backend.network.edges["IonotropicSynapse_gS"].dropna().iloc[0])
+        initial_syn_s = float(backend.network.edges["IonotropicSynapse_s"].dropna().iloc[0])
+        initial_i_max = float(np.max(np.asarray(backend._externals["i"])))
 
-        session.apply_control("hh_gna", 0.2)
-        session.apply_control("syn_gs", 1e-3)
-        session.apply_control("syn_e_syn", 20.0)
-        session.apply_control("stim_amp", 3.0)
-        session.apply_control("stim_dur", 8.0)
+        backend.apply_control("hh_gna", 0.2)
+        backend.apply_control("syn_gs", 1e-3)
+        backend.apply_control("syn_e_syn", 20.0)
+        backend.apply_control("stim_amp", 3.0)
+        backend.apply_control("stim_dur", 8.0)
 
-        updated_gna = float(session.network.nodes["HH_gNa"].dropna().iloc[0])
-        updated_syn = float(session.network.edges["IonotropicSynapse_gS"].dropna().iloc[0])
-        updated_esyn = float(session.network.edges["IonotropicSynapse_e_syn"].dropna().iloc[0])
-        updated_i_max = float(np.max(np.asarray(session._externals["i"])))
+        updated_gna = float(backend.network.nodes["HH_gNa"].dropna().iloc[0])
+        updated_syn = float(backend.network.edges["IonotropicSynapse_gS"].dropna().iloc[0])
+        updated_esyn = float(backend.network.edges["IonotropicSynapse_e_syn"].dropna().iloc[0])
+        updated_i_max = float(np.max(np.asarray(backend._externals["i"])))
 
         print(json.dumps({{
             "initial_gna": initial_gna,
@@ -198,7 +198,7 @@ def test_jaxley_multicell_example_controls_reconfigure_runtime():
             "updated_esyn": updated_esyn,
             "initial_i_max": initial_i_max,
             "updated_i_max": updated_i_max,
-            "control_ids": sorted(session.control_specs().keys()),
+            "control_ids": sorted(backend.control_specs().keys()),
         }}))
         """
     )
@@ -233,23 +233,23 @@ def test_jaxley_multicell_reset_restores_closed_synapses():
         f"""
         import json
         import jax
-        from compneurovis.session import Reset
+        from compneurovis.messages import Reset
 
         example_path = r"{example_path}"
         text = {example_text!r}
         ns = {{}}
         exec(compile(text, example_path, "exec"), ns)
-        MultiCellSession = ns["MultiCellSession"]
+        MultiCellBackend = ns["MultiCellBackend"]
 
-        session = MultiCellSession()
-        session.initialize()
+        backend = MultiCellBackend()
+        backend.initialize()
         for _ in range(50):
-            session.advance()
-        session.handle(Reset())
+            backend.advance()
+        backend.handle(Reset())
 
         print(json.dumps({{
-            "edge_s_after_reset": float(session.network.edges["IonotropicSynapse_s"].dropna().iloc[0]),
-            "state_s_after_reset": float(session._state["IonotropicSynapse_s"][0]),
+            "edge_s_after_reset": float(backend.network.edges["IonotropicSynapse_s"].dropna().iloc[0]),
+            "state_s_after_reset": float(backend._state["IonotropicSynapse_s"][0]),
         }}))
         """
     )
@@ -266,37 +266,37 @@ def test_jaxley_reset_rebuilds_from_updated_network_parameters():
         import json
         import numpy as np
         import jax
-        from compneurovis.session import Reset
+        from compneurovis.messages import Reset
 
         example_path = r"{example_path}"
         text = {example_text!r}
         ns = {{}}
         exec(compile(text, example_path, "exec"), ns)
-        Base = ns["MultiCellSession"]
+        Base = ns["MultiCellBackend"]
 
-        class SweepSession(Base):
+        class SweepBackend(Base):
             def _pulse_schedule(self):
                 return [(2.0, self.stim_dur, self.stim_amp)]
 
-        def soma_indices(session):
+        def soma_indices(backend):
             ids = []
             for cell_name in ("cell1", "cell2", "cell3"):
                 matches = [
-                    eid for eid in session.geometry.entity_ids
-                    if session.geometry.entity_info(eid)["section_name"] == f"{{cell_name}}_branch_0"
+                    eid for eid in backend.geometry.entity_ids
+                    if backend.geometry.entity_info(eid)["section_name"] == f"{{cell_name}}_branch_0"
                 ]
-                ids.append(min(matches, key=lambda eid: abs(session.geometry.entity_info(eid)["xloc"] - 0.5)))
-            return [session._entity_index_by_id[eid] for eid in ids]
+                ids.append(min(matches, key=lambda eid: abs(backend.geometry.entity_info(eid)["xloc"] - 0.5)))
+            return [backend._entity_index_by_id[eid] for eid in ids]
 
-        def run_max(session, steps=300):
-            idx = soma_indices(session)
+        def run_max(backend, steps=300):
+            idx = soma_indices(backend)
             max_v = np.full(len(idx), -np.inf, dtype=np.float32)
             for _ in range(steps):
-                session.advance()
-                max_v = np.maximum(max_v, session._last_voltage_values[idx])
+                backend.advance()
+                max_v = np.maximum(max_v, backend._last_voltage_values[idx])
             return max_v
 
-        reused = SweepSession()
+        reused = SweepBackend()
         reused.initialize()
         reused.apply_control("syn_gs", 0.01)
         reused.apply_control("syn_v_th", -45.0)
@@ -304,7 +304,7 @@ def test_jaxley_reset_rebuilds_from_updated_network_parameters():
         reused.handle(Reset())
         reused_max = run_max(reused)
 
-        fresh = SweepSession()
+        fresh = SweepBackend()
         fresh.syn_gs = 0.01
         fresh.syn_v_th = -45.0
         fresh.syn_delta = 10.0

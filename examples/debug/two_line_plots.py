@@ -4,7 +4,7 @@ Two Line Plots - debug-oriented example that renders two live line plots at once
 Patterns shown:
   - explicit PanelSpec line-plot panels with a row-major panel_grid
   - a single appended 2-D Field feeding multiple views through selectors
-  - BufferedSession live updates without morphology or surface views
+  - BufferedBackend live updates without morphology or surface views
 
 Run: python examples/debug/two_line_plots.py
 """
@@ -16,8 +16,9 @@ import time
 
 import numpy as np
 
-from compneurovis import AppSpec, Field, LayoutSpec, LinePlotViewSpec, PanelSpec, Scene, run_app
-from compneurovis.session import BufferedSession, FieldAppend
+from compneurovis import AppSpec, Field, LayoutSpec, LinePlotViewSpec, PanelSpec, RunSpec, run_app
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import FieldAppend
 
 
 SIGNALS_FIELD_ID = "signals"
@@ -30,7 +31,7 @@ def sample_values(time_s: float) -> np.ndarray:
     return np.array([[fast], [slow]], dtype=np.float32)
 
 
-def build_scene() -> Scene:
+def build_app_spec() -> AppSpec:
     field = Field(
         id=SIGNALS_FIELD_ID,
         values=sample_values(0.0),
@@ -79,7 +80,7 @@ def build_scene() -> Scene:
             x_major_tick_spacing=1.0,
         ),
     }
-    return Scene(
+    return AppSpec(
         fields={field.id: field},
         geometries={},
         views=views,
@@ -94,14 +95,14 @@ def build_scene() -> Scene:
     )
 
 
-class AnimatedTwoLinePlotsSession(BufferedSession):
+class AnimatedTwoLinePlotsBackend(BufferedBackend):
     def __init__(self, *, update_delay_s: float = 0.05):
         super().__init__()
         self.update_delay_s = update_delay_s
         self.time_s = 0.0
 
-    def initialize(self) -> Scene:
-        return build_scene()
+    def initialize(self) -> AppSpec:
+        return build_app_spec()
 
     def advance(self) -> None:
         time.sleep(self.update_delay_s)
@@ -122,8 +123,8 @@ class AnimatedTwoLinePlotsSession(BufferedSession):
 
 if __name__ == "__main__":
     run_app(
-        AppSpec(
-            session=AnimatedTwoLinePlotsSession,
+        RunSpec(
+            backend=AnimatedTwoLinePlotsBackend,
             title="Two Line Plots",
         )
     )

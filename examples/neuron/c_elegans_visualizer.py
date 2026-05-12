@@ -1,5 +1,5 @@
 """
-C. elegans morphology visualizer — loads a directory of multi-tree SWC files as a single session.
+C. elegans morphology visualizer — loads a directory of multi-tree SWC files as a single backend.
 
 Patterns shown:
   - load_swc_multi() for SWC files containing multiple disconnected trees (one per neurite type)
@@ -15,11 +15,11 @@ import random
 
 from neuron import h
 
-from compneurovis import NeuronSession, build_neuron_app, run_app
+from compneurovis import NeuronBackend, build_neuron_app, run_app
 from compneurovis.backends.neuron.utils import load_swc_multi
 
 
-class CElegansSession(NeuronSession):
+class CElegansBackend(NeuronBackend):
     def __init__(self):
         super().__init__(title="C. elegans morphology viewer")
 
@@ -62,4 +62,4 @@ class CElegansSession(NeuronSession):
         return {"iclamps": self.iclamps}
 
 
-run_app(build_neuron_app(CElegansSession))
+run_app(build_neuron_app(CElegansBackend))

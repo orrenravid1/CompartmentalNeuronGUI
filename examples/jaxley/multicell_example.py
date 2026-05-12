@@ -18,7 +18,7 @@ from jaxley.channels import HH
 from jaxley.connect import connect
 from jaxley.synapses import IonotropicSynapse
 
-from compneurovis import ControlPresentationSpec, ControlSpec, JaxleySession, ScalarValueSpec, build_jaxley_app, run_app
+from compneurovis import ControlPresentationSpec, ControlSpec, JaxleyBackend, ScalarValueSpec, build_jaxley_app, run_app
 from compneurovis.backends.jaxley.utils import translate_cells_xyzr
 
 
@@ -37,7 +37,7 @@ def float_control(
         label=label,
         value_spec=ScalarValueSpec(default=default, min=min_value, max=max_value, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=steps, scale=scale),
-        send_to_session=True,
+        send_to_backend=True,
     )
 
 
@@ -102,7 +102,7 @@ def make_branching_cell(name: str):
     return cell
 
 
-class MultiCellSession(JaxleySession):
+class MultiCellBackend(JaxleyBackend):
     def __init__(self):
         super().__init__(title="Multi-cell Jaxley viewer", dt=0.1)
         self.stim_amp = 0.5
@@ -278,4 +278,4 @@ class MultiCellSession(JaxleySession):
         return super().apply_control(control_id, value)
 
 if __name__ == "__main__":
-    run_app(build_jaxley_app(MultiCellSession))
+    run_app(build_jaxley_app(MultiCellBackend))

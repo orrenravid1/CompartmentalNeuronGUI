@@ -3,7 +3,7 @@ HH section inspector - simple NEURON morphology with section-linked voltage, gat
 
 Patterns shown:
   - programmatic pt3d morphology with one rendered entity per section for click-to-inspect traces
-  - custom NeuronSession scene assembly with multiple history fields and three linked line plots
+  - custom NeuronBackend scene assembly with multiple history fields and three linked line plots
   - morphology coloring that switches between membrane voltage and the HH gates n, m, and h
   - selection-driven line plots that follow the clicked morphology section without frontend-specific code
   - _sample_step() + _emit_batch() hooks for multi-field sampling without overriding advance()
@@ -28,16 +28,16 @@ from compneurovis import (
     LayoutSpec,
     LinePlotViewSpec,
     MorphologyViewSpec,
-    NeuronSceneBuilder,
-    NeuronSession,
+    NeuronAppSpecBuilder,
+    NeuronBackend,
     PanelSpec,
     ScalarValueSpec,
-    Scene,
+    AppSpec,
     StateBinding,
     build_neuron_app,
     run_app,
 )
-from compneurovis.session import EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, Reset, ScenePatch, SetControl, StatePatch
+from compneurovis.messages import EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, Reset, AppSpecPatch, SetControl, StatePatch
 
 
 TITLE = "HH section inspector"
@@ -111,7 +111,7 @@ def _straight_section(
     return sec
 
 
-class HHSectionInspectorSession(NeuronSession):
+class HHSectionInspectorBackend(NeuronBackend):
     def __init__(self):
         super().__init__(
             dt=0.025,
@@ -192,21 +192,21 @@ class HHSectionInspectorSession(NeuronSession):
                 id="morphology_quantity",
                 label="Morphology coloring",
                 value_spec=ChoiceValueSpec(default=self.morphology_quantity, options=DISPLAY_OPTIONS),
-                send_to_session=True,
+                send_to_backend=True,
             ),
             "stim_scale": ControlSpec(
                 id="stim_scale",
                 label="Stimulus scale",
                 value_spec=ScalarValueSpec(default=self.stim_scale, min=0.0, max=1.6, value_type="float"),
                 presentation=ControlPresentationSpec(kind="slider", steps=160),
-                send_to_session=True,
+                send_to_backend=True,
             ),
             "display_dt": ControlSpec(
                 id="display_dt",
                 label="Visual update interval (ms sim/update)",
                 value_spec=ScalarValueSpec(default=self.display_dt, min=self.dt, max=4.0, value_type="float"),
                 presentation=ControlPresentationSpec(kind="slider", steps=159),
-                send_to_session=True,
+                send_to_backend=True,
             ),
         }
 
@@ -258,12 +258,12 @@ class HHSectionInspectorSession(NeuronSession):
             self.morphology_quantity = str(value)
             if self._latest_snapshot is not None:
                 self.emit(FieldReplace(field_id=DISPLAY_FIELD_ID, values=self._display_values(self._latest_snapshot)))
-            self.emit(ScenePatch(view_updates={"morphology": {"color_map": self._display_color_map(self.morphology_quantity)}}))
+            self.emit(AppSpecPatch(view_updates={"morphology": {"color_map": self._display_color_map(self.morphology_quantity)}}))
             self.emit(StatePatch({"morph_color_limits": self._display_color_limits(self.morphology_quantity)}))
             return True
         return super().apply_control(control_id, value)
 
-    def build_scene(self, *, geometry, snapshot: dict[str, np.ndarray], time_value: float) -> Scene:
+    def build_app_spec(self, *, geometry, snapshot: dict[str, np.ndarray], time_value: float) -> AppSpec:
         del time_value
         controls = self.control_specs()
         actions = self._resolved_action_specs()
@@ -365,7 +365,7 @@ class HHSectionInspectorSession(NeuronSession):
             ),
         )
 
-        return Scene(
+        return AppSpec(
             fields={
                 DISPLAY_FIELD_ID: Field(
                     id=DISPLAY_FIELD_ID,
@@ -423,7 +423,7 @@ class HHSectionInspectorSession(NeuronSession):
         self.sections = self.build_sections()
         self._runtime_handles = self.setup_model(self.sections)
 
-        geometry = NeuronSceneBuilder.build_morphology_geometry(self.sections)
+        geometry = NeuronAppSpecBuilder.build_morphology_geometry(self.sections)
         geometry = replace(
             geometry,
             labels=tuple(_humanize_section_name(name) for name in geometry.section_names),
@@ -448,7 +448,7 @@ class HHSectionInspectorSession(NeuronSession):
         self._latest_snapshot = snapshot
         self._initialize_histories(time_value, snapshot)
 
-        scene = self.build_scene(geometry=self.geometry, snapshot=snapshot, time_value=time_value)
+        scene = self.build_app_spec(geometry=self.geometry, snapshot=snapshot, time_value=time_value)
         history_field_ids = (
             VOLTAGE_HISTORY_FIELD_ID,
             CURRENT_HISTORY_FIELD_ID,
@@ -670,7 +670,7 @@ class HHSectionInspectorSession(NeuronSession):
             self.on_key_press(command.key, self._interaction_context())
 
 
-app = build_neuron_app(HHSectionInspectorSession)
+app = build_neuron_app(HHSectionInspectorBackend)
 app.diagnostics = DiagnosticsSpec(
     perf_log_enabled=True,
     perf_log_dir=".compneurovis/perf-logs/hh-section-inspector",

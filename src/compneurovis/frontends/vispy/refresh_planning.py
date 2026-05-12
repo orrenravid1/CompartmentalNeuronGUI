@@ -7,12 +7,12 @@ from compneurovis.core import (
     GridSliceOperatorSpec,
     LinePlotViewSpec,
     MorphologyViewSpec,
-    Scene,
+    AppSpec,
     StateBinding,
     StateGraphViewSpec,
     SurfaceViewSpec,
 )
-from compneurovis.core.scene import (
+from compneurovis.core.app import (
     PANEL_KIND_LINE_PLOT,
     PANEL_KIND_STATE_GRAPH,
     PANEL_KIND_VIEW_3D,
@@ -77,7 +77,7 @@ _VIEW_STATE_BINDING_SCHEMA: dict[type, dict[str, frozenset[str]]] = {
     },
 }
 
-# Maps view type → target kinds included in a full scene refresh.
+# Maps view type → target kinds included in a full app spec refresh.
 _VIEW_FULL_REFRESH_KINDS: dict[type, tuple[str, ...]] = {
     MorphologyViewSpec:  ("morphology",),
     SurfaceViewSpec:     ("surface_visual", "surface_axes_geometry", "operator_overlay"),
@@ -156,17 +156,17 @@ def _target_kind_counts(targets: set[RefreshTarget]) -> dict[str, int]:
 
 
 class RefreshPlanner:
-    def __init__(self, scene: Scene):
-        self.scene = scene
+    def __init__(self, app_spec: AppSpec):
+        self.app_spec = app_spec
 
     # ------------------------------------------------------------------
     # Full refresh
 
     def full_refresh_targets(self) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = {RefreshTarget.CONTROLS}
-        for panel in self.scene.layout.resolved_panels():
+        for panel in self.app_spec.layout.resolved_panels():
             for view_id in panel.view_ids:
-                view = self.scene.views.get(view_id)
+                view = self.app_spec.views.get(view_id)
                 for kind in _VIEW_FULL_REFRESH_KINDS.get(type(view), ()):
                     targets.add(RefreshTarget(kind, view_id))
         return targets
@@ -175,7 +175,7 @@ class RefreshPlanner:
     # Incremental refresh routing
 
     def targets_for_view_patch(self, view_id: str, changed_props: set[str]) -> set[RefreshTarget]:
-        view = self.scene.views.get(view_id)
+        view = self.app_spec.views.get(view_id)
         schema = _VIEW_PATCH_SCHEMA.get(type(view), {})
         targets: set[RefreshTarget] = set()
         for kind, props in schema.items():
@@ -185,9 +185,9 @@ class RefreshPlanner:
 
     def targets_for_state_change(self, state_key: str) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
-        for panel in self.scene.layout.resolved_panels():
+        for panel in self.app_spec.layout.resolved_panels():
             for view_id in panel.view_ids:
-                view = self.scene.views.get(view_id)
+                view = self.app_spec.views.get(view_id)
                 # Static prop → target mapping
                 schema = _VIEW_STATE_BINDING_SCHEMA.get(type(view), {})
                 for kind, props in schema.items():
@@ -198,7 +198,7 @@ class RefreshPlanner:
                     if any(binding_key(v) == state_key for v in view.selectors.values()):
                         targets.add(RefreshTarget.line_plot(view_id))
                     if view.operator_id:
-                        op = self.scene.operators.get(view.operator_id)
+                        op = self.app_spec.operators.get(view.operator_id)
                         if isinstance(op, GridSliceOperatorSpec) and state_key in {
                             op.axis_state_key, op.position_state_key
                         }:
@@ -206,7 +206,7 @@ class RefreshPlanner:
                 # SurfaceViewSpec: operator overlay state keys and style bindings
                 if isinstance(view, SurfaceViewSpec):
                     for op_id in getattr(panel, "operator_ids", ()):
-                        op = self.scene.operators.get(op_id)
+                        op = self.app_spec.operators.get(op_id)
                         if not isinstance(op, GridSliceOperatorSpec):
                             continue
                         if op.field_id != view.field_id or op.geometry_id not in {None, view.geometry_id}:
@@ -221,16 +221,16 @@ class RefreshPlanner:
 
     def targets_for_field_replace(self, field_id: str, coords_changed: bool = True) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
-        for panel in self.scene.layout.resolved_panels():
+        for panel in self.app_spec.layout.resolved_panels():
             for view_id in panel.view_ids:
-                view = self.scene.views.get(view_id)
+                view = self.app_spec.views.get(view_id)
                 # Schema-driven field-id prop checks
                 for prop, kind in _VIEW_FIELD_ID_PROPS.get(type(view), {}).items():
                     if getattr(view, prop, None) == field_id:
                         targets.add(RefreshTarget(kind, view_id))
                 # LinePlotViewSpec: operator-backed field reference
                 if isinstance(view, LinePlotViewSpec) and view.operator_id:
-                    op = self.scene.operators.get(view.operator_id)
+                    op = self.app_spec.operators.get(view.operator_id)
                     if isinstance(op, GridSliceOperatorSpec) and op.field_id == field_id:
                         targets.add(RefreshTarget.line_plot(view_id))
                 # SurfaceViewSpec: primary-field triggers + operator overlay
@@ -240,7 +240,7 @@ class RefreshPlanner:
                         if coords_changed or view.color_limits is None:
                             targets.add(RefreshTarget.surface_axes_geometry(view_id))
                     for op_id in getattr(panel, "operator_ids", ()):
-                        op = self.scene.operators.get(op_id)
+                        op = self.app_spec.operators.get(op_id)
                         if (
                             isinstance(op, GridSliceOperatorSpec)
                             and op.field_id == field_id
@@ -252,12 +252,12 @@ class RefreshPlanner:
 
     def targets_for_operator_patch(self, operator_id: str, changed_props: set[str]) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
-        op = self.scene.operators.get(operator_id)
-        for panel in self.scene.layout.panels_of_kind(PANEL_KIND_VIEW_3D):
+        op = self.app_spec.operators.get(operator_id)
+        for panel in self.app_spec.layout.panels_of_kind(PANEL_KIND_VIEW_3D):
             if operator_id not in panel.operator_ids:
                 continue
             for view_id in panel.view_ids:
-                view = self.scene.views.get(view_id)
+                view = self.app_spec.views.get(view_id)
                 if (
                     isinstance(view, SurfaceViewSpec)
                     and isinstance(op, GridSliceOperatorSpec)
@@ -265,9 +265,9 @@ class RefreshPlanner:
                     and op.geometry_id in {None, view.geometry_id}
                 ):
                     targets.add(RefreshTarget.operator_overlay(view_id))
-        for panel in self.scene.layout.resolved_panels():
+        for panel in self.app_spec.layout.resolved_panels():
             for view_id in panel.view_ids:
-                view = self.scene.views.get(view_id)
+                view = self.app_spec.views.get(view_id)
                 if (
                     isinstance(view, LinePlotViewSpec)
                     and view.operator_id == operator_id

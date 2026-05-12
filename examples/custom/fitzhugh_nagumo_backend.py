@@ -1,5 +1,5 @@
 """
-Custom FitzHugh-Nagumo backend - complete example of a pure BufferedSession backend with its
+Custom FitzHugh-Nagumo backend - complete example of a pure BufferedBackend backend with its
 own fixed-step RK4 solver, explicit scene assembly, and bound controls/actions. No NEURON or
 Jaxley helper is involved.
 
@@ -7,7 +7,7 @@ Patterns shown:
   - model class + custom ODE solver owned entirely by the example
   - explicit Field / LinePlotViewSpec / PanelSpec assembly with no simulator builders
   - AttributeRef and SeriesSpec to bind controls and plotted series onto a nested model
-  - BufferedSession startup_scene(), batched FieldAppend updates, and custom actions
+  - BufferedBackend startup_app_spec(), batched FieldAppend updates, and custom actions
 
 Run: python examples/custom/fitzhugh_nagumo_backend.py
 
@@ -39,11 +39,12 @@ from compneurovis import (
     LinePlotViewSpec,
     PanelSpec,
     ScalarValueSpec,
-    Scene,
+    RunSpec,
     SeriesSpec,
     run_app,
 )
-from compneurovis.session import BufferedSession, FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, Status
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, Status
 
 
 TITLE = "Custom FitzHugh-Nagumo backend"
@@ -176,7 +177,7 @@ def float_control(
         label=label,
         value_spec=ScalarValueSpec(default=default, min=min_value, max=max_value, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=steps, scale=scale),
-        send_to_session=True,
+        send_to_backend=True,
         target=target,
     )
 
@@ -231,14 +232,14 @@ def build_field(*, field_id: str, series: tuple[SeriesSpec, ...], time_history: 
     )
 
 
-def build_scene(
+def build_app_spec(
     *,
     time_history: list[float],
     voltage_history: dict[str, list[float]],
     state_history: dict[str, list[float]],
     term_history: dict[str, list[float]],
     controls: dict[str, ControlSpec],
-) -> Scene:
+) -> RunSpec:
     voltage_field = build_field(
         field_id=VOLTAGE_FIELD_ID,
         series=VOLTAGE_SERIES,
@@ -321,7 +322,7 @@ def build_scene(
         ),
     }
 
-    return Scene(
+    return AppSpec(
         fields={
             voltage_field.id: voltage_field,
             state_field.id: state_field,
@@ -349,16 +350,16 @@ def build_scene(
     )
 
 
-class CustomFitzHughNagumoSession(BufferedSession):
+class CustomFitzHughNagumoBackend(BufferedBackend):
     @classmethod
-    def startup_scene(cls) -> Scene | None:
+    def startup_app_spec(cls) -> AppSpec | None:
         model = FitzHughNagumoModel()
         root = SimpleNamespace(model=model)
         time_history = [0.0]
         voltage_history = {key: [value] for key, value in read_series(root, VOLTAGE_SERIES).items()}
         state_history = {key: [value] for key, value in read_series(root, STATE_SERIES).items()}
         term_history = {key: [value] for key, value in read_series(root, TERM_SERIES).items()}
-        return build_scene(
+        return build_app_spec(
             time_history=time_history,
             voltage_history=voltage_history,
             state_history=state_history,
@@ -385,14 +386,14 @@ class CustomFitzHughNagumoSession(BufferedSession):
         self._reset_history()
         self._reset_pending_emits()
 
-    def initialize(self) -> Scene:
+    def initialize(self) -> AppSpec:
         self.model.reset()
         self.sim_time_ms = 0.0
         self._paused = False
         self._reset_history()
         self._reset_pending_emits()
         self._append_current_sample()
-        return build_scene(
+        return build_app_spec(
             time_history=list(self._time_history),
             voltage_history={key: list(values) for key, values in self._voltage_history.items()},
             state_history={key: list(values) for key, values in self._state_history.items()},
@@ -653,8 +654,8 @@ def build_app(
             perf_log_dir=perf_log_dir,
             perf_echo_stderr=perf_log_stderr,
         )
-    return AppSpec(
-        session=CustomFitzHughNagumoSession,
+    return RunSpec(
+        backend=CustomFitzHughNagumoBackend,
         title=TITLE,
         diagnostics=diagnostics,
     )

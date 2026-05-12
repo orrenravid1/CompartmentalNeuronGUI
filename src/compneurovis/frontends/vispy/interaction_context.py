@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from PyQt6 import QtCore
 
-from compneurovis.core import MorphologyGeometry, Scene
+from compneurovis.core import MorphologyGeometry, AppSpec
 from compneurovis.frontends.vispy.refresh_planning import resolve_value
 
 if TYPE_CHECKING:
@@ -16,8 +16,8 @@ class FrontendInteractionContext:
         self.window = window
 
     @property
-    def scene(self) -> Scene | None:
-        return self.window.scene
+    def app_spec(self) -> AppSpec | None:
+        return self.window.app_spec
 
     @property
     def selected_entity_id(self) -> str | None:
@@ -29,9 +29,9 @@ class FrontendInteractionContext:
 
     def entity_info(self, entity_id: str | None = None) -> dict[str, Any] | None:
         current_id = entity_id or self.selected_entity_id
-        if current_id is None or self.window.scene is None:
+        if current_id is None or self.window.app_spec is None:
             return None
-        for geometry in self.window.scene.geometries.values():
+        for geometry in self.window.app_spec.geometries.values():
             if not isinstance(geometry, MorphologyGeometry):
                 continue
             try:
@@ -57,9 +57,9 @@ class FrontendInteractionContext:
         self.window.statusBar().clearMessage()
 
     def invoke_action(self, action_id: str, payload: dict[str, Any] | None = None) -> None:
-        if self.window.scene is None:
+        if self.window.app_spec is None:
             return
-        action = self.window.scene.actions.get(action_id)
+        action = self.window.app_spec.actions.get(action_id)
         if action is None:
             return
         resolved_payload = payload if payload is not None else {
@@ -69,9 +69,9 @@ class FrontendInteractionContext:
         self.window._send_action(action, resolved_payload)
 
     def set_control(self, control_id: str, value: Any) -> None:
-        if self.window.scene is None:
+        if self.window.app_spec is None:
             return
-        control = self.window.scene.controls.get(control_id)
+        control = self.window.app_spec.controls.get(control_id)
         if control is None:
             return
         self.window._on_control_changed(control, value)

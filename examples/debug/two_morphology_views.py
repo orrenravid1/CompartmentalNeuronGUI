@@ -5,8 +5,9 @@ import time
 
 import numpy as np
 
-from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, run_app
-from compneurovis.session import BufferedSession, FieldReplace
+from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, RunSpec, run_app
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import FieldReplace
 
 
 DISPLAY_FIELD_ID = "morphology-display"
@@ -40,7 +41,7 @@ def display_values(phase: float) -> np.ndarray:
     return values.astype(np.float32)
 
 
-def build_scene() -> Scene:
+def build_app_spec() -> AppSpec:
     geometry = build_geometry()
     field = Field(
         id=DISPLAY_FIELD_ID,
@@ -49,7 +50,7 @@ def build_scene() -> Scene:
         coords={"segment": np.asarray(geometry.entity_ids)},
         unit="mV",
     )
-    return Scene(
+    return AppSpec(
         fields={field.id: field},
         geometries={geometry.id: geometry},
         views={
@@ -79,14 +80,14 @@ def build_scene() -> Scene:
     )
 
 
-class AnimatedTwoMorphologyViewsSession(BufferedSession):
+class AnimatedTwoMorphologyViewsBackend(BufferedBackend):
     def __init__(self, *, update_delay_s: float = 0.08):
         super().__init__()
         self.update_delay_s = update_delay_s
         self.phase = 0.0
 
-    def initialize(self) -> Scene:
-        return build_scene()
+    def initialize(self) -> AppSpec:
+        return build_app_spec()
 
     def advance(self) -> None:
         time.sleep(self.update_delay_s)
@@ -104,8 +105,8 @@ class AnimatedTwoMorphologyViewsSession(BufferedSession):
 
 if __name__ == "__main__":
     run_app(
-        AppSpec(
-            session=AnimatedTwoMorphologyViewsSession,
+        RunSpec(
+            backend=AnimatedTwoMorphologyViewsBackend,
             title="Two Morphology Views",
         )
     )

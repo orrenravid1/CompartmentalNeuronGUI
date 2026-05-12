@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PyQt6 import QtWidgets
 
-from compneurovis.core.scene import PanelSpec
+from compneurovis.core.app import PanelSpec
 from compneurovis.frontends.vispy.view3d.viewport import Viewport3DPanel
 from compneurovis.frontends.vispy.view3d.visuals import builtin_3d_visuals
 

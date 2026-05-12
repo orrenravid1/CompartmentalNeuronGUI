@@ -35,7 +35,7 @@ def test_control_spec_can_carry_attribute_target():
         label="Gain",
         value_spec=ScalarValueSpec(default=1.0, min=0.0, max=2.0, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=100),
-        send_to_session=True,
+        send_to_backend=True,
         target=AttributeRef("child", "value"),
     )
 

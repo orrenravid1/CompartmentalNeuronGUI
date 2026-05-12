@@ -3,7 +3,7 @@ from __future__ import annotations
 import multiprocessing as mp
 import sys
 import time
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -25,10 +25,10 @@ from compneurovis.core import (
     LinePlotViewSpec,
     MorphologyGeometry,
     PanelSpec,
-    Scene,
+    RunSpec,
     StateGraphViewSpec,
 )
-from compneurovis.core.scene import (
+from compneurovis.core.app import (
     PANEL_KIND_CONTROLS,
     PANEL_KIND_LINE_PLOT,
     PANEL_KIND_STATE_GRAPH,
@@ -50,7 +50,11 @@ from compneurovis.frontends.vispy.panels.view3d import (
     IndependentCanvas3DHostPanel,
 )
 from compneurovis.frontends.vispy.view3d.viewport import Viewport3DPanel
-from compneurovis.session import (
+from compneurovis.backends import (
+    resolve_interaction_target_source,
+    resolve_startup_app_spec_source,
+)
+from compneurovis.messages import (
     EntityClicked,
     FieldAppend,
     FieldReplace,
@@ -58,15 +62,17 @@ from compneurovis.session import (
     KeyPressed,
     LayoutReplace,
     PanelPatch,
-    PipeTransport,
     Reset,
-    ScenePatch,
-    SceneReady,
+    AppSpecPatch,
+    AppSpecReady,
     SetControl,
     StatePatch,
     Status,
+)
+from compneurovis.transports import (
+    PipeTransport,
+    Transport,
     configure_multiprocessing,
-    resolve_interaction_target_source,
 )
 from compneurovis.frontends.vispy.interaction_context import FrontendInteractionContext
 from compneurovis.frontends.vispy.refresh_planning import (
@@ -83,8 +89,6 @@ from compneurovis.frontends.vispy.view3d.visuals import (
     SURFACE_3D_VISUAL_KEY,
     View3DRefreshContext,
 )
-from compneurovis.session.base import resolve_startup_scene_source
-
 DEFAULT_LINE_PLOT_MAX_REFRESH_HZ = 15.0
 DEFAULT_VIEW_3D_MAX_REFRESH_HZ = 8.0
 DEFAULT_MAX_LINE_PLOT_REFRESHES_PER_FLUSH = 1
@@ -136,23 +140,25 @@ def _update_type_counts(updates: list[Any]) -> dict[str, int]:
 
 
 class VispyFrontendWindow(QtWidgets.QMainWindow):
-    def __init__(self, app_spec: AppSpec):
+    def __init__(self, run_spec: RunSpec, *, transport_factory: Callable[..., Transport] | None = None):
         super().__init__()
-        self.app_spec = app_spec
-        if app_spec.diagnostics is None:
+        self.run_spec = run_spec
+        if transport_factory is None:
+            transport_factory = PipeTransport
+        if run_spec.diagnostics is None:
             clear_perf_logging_configuration()
         else:
-            configure_perf_logging(app_spec.diagnostics)
-        initial_scene = app_spec.scene
-        if initial_scene is None and app_spec.session is not None:
-            initial_scene = resolve_startup_scene_source(app_spec.session)
-        self.scene: Scene | None = None
+            configure_perf_logging(run_spec.diagnostics)
+        initial_app_spec = run_spec.app_spec
+        if initial_app_spec is None and run_spec.backend is not None:
+            initial_app_spec = resolve_startup_app_spec_source(run_spec.backend)
+        self.app_spec: AppSpec | None = None
         self.state: dict[str, Any] = {}
-        self.transport: PipeTransport | None = None
+        self.transport: Transport | None = None
         self.refresh_planner: RefreshPlanner | None = None
         self._active_selection_action_id: str | None = None
-        if app_spec.interaction_target is not None:
-            self.interaction_target = resolve_interaction_target_source(app_spec.interaction_target)
+        if run_spec.interaction_target is not None:
+            self.interaction_target = resolve_interaction_target_source(run_spec.interaction_target)
         else:
             self.interaction_target = None
 
@@ -186,12 +192,12 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage("Starting CompNeuroVis")
         self._show_loading_state()
 
-        if initial_scene is not None:
-            self._set_scene(initial_scene)
+        if initial_app_spec is not None:
+            self._set_app_spec(initial_app_spec)
 
-        if app_spec.session is not None:
+        if run_spec.backend is not None:
             configure_multiprocessing()
-            self.transport = PipeTransport(app_spec.session, diagnostics=app_spec.diagnostics, parent=self)
+            self.transport = transport_factory(run_spec.backend, diagnostics=run_spec.diagnostics, parent=self)
             self.transport.start()
 
         self.timer = QtCore.QTimer(self)
@@ -244,13 +250,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if self._layout_splitter is not None:
             self._stack.setCurrentWidget(self._layout_splitter)
 
-    def _set_scene(self, scene: Scene) -> None:
+    def _set_app_spec(self, app_spec: AppSpec) -> None:
         started = time.monotonic()
-        self.scene = scene
-        self.refresh_planner = RefreshPlanner(scene)
+        self.app_spec = app_spec
+        self.refresh_planner = RefreshPlanner(app_spec)
         self._active_selection_action_id = None
-        self.setWindowTitle(self.app_spec.title or scene.layout.title)
-        for control in scene.controls.values():
+        self.setWindowTitle(self.run_spec.title or app_spec.layout.title)
+        for control in app_spec.controls.values():
             self.state.setdefault(control.resolved_state_key(), control.default_value())
 
         rebuild_started = time.monotonic()
@@ -269,22 +275,22 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._show_content_state()
         perf_log(
             "frontend",
-            "set_scene",
-            view_count=len(scene.views),
-            field_count=len(scene.fields),
-            geometry_count=len(scene.geometries),
-            panel_count=len(scene.layout.panels),
+            "set_app_spec",
+            view_count=len(app_spec.views),
+            field_count=len(app_spec.fields),
+            geometry_count=len(app_spec.geometries),
+            panel_count=len(app_spec.layout.panels),
             rebuild_panels_ms=rebuild_ms,
             full_refresh_ms=full_refresh_ms,
             duration_ms=round((time.monotonic() - started) * 1000.0, 3),
         )
 
     def _view_ids_in_3d_panels(self) -> tuple[str, ...]:
-        if self.scene is None:
+        if self.app_spec is None:
             return ()
         return tuple(
             view_id
-            for panel in self.scene.layout.panels_of_kind(PANEL_KIND_VIEW_3D)
+            for panel in self.app_spec.layout.panels_of_kind(PANEL_KIND_VIEW_3D)
             for view_id in panel.view_ids
         )
 
@@ -296,7 +302,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 f"3D panel '{panel.id}' with host_kind='independent_canvas' must contain exactly one view id"
             )
         view_id = panel.view_ids[0]
-        view = self.scene.views.get(view_id) if self.scene is not None else None
+        view = self.app_spec.views.get(view_id) if self.app_spec is not None else None
         title = panel.title or getattr(view, "title", None) or view_id
         return IndependentCanvas3DHostPanel(
             panel=panel,
@@ -362,17 +368,17 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         )
 
     def _resolved_panel_grid(self) -> tuple[tuple[str, ...], ...]:
-        if self.scene is None:
+        if self.app_spec is None:
             return ()
-        grid = self.scene.layout.panel_grid
+        grid = self.app_spec.layout.panel_grid
         if grid:
             return grid
         return self._auto_panel_grid()
 
     def _auto_panel_grid(self) -> tuple[tuple[str, ...], ...]:
-        if self.scene is None:
+        if self.app_spec is None:
             return ()
-        layout = self.scene.layout
+        layout = self.app_spec.layout
         non_controls = [panel.id for panel in layout.resolved_panels() if panel.kind != PANEL_KIND_CONTROLS]
         controls = [panel.id for panel in layout.panels_of_kind(PANEL_KIND_CONTROLS)]
         if not non_controls and not controls:
@@ -386,14 +392,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
     def _make_panel_for_cell(self, cell_id: str) -> QtWidgets.QWidget | None:
         started = time.monotonic()
-        if self.scene is None:
+        if self.app_spec is None:
             return None
-        panel_spec = self.scene.layout.panel(cell_id)
+        panel_spec = self.app_spec.layout.panel(cell_id)
         if panel_spec is None:
             return None
         if panel_spec.kind == PANEL_KIND_LINE_PLOT:
             view_id = panel_spec.view_ids[0]
-            view = self.scene.views.get(view_id)
+            view = self.app_spec.views.get(view_id)
             title = panel_spec.title or getattr(view, "title", None) or view_id
             host = LinePlotHostPanel(panel_id=panel_spec.id, view_id=view_id, title=title)
             self.line_plot_host_panels[panel_spec.id] = host
@@ -439,7 +445,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             return host
         if panel_spec.kind == PANEL_KIND_STATE_GRAPH:
             view_id = panel_spec.view_ids[0]
-            view = self.scene.views.get(view_id)
+            view = self.app_spec.views.get(view_id)
             title = panel_spec.title or getattr(view, "title", None) or view_id
             host = StateGraphHostPanel(panel_id=panel_spec.id, view_id=view_id, title=title)
             self.state_graph_host_panels[panel_spec.id] = host
@@ -457,9 +463,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         return None
 
     def _line_view(self, view_id: str):
-        if self.scene is None:
+        if self.app_spec is None:
             return None
-        view = self.scene.views.get(view_id)
+        view = self.app_spec.views.get(view_id)
         return view if isinstance(view, LinePlotViewSpec) else None
 
     def _refresh_priority_key(self, view_id: str, last_refresh_s: dict[str, float]) -> tuple[float, str]:
@@ -473,13 +479,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         return self.view_hosts.get(panel_id)
 
     def _resolved_controls_and_actions(self, panel_id: str) -> tuple[list[ControlSpec], list[ActionSpec]]:
-        if self.scene is None:
+        if self.app_spec is None:
             return [], []
-        panel = self.scene.layout.panel(panel_id)
+        panel = self.app_spec.layout.panel(panel_id)
         if panel is None or panel.kind != PANEL_KIND_CONTROLS:
             return [], []
-        controls = [self.scene.controls[control_id] for control_id in panel.control_ids if control_id in self.scene.controls]
-        actions = [self.scene.actions[action_id] for action_id in panel.action_ids if action_id in self.scene.actions]
+        controls = [self.app_spec.controls[control_id] for control_id in panel.control_ids if control_id in self.app_spec.controls]
+        actions = [self.app_spec.actions[action_id] for action_id in panel.action_ids if action_id in self.app_spec.actions]
         return controls, actions
 
     def _update_panel_visibility(self) -> None:
@@ -513,7 +519,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     row_widget.setSizes([max(1, int(width / n_cols))] * n_cols)
 
     def _refresh_controls(self) -> None:
-        if self.scene is None:
+        if self.app_spec is None:
             return
         for panel_id, host in self.controls_host_panels.items():
             controls, actions = self._resolved_controls_and_actions(panel_id)
@@ -526,9 +532,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._refresh_line_plot_if_due(view_id, force=True)
 
     def _state_graph_view(self, view_id: str):
-        if self.scene is None:
+        if self.app_spec is None:
             return None
-        view = self.scene.views.get(view_id)
+        view = self.app_spec.views.get(view_id)
         return view if isinstance(view, StateGraphViewSpec) else None
 
     def _state_graph_refresh_interval_s(self, view_id: str) -> float | None:
@@ -550,7 +556,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         force: bool = False,
         now: float | None = None,
     ) -> bool:
-        if self.scene is None:
+        if self.app_spec is None:
             self._dirty_state_graph_views.discard(view_id)
             return False
         panel_id = self._view_to_panel_id.get(view_id)
@@ -573,9 +579,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         edge_field = None
         if state_graph_view is not None:
             if state_graph_view.node_field_id:
-                node_field = self.scene.fields.get(state_graph_view.node_field_id)
+                node_field = self.app_spec.fields.get(state_graph_view.node_field_id)
             if state_graph_view.edge_field_id:
-                edge_field = self.scene.fields.get(state_graph_view.edge_field_id)
+                edge_field = self.app_spec.fields.get(state_graph_view.edge_field_id)
         host.refresh(state_graph_view, node_field, edge_field)
         self._state_graph_last_refresh_s[view_id] = current_time
         self._dirty_state_graph_views.discard(view_id)
@@ -614,9 +620,9 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         return 1.0 / max_refresh_hz
 
     def _view_3d_refresh_interval_s(self, view_id: str) -> float | None:
-        if self.scene is None:
+        if self.app_spec is None:
             return None
-        view = self.scene.views.get(view_id)
+        view = self.app_spec.views.get(view_id)
         if view is None:
             return None
         hz = getattr(view, "max_refresh_hz", None)
@@ -632,7 +638,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         force: bool = False,
         now: float | None = None,
     ) -> bool:
-        if self.scene is None:
+        if self.app_spec is None:
             self._dirty_line_plot_views.discard(view_id)
             return False
         panel_id = self._view_to_panel_id.get(view_id)
@@ -654,13 +660,13 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         line_field = None
         if line_view is not None:
             if line_view.operator_id is not None:
-                operator = self.scene.operators.get(line_view.operator_id)
+                operator = self.app_spec.operators.get(line_view.operator_id)
                 if isinstance(operator, GridSliceOperatorSpec):
-                    source_field = self.scene.fields.get(operator.field_id)
+                    source_field = self.app_spec.fields.get(operator.field_id)
                     if source_field is not None:
                         line_field = field_from_grid_slice_operator(source_field, operator, self.state)
             else:
-                line_field = self.scene.fields.get(line_view.field_id)
+                line_field = self.app_spec.fields.get(line_view.field_id)
         host.refresh(line_view, line_field, self.state)
         self._line_plot_last_refresh_s[view_id] = current_time
         self._dirty_line_plot_views.discard(view_id)
@@ -673,7 +679,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         force: bool = False,
         now: float | None = None,
     ) -> bool:
-        if self.scene is None:
+        if self.app_spec is None:
             self._dirty_view_3d_targets.pop(view_id, None)
             return False
         host = self._view_host(view_id)
@@ -690,8 +696,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         if not pending_kinds:
             self._dirty_view_3d_targets.pop(view_id, None)
             return False
-        view = self.scene.views.get(view_id)
-        ctx = View3DRefreshContext(scene=self.scene, state=self.state, view_id=view_id)
+        view = self.app_spec.views.get(view_id)
+        ctx = View3DRefreshContext(app_spec=self.app_spec, state=self.state, view_id=view_id)
         for kind in sorted(tuple(pending_kinds), key=lambda k: _KIND_REFRESH_ORDER.get(k, 99)):
             visual_key = _KIND_TO_VISUAL_KEY.get(kind)
             if visual_key is None:
@@ -830,20 +836,20 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         pending_field_appends: dict[str, FieldAppend] = {}
         flushed_field_appends = 0
         appended_samples_by_field: dict[str, int] = {}
-        updates = self.transport.poll_updates()
+        updates = self.transport.poll()
 
         def flush_pending_field_appends() -> None:
             nonlocal pending_targets, flushed_field_appends
             if not pending_field_appends:
                 return
-            if self.scene is None:
+            if self.app_spec is None:
                 pending_field_appends.clear()
                 return
             for field_id, update in pending_field_appends.items():
                 flushed_field_appends += 1
                 appended_samples_by_field[field_id] = appended_samples_by_field.get(field_id, 0) + int(len(update.coord_values))
-                current = self.scene.fields[field_id]
-                self.scene.fields[field_id] = current.append(
+                current = self.app_spec.fields[field_id]
+                self.app_spec.fields[field_id] = current.append(
                     update.append_dim,
                     update.values,
                     update.coord_values,
@@ -856,7 +862,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
 
         for update in updates:
             if isinstance(update, FieldAppend):
-                if self.scene is None:
+                if self.app_spec is None:
                     continue
                 pending = pending_field_appends.get(update.field_id)
                 if pending is None:
@@ -866,7 +872,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     flush_pending_field_appends()
                     pending_field_appends[update.field_id] = update
                     continue
-                axis = self.scene.fields[update.field_id].axis_index(update.append_dim)
+                axis = self.app_spec.fields[update.field_id].axis_index(update.append_dim)
                 pending_field_appends[update.field_id] = FieldAppend(
                     field_id=update.field_id,
                     append_dim=update.append_dim,
@@ -878,36 +884,36 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 continue
 
             flush_pending_field_appends()
-            if isinstance(update, SceneReady):
-                self._set_scene(update.scene)
+            if isinstance(update, AppSpecReady):
+                self._set_app_spec(update.app_spec)
                 pending_targets.clear()
-                pending_status = "Scene ready"
+                pending_status = "AppSpec ready"
             elif isinstance(update, FieldReplace):
-                if self.scene is None:
+                if self.app_spec is None:
                     continue
-                current = self.scene.fields[update.field_id]
+                current = self.app_spec.fields[update.field_id]
                 coords_changed = update.coords is not None and not _coords_are_equal(current.coords, update.coords)
                 coords = current.coords if update.coords is None or not coords_changed else update.coords
-                self.scene.fields[update.field_id] = current.with_values(update.values, coords=coords, attrs_update=update.attrs_update)
+                self.app_spec.fields[update.field_id] = current.with_values(update.values, coords=coords, attrs_update=update.attrs_update)
                 if self.refresh_planner is not None:
                     pending_targets.update(self.refresh_planner.targets_for_field_replace(update.field_id, coords_changed=coords_changed))
-            elif isinstance(update, ScenePatch):
-                if self.scene is None:
+            elif isinstance(update, AppSpecPatch):
+                if self.app_spec is None:
                     continue
                 for view_id, patch in update.view_updates.items():
-                    self.scene.replace_view(view_id, patch)
+                    self.app_spec.replace_view(view_id, patch)
                     if self.refresh_planner is not None:
                         pending_targets.update(self.refresh_planner.targets_for_view_patch(view_id, set(patch.keys())))
                 for operator_id, patch in update.operator_updates.items():
-                    self.scene.replace_operator(operator_id, patch)
+                    self.app_spec.replace_operator(operator_id, patch)
                     if self.refresh_planner is not None:
                         pending_targets.update(self.refresh_planner.targets_for_operator_patch(operator_id, set(patch.keys())))
                 for control_id, patch in update.control_updates.items():
-                    self.scene.replace_control(control_id, patch)
+                    self.app_spec.replace_control(control_id, patch)
                     pending_targets.add(RefreshTarget.CONTROLS)
-                self.scene.metadata.update(update.metadata_updates)
+                self.app_spec.metadata.update(update.metadata_updates)
             elif isinstance(update, PanelPatch):
-                if self.scene is None:
+                if self.app_spec is None:
                     continue
                 changes: dict[str, Any] = {}
                 if update.control_ids is not None:
@@ -918,12 +924,12 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     changes["view_ids"] = update.view_ids
                 if update.title is not None:
                     changes["title"] = update.title
-                if changes and self.scene.layout.patch_panel(update.panel_id, **changes):
+                if changes and self.app_spec.layout.patch_panel(update.panel_id, **changes):
                     pending_targets.add(RefreshTarget.CONTROLS)
             elif isinstance(update, LayoutReplace):
-                if self.scene is None:
+                if self.app_spec is None:
                     continue
-                self.scene.layout.replace_panels(update.panels, update.panel_grid)
+                self.app_spec.layout.replace_panels(update.panels, update.panel_grid)
                 self._rebuild_panels()
                 self._update_panel_visibility()
                 if self.refresh_planner is not None:
@@ -932,10 +938,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 if self.refresh_planner is None:
                     continue
                 control_state_keys = set()
-                if self.scene is not None:
+                if self.app_spec is not None:
                     control_state_keys = {
                         control.resolved_state_key()
-                        for control in self.scene.controls.values()
+                        for control in self.app_spec.controls.values()
                     }
                 for key, value in update.updates.items():
                     self.state[key] = value
@@ -961,7 +967,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     self.transport = None
                     sys.stderr.write(f"{msg.rstrip()}\n")
                     sys.stderr.flush()
-                    QtWidgets.QMessageBox.critical(self, "Session error", msg)
+                    QtWidgets.QMessageBox.critical(self, "Backend error", msg)
                     return
         flush_pending_field_appends()
         has_line_plot_targets = any(target.kind == "line_plot" for target in pending_targets)
@@ -1001,14 +1007,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _on_entity_selected(self, entity_id: str) -> None:
         perf_log("frontend", "entity_selected", entity_id=entity_id)
         self.state["selected_entity_id"] = entity_id
-        if self.scene is not None:
-            for geometry in self.scene.geometries.values():
+        if self.app_spec is not None:
+            for geometry in self.app_spec.geometries.values():
                 if isinstance(geometry, MorphologyGeometry) and entity_id in geometry.entity_ids:
                     self.state["selected_entity_label"] = geometry.label_for(entity_id)
                     break
             consumed = self._invoke_interaction_entity_click(entity_id)
             if not consumed and self._active_selection_action_id is not None:
-                action = self.scene.actions.get(self._active_selection_action_id)
+                action = self.app_spec.actions.get(self._active_selection_action_id)
                 if action is not None:
                     payload = {
                         key: resolve_value(value, self.state)
@@ -1017,7 +1023,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     payload[action.selection_payload_key] = entity_id
                     self._send_action(action, payload)
             elif not consumed and self.transport is not None:
-                self.transport.send_command(EntityClicked(entity_id))
+                self.transport.send(EntityClicked(entity_id))
         if self.refresh_planner is not None:
             self._apply_refresh_targets(self.refresh_planner.targets_for_state_change("selected_entity_id"))
 
@@ -1029,10 +1035,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             control_id=control.id,
             state_key=control.resolved_state_key(),
             value=value,
-            send_to_session=control.send_to_session,
+            send_to_backend=control.send_to_backend,
         )
-        if self.transport is not None and control.send_to_session:
-            self.transport.send_command(SetControl(control.id, value))
+        if self.transport is not None and control.send_to_backend:
+            self.transport.send(SetControl(control.id, value))
         if self.refresh_planner is not None:
             self._apply_refresh_targets(
                 self.refresh_planner.targets_for_state_change(control.resolved_state_key()),
@@ -1050,16 +1056,16 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
     def _send_action(self, action, payload: dict[str, Any]) -> None:
         if self.transport is not None:
             if action.id == "reset":
-                self.transport.send_command(Reset())
+                self.transport.send(Reset())
             else:
-                self.transport.send_command(InvokeAction(action.id, payload))
+                self.transport.send(InvokeAction(action.id, payload))
 
     def keyPressEvent(self, event) -> None:
         key_text = self._event_key_text(event)
         if key_text and self._invoke_interaction_key_press(key_text):
             event.accept()
             return
-        if self.scene is not None:
+        if self.app_spec is not None:
             matched_action = self._action_for_event(event)
             if matched_action is not None:
                 payload = {
@@ -1070,20 +1076,20 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 event.accept()
                 return
         if event.key() == Qt.Key.Key_Space and self.transport is not None:
-            self.transport.send_command(Reset())
+            self.transport.send(Reset())
             event.accept()
             return
         if key_text and self.transport is not None:
-            self.transport.send_command(KeyPressed(key_text))
+            self.transport.send(KeyPressed(key_text))
             event.accept()
             return
         super().keyPressEvent(event)
 
     def _action_for_event(self, event: QtGui.QKeyEvent):
-        if self.scene is None:
+        if self.app_spec is None:
             return None
         pressed = self._event_key_text(event)
-        for action in self.scene.actions.values():
+        for action in self.app_spec.actions.values():
             for shortcut in action.shortcuts:
                 normalized = QtGui.QKeySequence(shortcut).toString(QtGui.QKeySequence.SequenceFormat.PortableText)
                 if normalized and normalized == pressed:
@@ -1140,14 +1146,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         super().closeEvent(event)
 
 
-def run_app(app_spec: AppSpec) -> None:
+def run_app(run_spec: RunSpec, *, transport_factory: Callable[..., Transport] | None = None) -> None:
     if mp.current_process().name != "MainProcess":
         return
     qt_app = QtWidgets.QApplication.instance()
     owns_app = qt_app is None
     if qt_app is None:
         qt_app = QtWidgets.QApplication(sys.argv)
-    window = VispyFrontendWindow(app_spec)
+    window = VispyFrontendWindow(run_spec, transport_factory=transport_factory)
     window.show()
     if owns_app:
         vispy_app.run()

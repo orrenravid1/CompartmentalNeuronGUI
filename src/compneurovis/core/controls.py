@@ -58,7 +58,7 @@ class ControlSpec:
     value_spec: ControlValueSpec
     presentation: ControlPresentationSpec | None = None
     state_key: str | None = None
-    send_to_session: bool = False
+    send_to_backend: bool = False
     target: AttributeRef | None = None
 
     def default_value(self) -> Any:

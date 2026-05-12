@@ -1,12 +1,12 @@
 """
 Static surface visualizer — renders a 3-D surface from a 2-D height field with interactive axes
-and appearance controls. No simulation or session is involved; the surface is computed once at
+and appearance controls. No simulation or backend is involved; the surface is computed once at
 startup and the UI controls update only the visual properties (colors, transparency, axis style).
 
 Patterns shown:
   - grid_field() to create a Field + GridGeometry from a 2-D array
   - SurfaceViewSpec with axes and colormap
-  - StateBinding to wire controls directly to ViewSpec properties without a session
+  - StateBinding to wire controls directly to ViewSpec properties without a backend
 
 Run: python examples/surface_plot/static_surface_visualizer.py
 """

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from importlib import import_module
 
-from compneurovis.builders import ReplaySession, build_replay_app, build_surface_app, grid_field
+from compneurovis.backends import Backend, BackendSource, BufferedBackend, HistoryCaptureMode
+from compneurovis.builders import ReplayBackend, build_replay_app, build_surface_app, grid_field
 from compneurovis.core import (
     ActionSpec,
     AttributeRef,
@@ -25,7 +26,7 @@ from compneurovis.core import (
     MorphologyViewSpec,
     OperatorSpec,
     PanelSpec,
-    Scene,
+    RunSpec,
     ScalarValueSpec,
     SeriesSpec,
     StateBinding,
@@ -33,20 +34,23 @@ from compneurovis.core import (
     ViewSpec,
     XYValueSpec,
 )
-from compneurovis.frontends import VispyFrontendWindow, run_app
-from compneurovis.session import HistoryCaptureMode
+from compneurovis.frontends import Frontend, VispyFrontendWindow, run_app
+from compneurovis.transports import PipeTransport, Transport
 
 __all__ = [
     "ActionSpec",
     "AttributeRef",
     "AppSpec",
+    "Backend",
+    "BackendSource",
     "BoolValueSpec",
+    "BufferedBackend",
     "ChoiceValueSpec",
     "ControlPresentationSpec",
     "ControlSpec",
     "DiagnosticsSpec",
-    "Scene",
     "Field",
+    "Frontend",
     "Geometry",
     "GridGeometry",
     "GridSliceOperatorSpec",
@@ -58,11 +62,14 @@ __all__ = [
     "MorphologyViewSpec",
     "OperatorSpec",
     "PanelSpec",
-    "ReplaySession",
+    "PipeTransport",
+    "ReplayBackend",
+    "RunSpec",
     "ScalarValueSpec",
     "SeriesSpec",
     "StateBinding",
     "SurfaceViewSpec",
+    "Transport",
     "ViewSpec",
     "XYValueSpec",
     "VispyFrontendWindow",
@@ -70,20 +77,20 @@ __all__ = [
     "build_surface_app",
     "grid_field",
     "run_app",
-    "NeuronSceneBuilder",
-    "NeuronSession",
+    "NeuronAppSpecBuilder",
+    "NeuronBackend",
     "build_neuron_app",
-    "JaxleySceneBuilder",
-    "JaxleySession",
+    "JaxleyAppSpecBuilder",
+    "JaxleyBackend",
     "build_jaxley_app",
 ]
 
 _OPTIONAL_EXPORTS = {
-    "NeuronSceneBuilder": ("compneurovis.backends.neuron", "NeuronSceneBuilder", "neuron"),
-    "NeuronSession": ("compneurovis.backends.neuron", "NeuronSession", "neuron"),
+    "NeuronAppSpecBuilder": ("compneurovis.backends.neuron", "NeuronAppSpecBuilder", "neuron"),
+    "NeuronBackend": ("compneurovis.backends.neuron", "NeuronBackend", "neuron"),
     "build_neuron_app": ("compneurovis.builders.neuron", "build_neuron_app", "neuron"),
-    "JaxleySceneBuilder": ("compneurovis.backends.jaxley", "JaxleySceneBuilder", "jaxley"),
-    "JaxleySession": ("compneurovis.backends.jaxley", "JaxleySession", "jaxley"),
+    "JaxleyAppSpecBuilder": ("compneurovis.backends.jaxley", "JaxleyAppSpecBuilder", "jaxley"),
+    "JaxleyBackend": ("compneurovis.backends.jaxley", "JaxleyBackend", "jaxley"),
     "build_jaxley_app": ("compneurovis.builders.jaxley", "build_jaxley_app", "jaxley"),
 }
 

@@ -15,7 +15,7 @@ import time
 
 from neuron import h
 
-from compneurovis import NeuronSession, build_neuron_app, run_app
+from compneurovis import NeuronBackend, build_neuron_app, run_app
 from compneurovis.backends.neuron.utils import generate_layout
 
 
@@ -112,7 +112,7 @@ def make_branching_cell(name):
     return [soma, dend, branch_a, branch_b, twig_a, twig_b, axon]
 
 
-class MultiCellSession(NeuronSession):
+class MultiCellBackend(NeuronBackend):
     def __init__(self):
         super().__init__(title="Multi-cell network viewer")
 
@@ -175,4 +175,4 @@ class MultiCellSession(NeuronSession):
         return {"synapses": self.synapses, "netcons": self.netcons, "iclamps": self.iclamps}
 
 
-run_app(build_neuron_app(MultiCellSession))
+run_app(build_neuron_app(MultiCellBackend))

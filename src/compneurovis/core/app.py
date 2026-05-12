@@ -274,7 +274,7 @@ class LayoutSpec:
 
 
 @dataclass(slots=True)
-class Scene:
+class AppSpec:
     fields: dict[str, Field]
     geometries: dict[str, Geometry]
     views: dict[str, ViewSpec]
@@ -309,9 +309,9 @@ class Scene:
 
 
 @dataclass(slots=True)
-class AppSpec:
-    scene: Scene | None = None
-    session: Any = None
+class RunSpec:
+    app_spec: AppSpec | None = None
+    backend: Any = None
     interaction_target: Any = None
     title: str | None = None
     diagnostics: "DiagnosticsSpec | None" = None

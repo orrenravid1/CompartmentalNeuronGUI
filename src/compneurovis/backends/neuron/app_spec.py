@@ -4,12 +4,12 @@ import time
 
 import numpy as np
 
-from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, StateBinding
-from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
+from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, AppSpec, StateBinding
+from compneurovis.core.app import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
 
 
-class NeuronSceneBuilder:
-    """Build default morphology geometry and Scene objects for NEURON sessions."""
+class NeuronAppSpecBuilder:
+    """Build default morphology geometry and AppSpec objects for NEURON sessions."""
 
     DISPLAY_FIELD_ID = "segment_display"
     HISTORY_FIELD_ID = "segment_history"
@@ -114,7 +114,7 @@ class NeuronSceneBuilder:
         )
 
     @staticmethod
-    def build_scene(
+    def build_app_spec(
         *,
         geometry: MorphologyGeometry,
         display_values: np.ndarray,
@@ -136,11 +136,11 @@ class NeuronSceneBuilder:
         title: str = "CompNeuroVis",
         control_ids: tuple[str, ...] | None = None,
         action_ids: tuple[str, ...] | None = None,
-    ) -> Scene:
-        """Build the default morphology-plus-trace Scene for a NEURON session."""
+    ) -> AppSpec:
+        """Build the default morphology-plus-trace AppSpec for a NEURON backend."""
 
-        display_field_id = display_field_id or NeuronSceneBuilder.DISPLAY_FIELD_ID
-        history_field_id = history_field_id or NeuronSceneBuilder.HISTORY_FIELD_ID
+        display_field_id = display_field_id or NeuronAppSpecBuilder.DISPLAY_FIELD_ID
+        history_field_id = history_field_id or NeuronAppSpecBuilder.HISTORY_FIELD_ID
         history_unit = display_unit if history_unit is None else history_unit
         trace_y_unit = (history_unit or "") if trace_y_unit is None else trace_y_unit
         display_field = Field(
@@ -189,8 +189,8 @@ class NeuronSceneBuilder:
         }
         controls_dict = {} if controls is None else dict(controls)
         actions_dict = {} if actions is None else dict(actions)
-        control_ids = NeuronSceneBuilder._ordered_ids(controls_dict, control_ids)
-        action_ids = NeuronSceneBuilder._ordered_ids(actions_dict, action_ids)
+        control_ids = NeuronAppSpecBuilder._ordered_ids(controls_dict, control_ids)
+        action_ids = NeuronAppSpecBuilder._ordered_ids(actions_dict, action_ids)
         panels = [
             PanelSpec(
                 id="morphology-panel",
@@ -214,7 +214,7 @@ class NeuronSceneBuilder:
                 )
             )
             panel_grid.append(("controls-panel",))
-        return Scene(
+        return AppSpec(
             fields={display_field.id: display_field, trace_field.id: trace_field},
             geometries={geometry.id: geometry},
             views=views,

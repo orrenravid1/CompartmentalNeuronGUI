@@ -3,12 +3,14 @@ import time
 import numpy as np
 import pytest
 
-from compneurovis.core import Field, LayoutSpec, Scene
-from compneurovis.session import BufferedSession, EntityClicked, Error, FieldReplace, PipeTransport, SetControl, StatePatch, Status
-from compneurovis.session.pipe import _sleep_to_session_cadence
+from compneurovis.core import Field, LayoutSpec, AppSpec
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import EntityClicked, Error, FieldReplace, SetControl, StatePatch, Status
+from compneurovis.transports import PipeTransport
+from compneurovis.transports.pipe import _sleep_to_backend_cadence
 
 
-class DummySession(BufferedSession):
+class DummyBackend(BufferedBackend):
     def initialize(self):
         field = Field(
             id="demo",
@@ -16,7 +18,7 @@ class DummySession(BufferedSession):
             dims=("x",),
             coords={"x": np.array([0.0, 1.0], dtype=np.float32)},
         )
-        return Scene(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
+        return AppSpec(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
 
     def is_live(self) -> bool:
         return False
@@ -34,7 +36,7 @@ class DummySession(BufferedSession):
             )
 
 
-class DummyInteractionSession(BufferedSession):
+class DummyInteractionBackend(BufferedBackend):
     def initialize(self):
         field = Field(
             id="demo",
@@ -42,7 +44,7 @@ class DummyInteractionSession(BufferedSession):
             dims=("x",),
             coords={"x": np.array([0.0], dtype=np.float32)},
         )
-        return Scene(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
+        return AppSpec(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
 
     def is_live(self) -> bool:
         return False
@@ -56,9 +58,9 @@ class DummyInteractionSession(BufferedSession):
             self.emit(Status(f"Clicked {command.entity_id}", 1000))
 
 
-class FailingInitializeSession(BufferedSession):
+class FailingInitializeBackend(BufferedBackend):
     def initialize(self):
-        raise RuntimeError("intentional session init failure")
+        raise RuntimeError("intentional backend init failure")
 
     def is_live(self) -> bool:
         return False
@@ -70,7 +72,7 @@ class FailingInitializeSession(BufferedSession):
         del command
 
 
-class FastLiveSession(BufferedSession):
+class FastLiveBackend(BufferedBackend):
     def __init__(self):
         super().__init__()
         self.tick_count = 0
@@ -89,7 +91,7 @@ class FastLiveSession(BufferedSession):
         return 0.05
 
 
-class FloodLiveSession(BufferedSession):
+class FloodLiveBackend(BufferedBackend):
     def __init__(self):
         super().__init__()
         self.tick_count = 0
@@ -108,26 +110,26 @@ class FloodLiveSession(BufferedSession):
         return 0.0
 
 
-def make_dummy_session() -> DummySession:
-    return DummySession()
+def make_dummy_backend() -> DummyBackend:
+    return DummyBackend()
 
 
 def test_pipe_transport_roundtrip():
-    transport = PipeTransport(DummySession)
+    transport = PipeTransport(DummyBackend)
     transport.start()
     try:
         deadline = time.time() + 5
         updates = []
         while time.time() < deadline and not updates:
-            updates = transport.poll_updates()
+            updates = transport.poll()
             time.sleep(0.05)
-        assert updates, "expected initial scene update"
+        assert updates, "expected initial app spec update"
 
-        transport.send_command(SetControl("demo", 5.0))
+        transport.send(SetControl("demo", 5.0))
         deadline = time.time() + 5
         field_replace = None
         while time.time() < deadline and field_replace is None:
-            for update in transport.poll_updates():
+            for update in transport.poll():
                 if isinstance(update, FieldReplace):
                     field_replace = update
                     break
@@ -140,26 +142,26 @@ def test_pipe_transport_roundtrip():
 
 
 def test_pipe_transport_requires_lazy_session_source():
-    with pytest.raises(TypeError, match="PipeTransport requires a Session subclass or top-level zero-argument factory"):
-        PipeTransport(DummySession())
+    with pytest.raises(TypeError, match="PipeTransport requires a Backend subclass or top-level zero-argument factory"):
+        PipeTransport(DummyBackend())
 
 
 def test_pipe_transport_roundtrip_from_factory():
-    transport = PipeTransport(make_dummy_session)
+    transport = PipeTransport(make_dummy_backend)
     transport.start()
     try:
         deadline = time.time() + 5
         updates = []
         while time.time() < deadline and not updates:
-            updates = transport.poll_updates()
+            updates = transport.poll()
             time.sleep(0.05)
-        assert updates, "expected initial scene update"
+        assert updates, "expected initial app spec update"
 
-        transport.send_command(SetControl("demo", 7.0))
+        transport.send(SetControl("demo", 7.0))
         deadline = time.time() + 5
         field_replace = None
         while time.time() < deadline and field_replace is None:
-            for update in transport.poll_updates():
+            for update in transport.poll():
                 if isinstance(update, FieldReplace):
                     field_replace = update
                     break
@@ -172,22 +174,22 @@ def test_pipe_transport_roundtrip_from_factory():
 
 
 def test_pipe_transport_roundtrip_interaction_commands():
-    transport = PipeTransport(DummyInteractionSession)
+    transport = PipeTransport(DummyInteractionBackend)
     transport.start()
     try:
         deadline = time.time() + 5
         updates = []
         while time.time() < deadline and not updates:
-            updates = transport.poll_updates()
+            updates = transport.poll()
             time.sleep(0.05)
-        assert updates, "expected initial scene update"
+        assert updates, "expected initial app spec update"
 
-        transport.send_command(EntityClicked("seg-a"))
+        transport.send(EntityClicked("seg-a"))
         deadline = time.time() + 5
         state_patch = None
         status = None
         while time.time() < deadline and (state_patch is None or status is None):
-            for update in transport.poll_updates():
+            for update in transport.poll():
                 if isinstance(update, StatePatch):
                     state_patch = update
                 elif isinstance(update, Status):
@@ -204,13 +206,13 @@ def test_pipe_transport_roundtrip_interaction_commands():
 
 
 def test_pipe_transport_surfaces_worker_initialize_errors():
-    transport = PipeTransport(FailingInitializeSession)
+    transport = PipeTransport(FailingInitializeBackend)
     transport.start()
     try:
         deadline = time.time() + 5
         error = None
         while time.time() < deadline and error is None:
-            for update in transport.poll_updates():
+            for update in transport.poll():
                 if isinstance(update, Error):
                     error = update
                     break
@@ -218,15 +220,15 @@ def test_pipe_transport_surfaces_worker_initialize_errors():
 
         assert error is not None
         assert "RuntimeError" in error.message
-        assert "intentional session init failure" in error.message
+        assert "intentional backend init failure" in error.message
     finally:
         transport.stop()
 
 
 def test_sleep_to_session_cadence_waits_out_remaining_tick_time():
-    session = FastLiveSession()
+    backend = FastLiveBackend()
     started = time.monotonic()
-    _sleep_to_session_cadence(session, started)
+    _sleep_to_backend_cadence(backend, started)
     elapsed = time.monotonic() - started
     assert elapsed >= 0.04
 
@@ -234,7 +236,7 @@ def test_sleep_to_session_cadence_waits_out_remaining_tick_time():
 def _wait_for_first_update(transport, *, deadline_s: float = 8.0) -> list:
     deadline = time.time() + deadline_s
     while time.time() < deadline:
-        updates = transport.poll_updates()
+        updates = transport.poll()
         if updates:
             return updates
         time.sleep(0.05)
@@ -242,15 +244,15 @@ def _wait_for_first_update(transport, *, deadline_s: float = 8.0) -> list:
 
 
 def test_live_pipe_transport_respects_idle_sleep_cadence():
-    transport = PipeTransport(FastLiveSession)
+    transport = PipeTransport(FastLiveBackend)
     transport.start()
     try:
         # Subprocess startup on Windows (spawn) can take several seconds.
         # Wait until the first update arrives, then measure pacing over 0.25s.
         first = _wait_for_first_update(transport)
-        assert first, "expected session to start within 8 seconds"
+        assert first, "expected backend to start within 8 seconds"
         time.sleep(0.25)
-        updates = transport.poll_updates()
+        updates = transport.poll()
         all_updates = first + updates
         statuses = [update for update in all_updates if isinstance(update, Status)]
         assert statuses, "expected paced live status updates"
@@ -261,18 +263,18 @@ def test_live_pipe_transport_respects_idle_sleep_cadence():
 
 
 def test_pipe_transport_bounds_update_drain_per_poll_to_preserve_ui_responsiveness():
-    transport = PipeTransport(FloodLiveSession)
+    transport = PipeTransport(FloodLiveBackend)
     transport._max_update_payloads_per_poll = 8
     transport._max_poll_duration_s = 1.0
     transport.start()
     try:
-        # Wait for subprocess startup, then let the flood session accumulate updates.
+        # Wait for subprocess startup, then let the flood backend accumulate updates.
         first = _wait_for_first_update(transport)
-        assert first, "expected session to start within 8 seconds"
+        assert first, "expected backend to start within 8 seconds"
         time.sleep(0.2)
-        updates = transport.poll_updates()
+        updates = transport.poll()
         statuses = [update for update in updates if isinstance(update, Status)]
-        assert statuses, "expected flood session updates"
+        assert statuses, "expected flood backend updates"
         assert len(updates) <= 8
         assert transport._last_poll_payload_count <= 8
         assert transport._last_poll_truncated is True

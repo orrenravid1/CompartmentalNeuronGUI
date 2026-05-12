@@ -1,6 +1,6 @@
-"""Public Jaxley backend entrypoints for live session authoring."""
+"""Public Jaxley backend entrypoints for live backend authoring."""
 
-from compneurovis.backends.jaxley.scene import JaxleySceneBuilder
-from compneurovis.backends.jaxley.session import JaxleySession
+from compneurovis.backends.jaxley.app_spec import JaxleyAppSpecBuilder
+from compneurovis.backends.jaxley.backend import JaxleyBackend
 
-__all__ = ["JaxleySceneBuilder", "JaxleySession"]
+__all__ = ["JaxleyAppSpecBuilder", "JaxleyBackend"]

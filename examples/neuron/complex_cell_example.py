@@ -1,9 +1,9 @@
 """
-Complex cell visualizer — minimal example of a single-cell live session loaded from an SWC file.
+Complex cell visualizer — minimal example of a single-cell live backend loaded from an SWC file.
 
 Patterns shown:
   - load_swc_neuron() to import a morphology file as NEURON sections with 3-D coordinates
-  - NeuronSession subclass with build_sections() and setup_model()
+  - NeuronBackend subclass with build_sections() and setup_model()
   - Multiple current clamps for repeated pulse stimulation
   - build_neuron_app() + run_app() as the two-line launch pattern
 
@@ -15,11 +15,11 @@ import os
 
 from neuron import h
 
-from compneurovis import ControlPresentationSpec, ControlSpec, NeuronSession, ScalarValueSpec, build_neuron_app, run_app
+from compneurovis import ControlPresentationSpec, ControlSpec, NeuronBackend, ScalarValueSpec, build_neuron_app, run_app
 from compneurovis.backends.neuron.utils import load_swc_neuron
 
 
-class ComplexCellSession(NeuronSession):
+class ComplexCellBackend(NeuronBackend):
     def __init__(self):
         super().__init__(title="Complex cell viewer")
         self.stim_amp = 1.0
@@ -37,14 +37,14 @@ class ComplexCellSession(NeuronSession):
                 label="Visual update interval (ms sim/update)",
                 value_spec=ScalarValueSpec(default=self.display_dt, min=self.dt, max=5.0, value_type="float"),
                 presentation=ControlPresentationSpec(kind="slider", steps=98),
-                send_to_session=True,
+                send_to_backend=True,
             ),
             "stim_amp": ControlSpec(
                 id="stim_amp",
                 label="Stimulus amplitude (nA)",
                 value_spec=ScalarValueSpec(default=self.stim_amp, min=0.0, max=2.0, value_type="float"),
                 presentation=ControlPresentationSpec(kind="slider", steps=100),
-                send_to_session=True,
+                send_to_backend=True,
             ),
         }
 
@@ -78,4 +78,4 @@ class ComplexCellSession(NeuronSession):
         return super().apply_control(control_id, value)
 
 
-run_app(build_neuron_app(ComplexCellSession))
+run_app(build_neuron_app(ComplexCellBackend))

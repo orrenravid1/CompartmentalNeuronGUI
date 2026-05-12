@@ -1,5 +1,5 @@
 """
-Custom LIF backend - pure BufferedSession example of a leaky integrate-and-fire neuron with
+Custom LIF backend - pure BufferedBackend example of a leaky integrate-and-fire neuron with
 threshold/reset spikes, a pulse-injection action, and linked line plots.
 
 Patterns shown:
@@ -29,11 +29,12 @@ from compneurovis import (
     LinePlotViewSpec,
     PanelSpec,
     ScalarValueSpec,
-    Scene,
+    RunSpec,
     SeriesSpec,
     run_app,
 )
-from compneurovis.session import BufferedSession, FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, Status
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, Status
 
 
 TITLE = "Custom LIF backend"
@@ -156,7 +157,7 @@ def float_control(
         label=label,
         value_spec=ScalarValueSpec(default=default, min=min_value, max=max_value, value_type="float"),
         presentation=ControlPresentationSpec(kind="slider", steps=steps, scale=scale),
-        send_to_session=True,
+        send_to_backend=True,
         target=target,
     )
 
@@ -172,7 +173,7 @@ MODEL_CONTROLS = (
             value_type="float",
         ),
         presentation=ControlPresentationSpec(kind="slider", steps=199, scale="log"),
-        send_to_session=True,
+        send_to_backend=True,
     ),
     float_control(
         "membrane_tau_ms",
@@ -268,7 +269,7 @@ def control_specs(
                     value_type="float",
                 ),
                 presentation=control.presentation,
-                send_to_session=control.send_to_session,
+                send_to_backend=control.send_to_backend,
                 target=control.target,
             )
             continue
@@ -300,14 +301,14 @@ def build_field(
     )
 
 
-def build_scene(
+def build_app_spec(
     *,
     time_history: list[float],
     voltage_history: dict[str, list[float]],
     current_history: dict[str, list[float]],
     event_history: dict[str, list[float]],
     controls: dict[str, ControlSpec],
-) -> Scene:
+) -> AppSpec:
     voltage_field = build_field(
         field_id=VOLTAGE_FIELD_ID,
         series=VOLTAGE_SERIES,
@@ -392,7 +393,7 @@ def build_scene(
         ),
     }
 
-    return Scene(
+    return AppSpec(
         fields={
             voltage_field.id: voltage_field,
             current_field.id: current_field,
@@ -420,16 +421,16 @@ def build_scene(
     )
 
 
-class CustomLIFSession(BufferedSession):
+class CustomLIFBackend(BufferedBackend):
     @classmethod
-    def startup_scene(cls) -> Scene | None:
+    def startup_app_spec(cls) -> AppSpec | None:
         model = LIFModel()
         root = SimpleNamespace(model=model)
         time_history = [0.0]
         voltage_history = {key: [value] for key, value in read_series(root, VOLTAGE_SERIES).items()}
         current_history = {key: [value] for key, value in read_series(root, CURRENT_SERIES).items()}
         event_history = {key: [value] for key, value in read_series(root, EVENT_SERIES).items()}
-        return build_scene(
+        return build_app_spec(
             time_history=time_history,
             voltage_history=voltage_history,
             current_history=current_history,
@@ -453,13 +454,13 @@ class CustomLIFSession(BufferedSession):
         self.model = LIFModel()
         self._reset_history()
 
-    def initialize(self) -> Scene:
+    def initialize(self) -> AppSpec:
         self.model.reset()
         self.sim_time_ms = 0.0
         self._paused = False
         self._reset_history()
         self._append_current_sample()
-        return build_scene(
+        return build_app_spec(
             time_history=list(self._time_history),
             voltage_history={key: list(values) for key, values in self._voltage_history.items()},
             current_history={key: list(values) for key, values in self._current_history.items()},
@@ -642,8 +643,8 @@ class CustomLIFSession(BufferedSession):
 
 
 run_app(
-    AppSpec(
-        session=CustomLIFSession,
+    RunSpec(
+        backend=CustomLIFBackend,
         title=TITLE,
     )
 )

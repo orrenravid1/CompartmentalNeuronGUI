@@ -12,10 +12,10 @@ from compneurovis.core import (
     LinePlotViewSpec,
     OperatorSpec,
     PanelSpec,
-    Scene,
+    RunSpec,
     SurfaceViewSpec,
 )
-from compneurovis.core.scene import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
+from compneurovis.core.app import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
 
 
 def grid_field(
@@ -62,7 +62,7 @@ def build_surface_app(
     controls: dict[str, ControlSpec] | None = None,
     panels: tuple[PanelSpec, ...] = (),
     panel_grid: tuple[tuple[str, ...], ...] = (),
-) -> AppSpec:
+) -> RunSpec:
     """Build a static surface app from field data, optional geometry, and views."""
 
     if surface_view is None:
@@ -151,7 +151,7 @@ def build_surface_app(
         rows.extend((panel_id,) for panel_id in controls_panels)
         layout.panel_grid = tuple(rows)
 
-    scene = Scene(
+    app_spec = AppSpec(
         fields={field.id: field},
         geometries={} if geometry is None else {geometry.id: geometry},
         views=views,
@@ -159,4 +159,4 @@ def build_surface_app(
         controls=controls,
         layout=layout,
     )
-    return AppSpec(scene=scene, title=title)
+    return RunSpec(app_spec=app_spec, title=title)

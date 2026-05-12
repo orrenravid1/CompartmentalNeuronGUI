@@ -7,48 +7,49 @@ from typing import Any, Sequence
 import numpy as np
 
 from compneurovis.core.controls import ActionSpec, ControlSpec
-from compneurovis.core.scene import Scene
+from compneurovis.core.app import AppSpec
 from compneurovis.core.views import LinePlotViewSpec
-from compneurovis.session import BufferedSession, EntityClicked, FieldAppend, FieldReplace, HistoryCaptureMode, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
-from compneurovis.backends.neuron.scene import NeuronSceneBuilder
+from compneurovis.backends import BufferedBackend, HistoryCaptureMode
+from compneurovis.messages import EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
+from compneurovis.backends.neuron.app_spec import NeuronAppSpecBuilder
 
 
-class SessionInteractionContext:
-    def __init__(self, session: "NeuronSession"):
-        self.session = session
+class BackendInteractionContext:
+    def __init__(self, backend: "NeuronBackend"):
+        self.backend = backend
 
     def set_state(self, key: str, value: Any) -> None:
-        self.session._ui_state[key] = value
-        self.session.emit(StatePatch({key: value}))
+        self.backend._ui_state[key] = value
+        self.backend.emit(StatePatch({key: value}))
 
     def state(self, key: str, default: Any = None) -> Any:
-        return self.session._ui_state.get(key, default)
+        return self.backend._ui_state.get(key, default)
 
     @property
     def selected_entity_id(self) -> str | None:
-        value = self.session._ui_state.get("selected_entity_id")
+        value = self.backend._ui_state.get("selected_entity_id")
         return str(value) if value is not None else None
 
     def entity_info(self, entity_id: str | None = None) -> dict[str, Any] | None:
         current_id = entity_id or self.selected_entity_id
-        if current_id is None or self.session.geometry is None:
+        if current_id is None or self.backend.geometry is None:
             return None
         try:
-            return self.session.geometry.entity_info(current_id)
+            return self.backend.geometry.entity_info(current_id)
         except KeyError:
             return None
 
     def show_status(self, message: str, timeout_ms: int | None = None) -> None:
-        self.session.emit(Status(message, timeout_ms))
+        self.backend.emit(Status(message, timeout_ms))
 
     def clear_status(self) -> None:
-        self.session.emit(Status("", 0))
+        self.backend.emit(Status("", 0))
 
     def invoke_action(self, action_id: str, payload: dict[str, Any] | None = None) -> None:
-        self.session._dispatch_action(action_id, payload or {})
+        self.backend._dispatch_action(action_id, payload or {})
 
 
-class NeuronSession(BufferedSession, ABC):
+class NeuronBackend(BufferedBackend, ABC):
     """Base class for live NEURON-backed CompNeuroVis sessions."""
 
     HISTORY_CAPTURE_ON_DEMAND = HistoryCaptureMode.ON_DEMAND
@@ -134,10 +135,10 @@ class NeuronSession(BufferedSession, ABC):
         return {}
 
     def display_field_id(self) -> str:
-        return NeuronSceneBuilder.DISPLAY_FIELD_ID
+        return NeuronAppSpecBuilder.DISPLAY_FIELD_ID
 
     def history_field_id(self) -> str:
-        return NeuronSceneBuilder.HISTORY_FIELD_ID
+        return NeuronAppSpecBuilder.HISTORY_FIELD_ID
 
     def display_unit(self) -> str | None:
         return "mV"
@@ -199,14 +200,14 @@ class NeuronSession(BufferedSession, ABC):
         """Register NEURON variable refs for sampling once per fadvance step."""
 
         if len(names) != len(refs):
-            raise ValueError("NeuronSession record_many names and refs must have the same length")
+            raise ValueError("NeuronBackend record_many names and refs must have the same length")
         normalized_names = tuple(str(name) for name in names)
         if len(set(normalized_names)) != len(normalized_names):
-            raise ValueError("NeuronSession record_many names must be unique")
+            raise ValueError("NeuronBackend record_many names must be unique")
         duplicates = set(normalized_names).intersection(self._recorded_names)
         if duplicates:
             duplicate_names = ", ".join(sorted(duplicates))
-            raise ValueError(f"NeuronSession already records: {duplicate_names}")
+            raise ValueError(f"NeuronBackend already records: {duplicate_names}")
         self._recorded_names.extend(normalized_names)
         self._recorded_refs.extend(refs)
         self._rebuild_recorded_ptrs()
@@ -216,13 +217,13 @@ class NeuronSession(BufferedSession, ABC):
 
         del times, values
 
-    def build_scene(self, *, geometry, display_values: np.ndarray, time_value: float) -> Scene:
-        """Build the initial Scene from sampled values and morphology geometry."""
+    def build_app_spec(self, *, geometry, display_values: np.ndarray, time_value: float) -> AppSpec:
+        """Build the initial AppSpec from sampled values and morphology geometry."""
 
         controls = self.control_specs()
         actions = self._resolved_action_specs()
         trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
-        scene = NeuronSceneBuilder.build_scene(
+        app_spec = NeuronAppSpecBuilder.build_app_spec(
             geometry=geometry,
             display_values=display_values,
             trace_values=trace_values,
@@ -246,17 +247,17 @@ class NeuronSession(BufferedSession, ABC):
         )
         trace_updates = self.trace_view_updates()
         if trace_updates:
-            scene.replace_view("trace", trace_updates)
-        return scene
+            app_spec.replace_view("trace", trace_updates)
+        return app_spec
 
     def initialize(self):
-        """Initialize the NEURON model, sample it once, and return the first Scene."""
+        """Initialize the NEURON model, sample it once, and return the first AppSpec."""
 
         from neuron import h
 
         self.sections = self.build_sections()
         self._runtime_handles = self.setup_model(self.sections)
-        self.geometry = NeuronSceneBuilder.build_morphology_geometry(self.sections)
+        self.geometry = NeuronAppSpecBuilder.build_morphology_geometry(self.sections)
         self._entity_index_by_id = {entity_id: index for index, entity_id in enumerate(self.geometry.entity_ids)}
         self._recorded_names.clear()
         self._recorded_refs.clear()
@@ -267,13 +268,13 @@ class NeuronSession(BufferedSession, ABC):
         h.finitialize(self.v_init)
         time_value, display_values = self._sample()
         self._initialize_trace_history(time_value, display_values)
-        scene = self.build_scene(
+        app_spec = self.build_app_spec(
             geometry=self.geometry,
             display_values=display_values,
             time_value=time_value,
         )
         self._field_max_samples[self.history_field_id()] = self._resolved_field_max_samples(
-            scene,
+            app_spec,
             field_id=self.history_field_id(),
             append_dim="time",
         )
@@ -285,7 +286,7 @@ class NeuronSession(BufferedSession, ABC):
                 "selected_entity_id": initial_entity_id,
                 "selected_entity_label": self.geometry.label_for(initial_entity_id),
             }))
-        return scene
+        return app_spec
 
     def _prepare_recorders(self):
         from neuron import h
@@ -442,17 +443,17 @@ class NeuronSession(BufferedSession, ABC):
         if self.display_dt is None:
             return 1
         if self.display_dt <= 0:
-            raise ValueError("NeuronSession display_dt must be positive or None")
+            raise ValueError("NeuronBackend display_dt must be positive or None")
         return max(1, int(math.ceil(float(self.display_dt) / float(self.dt))))
 
     def idle_sleep(self) -> float:
         return 0.0
 
-    def _resolved_field_max_samples(self, scene: Scene, *, field_id: str, append_dim: str) -> int:
+    def _resolved_field_max_samples(self, app_spec: AppSpec, *, field_id: str, append_dim: str) -> int:
         required = int(self.max_samples)
         if self.dt <= 0:
             return required
-        for view in scene.views.values():
+        for view in app_spec.views.values():
             if not isinstance(view, LinePlotViewSpec):
                 continue
             if view.field_id != field_id:
@@ -540,8 +541,8 @@ class NeuronSession(BufferedSession, ABC):
                 {name: recorded_batch[index] for index, name in enumerate(self._recorded_names)},
             )
 
-    def _interaction_context(self) -> SessionInteractionContext:
-        return SessionInteractionContext(self)
+    def _interaction_context(self) -> BackendInteractionContext:
+        return BackendInteractionContext(self)
 
     def _dispatch_action(self, action_id: str, payload: dict[str, Any]) -> bool:
         if self.on_action(action_id, payload, self._interaction_context()):

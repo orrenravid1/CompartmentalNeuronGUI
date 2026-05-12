@@ -9,9 +9,9 @@ Trade-offs vs the replay approach (see animated_surface_replay.py):
   - Natural fit for parameter-driven or interactive computation
   - Controls can modify the computation itself, not just visual properties
 
-Note: the current authoring pattern requires subclassing BufferedSession directly. A future
+Note: the current authoring pattern requires subclassing BufferedBackend directly. A future
 build_animated_surface_app(fn=...) builder is planned (see docs/architecture/design/backlog.md) that will make
-this pattern available without writing a session class.
+this pattern available without writing a backend class.
 
 Run: python examples/surface_plot/animated_surface_live.py
 """
@@ -29,8 +29,9 @@ from compneurovis import (
     grid_field,
     run_app,
 )
-from compneurovis.core import AppSpec
-from compneurovis.session import BufferedSession, SceneReady, FieldReplace, InvokeAction, Reset, SetControl
+from compneurovis.core import AppSpec, RunSpec
+from compneurovis.backends import BufferedBackend
+from compneurovis.messages import AppSpecReady, FieldReplace, InvokeAction, Reset, SetControl
 
 x = np.linspace(-4.0, 4.0, 120, dtype=np.float32)
 y = np.linspace(-4.0, 4.0, 120, dtype=np.float32)
@@ -63,14 +64,14 @@ scene = build_surface_app(
     field=field,
     geometry=geometry,
     surface_view=surface_view,
-    # send_to_session=True so the session receives SetControl when the slider moves.
+    # send_to_backend=True so the backend receives SetControl when the slider moves.
     controls={
         "speed": ControlSpec(
             id="speed",
             label="Speed",
             value_spec=ScalarValueSpec(default=1.0, min=0.1, max=4.0, value_type="float"),
             presentation=ControlPresentationSpec(kind="slider", steps=78),
-            send_to_session=True,
+            send_to_backend=True,
         )
     },
     title="animated sinc wave — live",
@@ -79,13 +80,13 @@ scene = build_surface_app(
         PanelSpec(id="controls-panel", kind="controls", control_ids=("speed",), action_ids=("pause", "reset")),
     ),
     panel_grid=(("surface-host",), ("controls-panel",)),
-).scene
+).app_spec
 
 scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=("Space",))
 scene.actions["reset"] = ActionSpec("reset", "Reset", shortcuts=("R",))
 
 
-class LiveAnimationSession(BufferedSession):
+class LiveAnimationBackend(BufferedBackend):
     def __init__(self):
         super().__init__()
         self._t = 0.0
@@ -117,4 +118,4 @@ class LiveAnimationSession(BufferedSession):
         return 1 / 30
 
 
-run_app(AppSpec(session=LiveAnimationSession, title="animated sinc wave — live"))
+run_app(RunSpec(backend=LiveAnimationBackend, title="animated sinc wave — live"))

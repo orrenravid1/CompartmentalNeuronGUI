@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, Scene, SurfaceViewSpec, grid_field, run_app
+from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, RunSpec, SurfaceViewSpec, grid_field, run_app
 
 
 def build_demo_app() -> AppSpec:
@@ -37,7 +37,7 @@ def build_demo_app() -> AppSpec:
     z = (np.sin(x[None, :] * 1.5) + np.cos(y[:, None] * 1.5)).astype(np.float32)
     surface_field, surface_geometry = grid_field(field_id="surface-display", values=z, x_coords=x, y_coords=y)
 
-    scene = Scene(
+    scene = AppSpec(
         fields={
             morphology_field.id: morphology_field,
             surface_field.id: surface_field,
@@ -72,7 +72,7 @@ def build_demo_app() -> AppSpec:
             panel_grid=(("morphology-host", "surface-host"),),
         ),
     )
-    return AppSpec(scene=scene, title="Multi 3D View Demo")
+    return RunSpec(app_spec=scene, title="Multi 3D View Demo")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 Surface cross-section visualizer - renders a 3-D height field with a moveable cutting plane and a
 linked line plot showing the curve along that slice. Two controls let you choose the slice
 axis (x or y) and drag the cutting position; both the surface overlay and the line plot update
-together in real time. No simulation or session is involved.
+together in real time. No simulation or backend is involved.
 
 Patterns shown:
   - GridSliceOperatorSpec to model a reusable slice operator over a surface field
