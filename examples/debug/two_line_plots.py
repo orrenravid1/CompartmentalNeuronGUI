@@ -4,7 +4,7 @@ Two Line Plots - debug-oriented example that renders two live line plots at once
 Patterns shown:
   - explicit PanelSpec line-plot panels with a row-major panel_grid
   - a single appended 2-D Field feeding multiple views through selectors
-  - BufferedBackend live updates without morphology or surface views
+  - BackendBase live updates without morphology or surface views
 
 Run: python examples/debug/two_line_plots.py
 """
@@ -17,7 +17,7 @@ import time
 import numpy as np
 
 from compneurovis import AppSpec, DataCatalog, Field, LayoutCatalog, LayoutSpec, LinePlotViewSpec, PanelSpec, RunSpec, ViewCatalog, run_app
-from compneurovis.backends import BufferedBackend
+from compneurovis.backends import BackendBase
 from compneurovis.messages import FieldAppend
 
 
@@ -96,14 +96,14 @@ def build_app_spec() -> AppSpec:
     )
 
 
-class AnimatedTwoLinePlotsBackend(BufferedBackend):
+class AnimatedTwoLinePlotsBackend(BackendBase):
     def __init__(self, *, update_delay_s: float = 0.05):
         super().__init__()
         self.update_delay_s = update_delay_s
         self.time_s = 0.0
 
-    def initialize(self) -> AppSpec:
-        return build_app_spec()
+    def initialize(self, app_spec: AppSpec) -> None:
+        pass
 
     def advance(self) -> None:
         time.sleep(self.update_delay_s)
@@ -127,6 +127,6 @@ if __name__ == "__main__":
     run_app(
         RunSpec(
             backend=AnimatedTwoLinePlotsBackend,
-            title="Two Line Plots",
+            app_spec=build_app_spec(),
         )
     )

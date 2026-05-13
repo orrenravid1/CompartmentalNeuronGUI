@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable, Protocol, TypeAlias, runtime_checkable
+
+if TYPE_CHECKING:
+    from compneurovis.messages import Message, MessagePayload
 
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.field import Field
@@ -324,26 +327,60 @@ class LayoutCatalog:
         return self.layouts[self.active]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, init=False)
 class AppSpec:
-    data: DataCatalog = field(default_factory=DataCatalog)
-    view_catalog: ViewCatalog = field(default_factory=ViewCatalog)
-    interactions: InteractionCatalog = field(default_factory=InteractionCatalog)
-    layout_catalog: LayoutCatalog = field(default_factory=LayoutCatalog)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    data: DataCatalog
+    view_catalog: ViewCatalog
+    interactions: InteractionCatalog
+    layout_catalog: LayoutCatalog
+    metadata: dict[str, Any]
 
-    def __post_init__(self) -> None:
-        self.data = DataCatalog(fields=self.data.fields, geometries=self.data.geometries)
-        self.view_catalog = ViewCatalog(views=self.view_catalog.views, operators=self.view_catalog.operators)
+    def __init__(
+        self,
+        *,
+        data: DataCatalog | None = None,
+        view_catalog: ViewCatalog | None = None,
+        interactions: InteractionCatalog | None = None,
+        layout_catalog: LayoutCatalog | None = None,
+        metadata: dict[str, Any] | None = None,
+        fields: dict[str, Field] | None = None,
+        geometries: dict[str, Geometry] | None = None,
+        views: dict[str, ViewSpec] | None = None,
+        controls: dict[str, ControlSpec] | None = None,
+        actions: dict[str, ActionSpec] | None = None,
+        layout: LayoutSpec | None = None,
+    ) -> None:
+        if data is not None and fields is not None:
+            raise TypeError("Cannot pass both data=DataCatalog(...) and fields=... — use data=DataCatalog(...)")
+        if view_catalog is not None and views is not None:
+            raise TypeError("Cannot pass both view_catalog=ViewCatalog(...) and views=... — use view_catalog=ViewCatalog(...)")
+        if interactions is not None and (controls is not None or actions is not None):
+            raise TypeError("Cannot pass both interactions=InteractionCatalog(...) and controls/actions=... — use interactions=InteractionCatalog(...)")
+        if layout_catalog is not None and layout is not None:
+            raise TypeError("Cannot pass both layout_catalog=LayoutCatalog(...) and layout=... — use layout_catalog=LayoutCatalog(...)")
+
+        resolved_data = data if data is not None else DataCatalog(
+            fields=fields or {},
+            geometries=geometries or {},
+        )
+        resolved_view_catalog = view_catalog if view_catalog is not None else ViewCatalog(views=views or {})
+        resolved_interactions = interactions if interactions is not None else InteractionCatalog(
+            controls=controls or {},
+            actions=actions or {},
+        )
+        resolved_layout_catalog = layout_catalog if layout_catalog is not None else LayoutCatalog.single(layout)
+
+        self.data = DataCatalog(fields=resolved_data.fields, geometries=resolved_data.geometries)
+        self.view_catalog = ViewCatalog(views=resolved_view_catalog.views, operators=resolved_view_catalog.operators)
         self.interactions = InteractionCatalog(
-            controls=self.interactions.controls,
-            actions=self.interactions.actions,
+            controls=resolved_interactions.controls,
+            actions=resolved_interactions.actions,
         )
         self.layout_catalog = LayoutCatalog(
-            layouts=self.layout_catalog.layouts,
-            active=self.layout_catalog.active,
+            layouts=resolved_layout_catalog.layouts,
+            active=resolved_layout_catalog.active,
         )
-        self.metadata = dict(self.metadata)
+        self.metadata = dict(metadata or {})
         self._normalize_layouts()
 
     def active_layout(self) -> LayoutSpec:
@@ -367,13 +404,49 @@ class AppSpec:
         self.interactions.controls[control_id] = replace(self.interactions.controls[control_id], **updates)
 
 
+@runtime_checkable
+class BackendProtocol(Protocol):
+    def initialize(self, app_spec: AppSpec) -> None: ...
+    def advance(self) -> None: ...
+    def handle(self, message: Message[MessagePayload]) -> None: ...
+    def take_outbound_messages(self) -> list[Message[MessagePayload]]: ...
+    def is_live(self) -> bool: ...
+    def idle_sleep(self) -> float: ...
+    def shutdown(self) -> None: ...
+
+
+@runtime_checkable
+class FrontendProtocol(Protocol):
+    def initialize(self, app_spec: AppSpec) -> None: ...
+    def handle(self, message: Message[MessagePayload]) -> None: ...
+    def take_outbound_messages(self) -> list[Message[MessagePayload]]: ...
+    def render(self) -> None: ...
+    def close(self) -> None: ...
+
+
+@runtime_checkable
+class Transport(Protocol):
+    def start(self) -> None: ...
+    def send(self, message: Message[MessagePayload]) -> None: ...
+    def poll(self) -> list[Message[MessagePayload]]: ...
+    def stop(self) -> None: ...
+    def poll_bootstrap(self) -> AppSpec | None: ...
+
+
+BackendSource: TypeAlias = type[BackendProtocol] | Callable[[], BackendProtocol]
+FrontendSource: TypeAlias = type[FrontendProtocol] | Callable[..., FrontendProtocol]
+TransportSource: TypeAlias = type[Transport] | Callable[..., Transport]
+
+
 @dataclass(slots=True)
 class RunSpec:
     app_spec: AppSpec | None = None
-    backend: Any = None
+    backend: BackendSource | None = None
+    transport: TransportSource | None = None
+    frontend: FrontendSource | None = None
     interaction_target: Any = None
     title: str | None = None
-    diagnostics: "DiagnosticsSpec | None" = None
+    diagnostics: DiagnosticsSpec | None = None
 
 
 @dataclass(slots=True)

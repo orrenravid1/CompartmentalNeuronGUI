@@ -61,7 +61,7 @@ def test_app_spec_keeps_flat_constructor_as_catalog_lowering():
 
     assert app_spec.data.fields[field.id] is field
     assert app_spec.view_catalog.views[view.id] is view
-    assert app_spec.active_layout()_catalog.active == "default"
+    assert app_spec.layout_catalog.active == "default"
     assert app_spec.active_layout().title == "Flat"
 
 

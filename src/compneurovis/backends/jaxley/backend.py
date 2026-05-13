@@ -10,7 +10,7 @@ from compneurovis.backends.jaxley.app_spec import JaxleyAppSpecBuilder
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.app import AppSpec
 from compneurovis.core.views import LinePlotViewSpec
-from compneurovis.backends import BufferedBackend, HistoryCaptureMode
+from compneurovis.backends import BackendBase, HistoryCaptureMode
 from compneurovis.messages import EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
 
 if TYPE_CHECKING:  # pragma: no cover - optional dependency typing only
@@ -52,7 +52,7 @@ class BackendInteractionContext:
         self.backend._dispatch_action(action_id, payload or {})
 
 
-class JaxleyBackend(BufferedBackend, ABC):
+class JaxleyBackend(BackendBase, ABC):
     """Base class for live Jaxley-backed CompNeuroVis sessions."""
 
     HISTORY_CAPTURE_ON_DEMAND = HistoryCaptureMode.ON_DEMAND

@@ -49,7 +49,7 @@ from compneurovis.frontends.vispy.panels.state_graph import (
 from compneurovis.frontends.vispy.panels.view3d import (
     IndependentCanvas3DHostPanel,
 )
-from compneurovis.frontends.base import Frontend
+from compneurovis.frontends.base import FrontendBase
 from compneurovis.frontends.vispy.view3d.viewport import Viewport3DPanel
 from compneurovis.backends import (
     resolve_interaction_target_source,
@@ -62,13 +62,14 @@ from compneurovis.messages import (
     InvokeAction,
     KeyPressed,
     LayoutReplace,
+    Message,
+    MessagePayload,
     PanelPatch,
     Reset,
     AppSpecPatch,
     SetControl,
     StatePatch,
     Status,
-    UpdateMessage,
 )
 from compneurovis.transports import (
     PipeTransport,
@@ -140,10 +141,10 @@ def _update_type_counts(updates: list[Any]) -> dict[str, int]:
     return counts
 
 
-class VispyFrontendWindow(QtWidgets.QMainWindow, Frontend):
+class VispyFrontendWindow(QtWidgets.QMainWindow, FrontendBase):
     def __init__(self, run_spec: RunSpec, *, transport_factory: Callable[..., Transport] | None = None):
         super().__init__()
-        Frontend.__init__(self)
+        FrontendBase.__init__(self)
         self.run_spec = run_spec
         if transport_factory is None:
             transport_factory = PipeTransport
@@ -845,7 +846,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow, Frontend):
         self._handle_update_messages(messages, poll_started=poll_started, timer_gap_ms=timer_gap_ms)
         self._flush_outbound_messages()
 
-    def handle(self, message: UpdateMessage) -> None:
+    def handle(self, message: Message[MessagePayload]) -> None:
         self._handle_update_messages([message], poll_started=time.monotonic(), timer_gap_ms=None)
 
     def _emit_command(self, command: CommandPayload) -> None:
@@ -860,7 +861,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow, Frontend):
 
     def _handle_update_messages(
         self,
-        messages: list[UpdateMessage],
+        messages: list[Message[MessagePayload]],
         *,
         poll_started: float,
         timer_gap_ms: float | None,

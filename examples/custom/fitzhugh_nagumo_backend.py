@@ -1,5 +1,5 @@
 """
-Custom FitzHugh-Nagumo backend - complete example of a pure BufferedBackend backend with its
+Custom FitzHugh-Nagumo backend - complete example of a pure BackendBase backend with its
 own fixed-step RK4 solver, explicit scene assembly, and bound controls/actions. No NEURON or
 Jaxley helper is involved.
 
@@ -7,7 +7,7 @@ Patterns shown:
   - model class + custom ODE solver owned entirely by the example
   - explicit Field / LinePlotViewSpec / PanelSpec assembly with no simulator builders
   - AttributeRef and SeriesSpec to bind controls and plotted series onto a nested model
-  - BufferedBackend startup_app_spec(), batched FieldAppend updates, and custom actions
+  - BackendBase startup_app_spec(), batched FieldAppend updates, and custom actions
 
 Run: python examples/custom/fitzhugh_nagumo_backend.py
 
@@ -47,7 +47,7 @@ from compneurovis import (
     ViewCatalog,
     run_app,
 )
-from compneurovis.backends import BufferedBackend
+from compneurovis.backends import BackendBase
 from compneurovis.messages import FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, Status
 
 
@@ -359,23 +359,7 @@ def build_app_spec(
     )
 
 
-class CustomFitzHughNagumoBackend(BufferedBackend):
-    @classmethod
-    def startup_app_spec(cls) -> AppSpec | None:
-        model = FitzHughNagumoModel()
-        root = SimpleNamespace(model=model)
-        time_history = [0.0]
-        voltage_history = {key: [value] for key, value in read_series(root, VOLTAGE_SERIES).items()}
-        state_history = {key: [value] for key, value in read_series(root, STATE_SERIES).items()}
-        term_history = {key: [value] for key, value in read_series(root, TERM_SERIES).items()}
-        return build_app_spec(
-            time_history=time_history,
-            voltage_history=voltage_history,
-            state_history=state_history,
-            term_history=term_history,
-            controls=control_specs(),
-        )
-
+class CustomFitzHughNagumoBackend(BackendBase):
     def __init__(
         self,
         *,
@@ -395,20 +379,13 @@ class CustomFitzHughNagumoBackend(BufferedBackend):
         self._reset_history()
         self._reset_pending_emits()
 
-    def initialize(self) -> AppSpec:
+    def initialize(self, app_spec: AppSpec) -> None:
         self.model.reset()
         self.sim_time_ms = 0.0
         self._paused = False
         self._reset_history()
         self._reset_pending_emits()
         self._append_current_sample()
-        return build_app_spec(
-            time_history=list(self._time_history),
-            voltage_history={key: list(values) for key, values in self._voltage_history.items()},
-            state_history={key: list(values) for key, values in self._state_history.items()},
-            term_history={key: list(values) for key, values in self._term_history.items()},
-            controls=control_specs(),
-        )
 
     def advance(self) -> None:
         if self._paused:
@@ -651,12 +628,28 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def initial_app_spec() -> AppSpec:
+    model = FitzHughNagumoModel()
+    root = SimpleNamespace(model=model)
+    time_history = [0.0]
+    voltage_history = {key: [value] for key, value in read_series(root, VOLTAGE_SERIES).items()}
+    state_history = {key: [value] for key, value in read_series(root, STATE_SERIES).items()}
+    term_history = {key: [value] for key, value in read_series(root, TERM_SERIES).items()}
+    return build_app_spec(
+        time_history=time_history,
+        voltage_history=voltage_history,
+        state_history=state_history,
+        term_history=term_history,
+        controls=control_specs(),
+    )
+
+
 def build_app(
     *,
     perf_log_enabled: bool = False,
     perf_log_dir: Path | None = None,
     perf_log_stderr: bool = False,
-) -> AppSpec:
+) -> RunSpec:
     diagnostics = None
     if perf_log_enabled or perf_log_dir is not None or perf_log_stderr:
         diagnostics = DiagnosticsSpec(
@@ -666,7 +659,7 @@ def build_app(
         )
     return RunSpec(
         backend=CustomFitzHughNagumoBackend,
-        title=TITLE,
+        app_spec=initial_app_spec(),
         diagnostics=diagnostics,
     )
 

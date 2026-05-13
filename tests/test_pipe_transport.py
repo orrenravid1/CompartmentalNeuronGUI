@@ -5,8 +5,8 @@ import pytest
 
 from compneurovis.core import Field, LayoutSpec, AppSpec
 from compneurovis.actors import MessageActor
-from compneurovis.backends import BufferedBackend
-from compneurovis.frontends import Frontend
+from compneurovis.backends import BackendBase
+from compneurovis.frontends import FrontendBase
 from compneurovis.messages import (
     EntityClicked,
     Error,
@@ -21,15 +21,19 @@ from compneurovis.transports import PipeTransport
 from compneurovis.transports.pipe import _sleep_to_backend_cadence
 
 
-class DummyBackend(BufferedBackend):
-    def initialize(self):
-        field = Field(
-            id="demo",
-            values=np.array([1.0, 2.0], dtype=np.float32),
-            dims=("x",),
-            coords={"x": np.array([0.0, 1.0], dtype=np.float32)},
-        )
-        return AppSpec(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
+def _dummy_app_spec() -> AppSpec:
+    field = Field(
+        id="demo",
+        values=np.array([1.0, 2.0], dtype=np.float32),
+        dims=("x",),
+        coords={"x": np.array([0.0, 1.0], dtype=np.float32)},
+    )
+    return AppSpec(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
+
+
+class DummyBackend(BackendBase):
+    def initialize(self, app_spec: AppSpec) -> None:
+        pass
 
     def is_live(self) -> bool:
         return False
@@ -48,15 +52,9 @@ class DummyBackend(BufferedBackend):
             )
 
 
-class DummyInteractionBackend(BufferedBackend):
-    def initialize(self):
-        field = Field(
-            id="demo",
-            values=np.array([1.0], dtype=np.float32),
-            dims=("x",),
-            coords={"x": np.array([0.0], dtype=np.float32)},
-        )
-        return AppSpec(fields={"demo": field}, geometries={}, views={}, layout=LayoutSpec(title="Dummy"))
+class DummyInteractionBackend(BackendBase):
+    def initialize(self, app_spec: AppSpec) -> None:
+        pass
 
     def is_live(self) -> bool:
         return False
@@ -71,8 +69,8 @@ class DummyInteractionBackend(BufferedBackend):
             self.emit_update(Status(f"Clicked {command.entity_id}", 1000))
 
 
-class FailingInitializeBackend(BufferedBackend):
-    def initialize(self):
+class FailingInitializeBackend(BackendBase):
+    def initialize(self, app_spec: AppSpec) -> None:
         raise RuntimeError("intentional backend init failure")
 
     def is_live(self) -> bool:
@@ -86,13 +84,13 @@ class FailingInitializeBackend(BufferedBackend):
         del command
 
 
-class FastLiveBackend(BufferedBackend):
+class FastLiveBackend(BackendBase):
     def __init__(self):
         super().__init__()
         self.tick_count = 0
 
-    def initialize(self):
-        return None
+    def initialize(self, app_spec: AppSpec) -> None:
+        pass
 
     def advance(self) -> None:
         self.tick_count += 1
@@ -106,13 +104,13 @@ class FastLiveBackend(BufferedBackend):
         return 0.05
 
 
-class FloodLiveBackend(BufferedBackend):
+class FloodLiveBackend(BackendBase):
     def __init__(self):
         super().__init__()
         self.tick_count = 0
 
-    def initialize(self):
-        return None
+    def initialize(self, app_spec: AppSpec) -> None:
+        pass
 
     def advance(self) -> None:
         self.tick_count += 1
@@ -131,7 +129,7 @@ def make_dummy_backend() -> DummyBackend:
 
 
 def test_backend_and_frontend_share_message_actor_contract():
-    class DummyFrontend(Frontend):
+    class DummyFrontend(FrontendBase):
         def handle(self, message) -> None:
             del message
 
@@ -153,16 +151,9 @@ def update_payloads(messages):
 
 
 def test_pipe_transport_roundtrip():
-    transport = PipeTransport(DummyBackend)
+    transport = PipeTransport(DummyBackend, provided_app_spec=_dummy_app_spec())
     transport.start()
     try:
-        deadline = time.time() + 5
-        updates = []
-        while time.time() < deadline and not updates:
-            updates = update_payloads(transport.poll())
-            time.sleep(0.05)
-        assert updates, "expected initial app spec update"
-
         transport.send(command_message(SetControl("demo", 5.0)))
         deadline = time.time() + 5
         field_replace = None
@@ -185,16 +176,9 @@ def test_pipe_transport_requires_lazy_session_source():
 
 
 def test_pipe_transport_roundtrip_from_factory():
-    transport = PipeTransport(make_dummy_backend)
+    transport = PipeTransport(make_dummy_backend, provided_app_spec=_dummy_app_spec())
     transport.start()
     try:
-        deadline = time.time() + 5
-        updates = []
-        while time.time() < deadline and not updates:
-            updates = update_payloads(transport.poll())
-            time.sleep(0.05)
-        assert updates, "expected initial app spec update"
-
         transport.send(command_message(SetControl("demo", 7.0)))
         deadline = time.time() + 5
         field_replace = None
@@ -212,16 +196,9 @@ def test_pipe_transport_roundtrip_from_factory():
 
 
 def test_pipe_transport_roundtrip_interaction_commands():
-    transport = PipeTransport(DummyInteractionBackend)
+    transport = PipeTransport(DummyInteractionBackend, provided_app_spec=_dummy_app_spec())
     transport.start()
     try:
-        deadline = time.time() + 5
-        updates = []
-        while time.time() < deadline and not updates:
-            updates = update_payloads(transport.poll())
-            time.sleep(0.05)
-        assert updates, "expected initial app spec update"
-
         transport.send(command_message(EntityClicked("seg-a")))
         deadline = time.time() + 5
         state_patch = None
@@ -244,7 +221,7 @@ def test_pipe_transport_roundtrip_interaction_commands():
 
 
 def test_pipe_transport_surfaces_worker_initialize_errors():
-    transport = PipeTransport(FailingInitializeBackend)
+    transport = PipeTransport(FailingInitializeBackend, provided_app_spec=AppSpec())
     transport.start()
     try:
         deadline = time.time() + 5
@@ -282,7 +259,7 @@ def _wait_for_first_update(transport, *, deadline_s: float = 8.0) -> list:
 
 
 def test_live_pipe_transport_respects_idle_sleep_cadence():
-    transport = PipeTransport(FastLiveBackend)
+    transport = PipeTransport(FastLiveBackend, provided_app_spec=AppSpec())
     transport.start()
     try:
         # Subprocess startup on Windows (spawn) can take several seconds.
@@ -301,7 +278,7 @@ def test_live_pipe_transport_respects_idle_sleep_cadence():
 
 
 def test_pipe_transport_bounds_update_drain_per_poll_to_preserve_ui_responsiveness():
-    transport = PipeTransport(FloodLiveBackend)
+    transport = PipeTransport(FloodLiveBackend, provided_app_spec=AppSpec())
     transport._max_update_payloads_per_poll = 8
     transport._max_poll_duration_s = 1.0
     transport.start()

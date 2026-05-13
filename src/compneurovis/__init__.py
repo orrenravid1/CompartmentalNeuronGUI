@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 
 from compneurovis.actors import MessageActor
-from compneurovis.backends import Backend, BackendSource, BufferedBackend, HistoryCaptureMode
+from compneurovis.backends import BackendProtocol, BackendBase, BackendSource, HistoryCaptureMode
 from compneurovis.builders import ReplayBackend, build_replay_app, build_surface_app, grid_field
 from compneurovis.core import (
     ActionSpec,
@@ -18,6 +18,8 @@ from compneurovis.core import (
     DataCatalog,
     DiagnosticsSpec,
     Field,
+    FrontendProtocol,
+    FrontendSource,
     Geometry,
     GridGeometry,
     GridSliceOperatorSpec,
@@ -39,7 +41,7 @@ from compneurovis.core import (
     ViewCatalog,
     XYValueSpec,
 )
-from compneurovis.frontends import Frontend, VispyFrontendWindow, run_app
+from compneurovis.frontends import FrontendBase, VispyFrontendWindow, run_app
 from compneurovis.messages import (
     CommandMessage,
     Message,
@@ -57,17 +59,20 @@ __all__ = [
     "ActionSpec",
     "AttributeRef",
     "AppSpec",
-    "Backend",
+    "BackendProtocol",
+    "BackendBase",
     "BackendSource",
     "BoolValueSpec",
-    "BufferedBackend",
     "ChoiceValueSpec",
+    "CommandMessage",
     "ControlPresentationSpec",
     "ControlSpec",
     "DataCatalog",
     "DiagnosticsSpec",
     "Field",
-    "Frontend",
+    "FrontendProtocol",
+    "FrontendBase",
+    "FrontendSource",
     "Geometry",
     "GridGeometry",
     "GridSliceOperatorSpec",
@@ -76,14 +81,12 @@ __all__ = [
     "LayoutCatalog",
     "LayoutSpec",
     "LinePlotViewSpec",
-    "CommandMessage",
-    "StateGraphViewSpec",
-    "MorphologyGeometry",
-    "MorphologyViewSpec",
     "Message",
     "MessageActor",
     "MessagePayload",
     "MessageType",
+    "MorphologyGeometry",
+    "MorphologyViewSpec",
     "OperatorSpec",
     "PanelSpec",
     "PipeTransport",
@@ -92,13 +95,14 @@ __all__ = [
     "ScalarValueSpec",
     "SeriesSpec",
     "StateBinding",
+    "StateGraphViewSpec",
     "SurfaceViewSpec",
     "Transport",
     "UpdateMessage",
-    "ViewSpec",
     "ViewCatalog",
-    "XYValueSpec",
+    "ViewSpec",
     "VispyFrontendWindow",
+    "XYValueSpec",
     "build_replay_app",
     "build_surface_app",
     "command_message",

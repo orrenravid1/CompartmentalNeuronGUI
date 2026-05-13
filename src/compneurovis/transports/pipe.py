@@ -11,7 +11,7 @@ from PyQt6 import QtCore
 
 from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
 from compneurovis.core.app import AppSpec, DiagnosticsSpec
-from compneurovis.backends.base import Backend, BackendSource, resolve_backend_source
+from compneurovis.backends.base import BackendBase, BackendSource, resolve_backend_source
 from compneurovis.messages import (
     CommandMessage,
     Error,
@@ -46,7 +46,7 @@ def _update_sample_counts(messages: list[UpdateMessage]) -> dict[str, int]:
     return counts
 
 
-def _sleep_to_backend_cadence(backend: Backend, started_at: float) -> None:
+def _sleep_to_backend_cadence(backend: BackendBase, started_at: float) -> None:
     delay = float(backend.idle_sleep())
     if delay <= 0:
         return
@@ -70,17 +70,16 @@ def _backend_process(
     command_pipe,
     bootstrap_pipe,
 ) -> None:
-    backend: Backend | None = None
+    backend: BackendBase | None = None
     try:
         _apply_perf_logging_configuration(diagnostics)
+        if provided_app_spec is None:
+            raise ValueError(
+                "No AppSpec provided to the backend worker. Pass app_spec=... in RunSpec."
+            )
         backend = resolve_backend_source(backend_source)
-        if provided_app_spec is not None:
-            app_spec = provided_app_spec
-        else:
-            app_spec = backend.build_startup_app_spec()
-            bootstrap_pipe.send(app_spec)
         bootstrap_pipe.close()
-        backend.initialize(app_spec)
+        backend.initialize(provided_app_spec)
         perf_log(
             "backend_worker",
             "initialize",
@@ -151,16 +150,15 @@ def _backend_process_queue(
     bootstrap_queue,
     stop_event=None,
 ) -> None:
-    backend: Backend | None = None
+    backend: BackendBase | None = None
     try:
         _apply_perf_logging_configuration(diagnostics)
+        if provided_app_spec is None:
+            raise ValueError(
+                "No AppSpec provided to the backend worker. Pass app_spec=... in RunSpec."
+            )
         backend = resolve_backend_source(backend_source)
-        if provided_app_spec is not None:
-            app_spec = provided_app_spec
-        else:
-            app_spec = backend.build_startup_app_spec()
-            bootstrap_queue.put(app_spec)
-        backend.initialize(app_spec)
+        backend.initialize(provided_app_spec)
         perf_log(
             "backend_worker",
             "initialize",
@@ -235,7 +233,7 @@ class PipeTransport(QtCore.QObject):
         parent=None,
     ) -> None:
         super().__init__(parent)
-        if isinstance(backend, Backend):
+        if isinstance(backend, BackendBase):
             raise TypeError(
                 "PipeTransport requires a Backend subclass or top-level zero-argument factory. "
                 "Do not pass an already-created backend instance."

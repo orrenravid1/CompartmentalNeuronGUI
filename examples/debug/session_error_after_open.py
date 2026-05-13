@@ -6,11 +6,11 @@ import time
 import numpy as np
 
 from compneurovis import AppSpec, Field, LayoutSpec, LinePlotViewSpec, RunSpec, run_app
-from compneurovis.backends import BufferedBackend
+from compneurovis.backends import BackendBase
 from compneurovis.messages import Error, FieldAppend
 
 
-class CrashAfterOpenBackend(BufferedBackend):
+class CrashAfterOpenBackend(BackendBase):
     def __init__(
         self,
         *,

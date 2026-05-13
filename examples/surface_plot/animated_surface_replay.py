@@ -12,7 +12,7 @@ Trade-offs vs the live approach (see animated_surface_live.py):
   - Natural fit for pre-recorded data or fixed-length animations
   - No straightforward path to parameter-driven or interactive computation
 
-Note: the current authoring pattern requires subclassing BufferedBackend directly. A future
+Note: the current authoring pattern requires subclassing BackendBase directly. A future
 build_animated_surface_app(fn=...) builder is planned (see docs/architecture/design/backlog.md) that will make
 this pattern available without writing a backend class.
 
@@ -23,8 +23,8 @@ import numpy as np
 
 from compneurovis import ActionSpec, PanelSpec, SurfaceViewSpec, build_surface_app, grid_field, run_app
 from compneurovis.core import AppSpec, RunSpec
-from compneurovis.backends import BufferedBackend
-from compneurovis.messages import AppSpecReady, FieldReplace, InvokeAction, Reset
+from compneurovis.backends import BackendBase
+from compneurovis.messages import FieldReplace, InvokeAction, Reset
 
 N_FRAMES = 60
 
@@ -80,14 +80,14 @@ scene.interactions.actions["pause"] = ActionSpec("pause", "Pause / Resume", shor
 scene.interactions.actions["reset"] = ActionSpec("reset", "Reset", shortcuts=("R",))
 
 
-class ReplayAnimationBackend(BufferedBackend):
+class ReplayAnimationBackend(BackendBase):
     def __init__(self):
         super().__init__()
         self._index = 0
         self._playing = True
 
-    def initialize(self):
-        return scene
+    def initialize(self, app_spec: AppSpec) -> None:
+        pass
 
     def advance(self):
         if not self._playing:
@@ -109,4 +109,4 @@ class ReplayAnimationBackend(BufferedBackend):
         return 1 / 30
 
 
-run_app(RunSpec(backend=ReplayAnimationBackend, title="animated sinc wave — replay"))
+run_app(RunSpec(backend=ReplayAnimationBackend, app_spec=scene))

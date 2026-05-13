@@ -9,7 +9,7 @@ import numpy as np
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.app import AppSpec
 from compneurovis.core.views import LinePlotViewSpec
-from compneurovis.backends import BufferedBackend, HistoryCaptureMode
+from compneurovis.backends import BackendBase, HistoryCaptureMode
 from compneurovis.messages import EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
 from compneurovis.backends.neuron.app_spec import NeuronAppSpecBuilder
 
@@ -49,7 +49,7 @@ class BackendInteractionContext:
         self.backend._dispatch_action(action_id, payload or {})
 
 
-class NeuronBackend(BufferedBackend, ABC):
+class NeuronBackend(BackendBase, ABC):
     """Base class for live NEURON-backed CompNeuroVis sessions."""
 
     HISTORY_CAPTURE_ON_DEMAND = HistoryCaptureMode.ON_DEMAND

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from compneurovis.core import RunSpec
-from compneurovis.backends import Backend, BackendSource
+from compneurovis.backends import BackendBase, BackendSource
 
 
 def build_jaxley_app(
@@ -12,7 +12,7 @@ def build_jaxley_app(
 ) -> RunSpec:
     """Build a live app backed by a JaxleyBackend subclass or backend factory."""
 
-    if isinstance(backend, Backend):
+    if isinstance(backend, BackendBase):
         raise TypeError(
             "build_jaxley_app() requires a Backend subclass or top-level zero-argument factory. "
             "Do not pass an already-created backend instance."

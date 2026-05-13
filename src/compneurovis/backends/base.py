@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, TypeAlias
+from typing import Any
 
 from compneurovis.actors import MessageActor
-from compneurovis.core.app import AppSpec
-from compneurovis.messages import CommandMessage, UpdateMessage, UpdatePayload, update_message
+from compneurovis.core.app import AppSpec, BackendProtocol, BackendSource
+from compneurovis.messages import Message, MessagePayload, UpdatePayload, update_message
 
 
-class Backend(MessageActor[CommandMessage, UpdateMessage], ABC):
+class BackendBase(MessageActor[Message[MessagePayload], Message[MessagePayload]], ABC):
     def __init__(self) -> None:
         super().__init__()
 
@@ -21,7 +21,7 @@ class Backend(MessageActor[CommandMessage, UpdateMessage], ABC):
         pass
 
     @abstractmethod
-    def handle(self, message: CommandMessage) -> None:
+    def handle(self, message: Message[MessagePayload]) -> None:
         pass
 
     def emit_update(self, update: UpdatePayload) -> None:
@@ -37,28 +37,20 @@ class Backend(MessageActor[CommandMessage, UpdateMessage], ABC):
         pass
 
 
-class BufferedBackend(Backend):
-    pass
-
-
-BackendFactory: TypeAlias = Callable[[], Backend]
-BackendSource: TypeAlias = type[Backend] | BackendFactory
-
-
-def resolve_backend_source(source: BackendSource) -> Backend:
+def resolve_backend_source(source: BackendSource) -> BackendBase:
     if isinstance(source, type):
-        if not issubclass(source, Backend):
-            raise TypeError(f"Expected Backend subclass, got {source!r}")
+        if not issubclass(source, BackendBase):
+            raise TypeError(f"Expected BackendBase subclass, got {source!r}")
         return source()
-    if isinstance(source, Backend):
+    if isinstance(source, BackendBase):
         raise TypeError(
             "Eager backend instances are not supported for worker-backed apps. "
-            "Pass a Backend subclass or a top-level zero-argument factory instead."
+            "Pass a BackendBase subclass or a top-level zero-argument factory instead."
         )
     if callable(source):
         backend = source()
-        if not isinstance(backend, Backend):
-            raise TypeError(f"Backend factory returned {type(backend)!r}, expected Backend")
+        if not isinstance(backend, BackendBase):
+            raise TypeError(f"Backend factory returned {type(backend)!r}, expected BackendBase")
         return backend
     raise TypeError(f"Unsupported backend source: {source!r}")
 

@@ -3,11 +3,11 @@ from __future__ import annotations
 from functools import partial
 
 from compneurovis.core import ActionSpec, AppSpec, RunSpec
-from compneurovis.backends import BufferedBackend
+from compneurovis.backends import BackendBase
 from compneurovis.messages import FieldReplace, Reset
 
 
-class ReplayBackend(BufferedBackend):
+class ReplayBackend(BackendBase):
     """Backend that replays a precomputed sequence of frame replacements."""
 
     def __init__(self, *, app_spec: AppSpec, field_id: str, frames, interval_live: bool = True):

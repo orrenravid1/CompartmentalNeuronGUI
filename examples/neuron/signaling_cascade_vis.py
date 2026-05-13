@@ -30,7 +30,7 @@ from compneurovis import (
     SeriesSpec,
     run_app,
 )
-from compneurovis.backends import BufferedBackend
+from compneurovis.backends import BackendBase
 from compneurovis.messages import FieldAppend, FieldReplace, Reset, SetControl
 
 
@@ -243,7 +243,7 @@ def build_cascade_scene(
     )
 
 
-class SignalingCascadeBackend(BufferedBackend):
+class SignalingCascadeBackend(BackendBase):
     @classmethod
     def startup_app_spec(cls) -> AppSpec | None:
         return build_cascade_scene(

@@ -18,7 +18,7 @@ from compneurovis import (
     ViewCatalog,
     run_app,
 )
-from compneurovis.backends import BufferedBackend
+from compneurovis.backends import BackendBase
 from compneurovis.messages import FieldReplace
 
 
@@ -95,14 +95,14 @@ def build_app_spec() -> AppSpec:
     )
 
 
-class AnimatedTwoMorphologyViewsBackend(BufferedBackend):
+class AnimatedTwoMorphologyViewsBackend(BackendBase):
     def __init__(self, *, update_delay_s: float = 0.08):
         super().__init__()
         self.update_delay_s = update_delay_s
         self.phase = 0.0
 
-    def initialize(self) -> AppSpec:
-        return build_app_spec()
+    def initialize(self, app_spec: AppSpec) -> None:
+        pass
 
     def advance(self) -> None:
         time.sleep(self.update_delay_s)
@@ -123,6 +123,6 @@ if __name__ == "__main__":
     run_app(
         RunSpec(
             backend=AnimatedTwoMorphologyViewsBackend,
-            title="Two Morphology Views",
+            app_spec=build_app_spec(),
         )
     )

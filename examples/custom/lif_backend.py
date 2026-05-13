@@ -1,5 +1,5 @@
 """
-Custom LIF backend - pure BufferedBackend example of a leaky integrate-and-fire neuron with
+Custom LIF backend - pure BackendBase example of a leaky integrate-and-fire neuron with
 threshold/reset spikes, a pulse-injection action, and linked line plots.
 
 Patterns shown:
@@ -37,7 +37,7 @@ from compneurovis import (
     ViewCatalog,
     run_app,
 )
-from compneurovis.backends import BufferedBackend
+from compneurovis.backends import BackendBase
 from compneurovis.messages import FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, Status
 
 
@@ -430,23 +430,7 @@ def build_app_spec(
     )
 
 
-class CustomLIFBackend(BufferedBackend):
-    @classmethod
-    def startup_app_spec(cls) -> AppSpec | None:
-        model = LIFModel()
-        root = SimpleNamespace(model=model)
-        time_history = [0.0]
-        voltage_history = {key: [value] for key, value in read_series(root, VOLTAGE_SERIES).items()}
-        current_history = {key: [value] for key, value in read_series(root, CURRENT_SERIES).items()}
-        event_history = {key: [value] for key, value in read_series(root, EVENT_SERIES).items()}
-        return build_app_spec(
-            time_history=time_history,
-            voltage_history=voltage_history,
-            current_history=current_history,
-            event_history=event_history,
-            controls=control_specs(display_dt_ms=DEFAULT_DISPLAY_DT_MS, dt_ms=DEFAULT_DT_MS),
-        )
-
+class CustomLIFBackend(BackendBase):
     def __init__(
         self,
         *,
@@ -463,19 +447,12 @@ class CustomLIFBackend(BufferedBackend):
         self.model = LIFModel()
         self._reset_history()
 
-    def initialize(self) -> AppSpec:
+    def initialize(self, app_spec: AppSpec) -> None:
         self.model.reset()
         self.sim_time_ms = 0.0
         self._paused = False
         self._reset_history()
         self._append_current_sample()
-        return build_app_spec(
-            time_history=list(self._time_history),
-            voltage_history={key: list(values) for key, values in self._voltage_history.items()},
-            current_history={key: list(values) for key, values in self._current_history.items()},
-            event_history={key: list(values) for key, values in self._event_history.items()},
-            controls=control_specs(display_dt_ms=self.display_dt_ms, dt_ms=self.dt_ms),
-        )
 
     def advance(self) -> None:
         if self._paused:
@@ -652,9 +629,25 @@ class CustomLIFBackend(BufferedBackend):
         return False
 
 
+def initial_app_spec() -> AppSpec:
+    model = LIFModel()
+    root = SimpleNamespace(model=model)
+    time_history = [0.0]
+    voltage_history = {key: [value] for key, value in read_series(root, VOLTAGE_SERIES).items()}
+    current_history = {key: [value] for key, value in read_series(root, CURRENT_SERIES).items()}
+    event_history = {key: [value] for key, value in read_series(root, EVENT_SERIES).items()}
+    return build_app_spec(
+        time_history=time_history,
+        voltage_history=voltage_history,
+        current_history=current_history,
+        event_history=event_history,
+        controls=control_specs(display_dt_ms=DEFAULT_DISPLAY_DT_MS, dt_ms=DEFAULT_DT_MS),
+    )
+
+
 run_app(
     RunSpec(
         backend=CustomLIFBackend,
-        title=TITLE,
+        app_spec=initial_app_spec(),
     )
 )

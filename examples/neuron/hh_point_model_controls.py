@@ -27,7 +27,7 @@ from compneurovis import (
     RunSpec,
     run_app,
 )
-from compneurovis.backends import BufferedBackend
+from compneurovis.backends import BackendBase
 from compneurovis.messages import FieldAppend, FieldReplace, InvokeAction, Reset, SetControl, StatePatch, Status
 
 
@@ -102,7 +102,7 @@ def float_slider(
     )
 
 
-class HHPointModelBackend(BufferedBackend):
+class HHPointModelBackend(BackendBase):
     def __init__(self) -> None:
         super().__init__()
         self.dt = 0.025

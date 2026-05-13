@@ -60,7 +60,7 @@ from compneurovis.frontends.vispy.view3d.visuals import (
     Surface3DVisual,
 )
 from compneurovis.backends import (
-    BufferedBackend,
+    BackendBase,
     resolve_interaction_target_source,
 )
 from compneurovis.messages import (
@@ -990,6 +990,9 @@ def test_frontend_shows_modal_for_fatal_session_error():
                 return update_messages(Error("Traceback (most recent call last):\nRuntimeError: boom"))
             return []
 
+        def poll_bootstrap(self):
+            return None
+
         def stop(self):
             return None
 
@@ -1033,7 +1036,7 @@ def test_frontend_shows_loading_state_before_first_scene():
 def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-    class BootstrapBackend(BufferedBackend):
+    class BootstrapBackend(BackendBase):
         def build_startup_app_spec(self):
             field = Field(
                 id="bootstrap",
@@ -1132,6 +1135,9 @@ def test_frontend_logs_nonfatal_session_error_to_stderr_without_modal():
                 self.calls += 1
                 return update_messages(Error("Nonfatal backend warning"))
             return []
+
+        def poll_bootstrap(self):
+            return None
 
         def stop(self):
             return None
