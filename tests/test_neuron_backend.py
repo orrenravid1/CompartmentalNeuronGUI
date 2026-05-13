@@ -13,7 +13,7 @@ from compneurovis.backends.neuron.utils import (
     load_swc_neuron,
     parse_swc,
 )
-from compneurovis.messages import EntityClicked, FieldReplace
+from compneurovis.messages import EntityClicked, FieldReplace, command_message
 
 
 def _geometry() -> MorphologyGeometry:
@@ -103,8 +103,8 @@ def test_neuron_session_captures_new_trace_history_on_click():
     backend._entity_index_by_id = {"seg-a": 0, "seg-b": 1}
     backend._initialize_trace_history(0.0, display_values)
 
-    backend.handle(EntityClicked("seg-b"))
-    updates = backend.take_outbound_messages()
+    backend.handle(command_message(EntityClicked("seg-b")))
+    updates = [message.payload for message in backend.take_outbound_messages()]
 
     assert len(updates) == 1
     assert isinstance(updates[0], FieldReplace)

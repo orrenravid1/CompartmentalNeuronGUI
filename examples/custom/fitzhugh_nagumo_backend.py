@@ -417,7 +417,8 @@ class CustomFitzHughNagumoBackend(BufferedBackend):
         if self._pending_advance_count >= self.emit_every_advances:
             self._flush_pending_field_appends()
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         if isinstance(command, Reset):
             self._reset_and_replace()
         elif isinstance(command, SetControl):
@@ -574,7 +575,7 @@ class CustomFitzHughNagumoBackend(BufferedBackend):
             state_samples=state_samples,
             term_samples=term_samples,
         ):
-            self.emit(update)
+            self.emit_update(update)
         self._reset_pending_emits()
 
     def _reset_and_replace(self) -> None:
@@ -586,8 +587,8 @@ class CustomFitzHughNagumoBackend(BufferedBackend):
         self._append_current_sample()
         perf_log("custom_backend", "reset_and_replace", sim_time_ms=self.sim_time_ms)
         for update in self._field_replaces():
-            self.emit(update)
-        self.emit(Status("Simulation reset", 1500))
+            self.emit_update(update)
+        self.emit_update(Status("Simulation reset", 1500))
 
     def apply_control(self, control_id: str, value) -> bool:
         control = CONTROL_BY_ID.get(control_id)
@@ -605,17 +606,17 @@ class CustomFitzHughNagumoBackend(BufferedBackend):
         if action_id == "toggle_pause":
             self._paused = not self._paused
             perf_log("custom_backend", "toggle_pause", paused=self._paused)
-            self.emit(Status("Paused" if self._paused else "Running", 1500))
+            self.emit_update(Status("Paused" if self._paused else "Running", 1500))
             return True
         if action_id == "deliver_exc_kick":
             self.model.deliver_exc_kick(self.model.exc_weight)
             perf_log("custom_backend", "deliver_exc_kick", weight=self.model.exc_weight, g_exc=self.model.g_exc)
-            self.emit(Status(f"Excitatory kick: {self.model.exc_weight:.2f}", 1500))
+            self.emit_update(Status(f"Excitatory kick: {self.model.exc_weight:.2f}", 1500))
             return True
         if action_id == "deliver_inh_kick":
             self.model.deliver_inh_kick(self.model.inh_weight)
             perf_log("custom_backend", "deliver_inh_kick", weight=self.model.inh_weight, g_inh=self.model.g_inh)
-            self.emit(Status(f"Inhibitory kick: {self.model.inh_weight:.2f}", 1500))
+            self.emit_update(Status(f"Inhibitory kick: {self.model.inh_weight:.2f}", 1500))
             return True
         return False
 

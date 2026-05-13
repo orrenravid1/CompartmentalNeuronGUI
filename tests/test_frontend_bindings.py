@@ -70,6 +70,7 @@ from compneurovis.messages import (
     Reset,
     SetControl,
     StatePatch,
+    update_message,
 )
 
 
@@ -96,6 +97,10 @@ def make_layout(title: str, *, panels: tuple[PanelSpec, ...]) -> LayoutSpec:
         rows.append(main_row)
     rows.extend((panel.id,) for panel in panels if panel.kind == "controls")
     return LayoutSpec(title=title, panels=panels, panel_grid=tuple(rows))
+
+
+def update_messages(*updates):
+    return [update_message(update) for update in updates]
 
 
 def float_control(control_id: str, label: str, default: float, min_value: float = 0.0, max_value: float = 1.0, steps: int = 100) -> ControlSpec:
@@ -514,7 +519,7 @@ def test_xy_control_uses_atomic_state_key_and_single_session_command():
 
     assert window.state["stimulus_position"] == new_value
     window.transport.send.assert_called_once()
-    command = window.transport.send.call_args[0][0]
+    command = window.transport.send.call_args[0][0].payload
     assert isinstance(command, SetControl)
     assert command.control_id == "stimulus_position"
     assert command.value == new_value
@@ -540,13 +545,13 @@ def test_field_replace_with_identical_coords_does_not_refresh_surface_axes_geome
     window.viewport.commit = Mock()
     window._view_3d_last_refresh_s.clear()
     window.transport = Mock()
-    window.transport.poll.return_value = [
+    window.transport.poll.return_value = update_messages(
         FieldReplace(
             field_id="surface",
             values=np.ones_like(field.values),
             coords={dim: coord.copy() for dim, coord in field.coords.items()},
         )
-    ]
+    )
 
     window._poll_transport()
 
@@ -982,7 +987,7 @@ def test_frontend_shows_modal_for_fatal_session_error():
         def poll(self):
             if self.calls == 0:
                 self.calls += 1
-                return [Error("Traceback (most recent call last):\nRuntimeError: boom")]
+                return update_messages(Error("Traceback (most recent call last):\nRuntimeError: boom"))
             return []
 
         def stop(self):
@@ -1065,7 +1070,8 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
         def advance(self) -> None:
             return None
 
-        def handle(self, command) -> None:
+        def handle(self, message) -> None:
+            command = message.payload
             return None
 
     class FakeTransport:
@@ -1112,7 +1118,7 @@ def test_frontend_logs_nonfatal_session_error_to_stderr_without_modal():
         def poll(self):
             if self.calls == 0:
                 self.calls += 1
-                return [Error("Nonfatal backend warning")]
+                return update_messages(Error("Nonfatal backend warning"))
             return []
 
         def stop(self):
@@ -1151,7 +1157,8 @@ def test_build_neuron_app_accepts_session_class():
         def advance(self) -> None:
             return None
 
-        def handle(self, command) -> None:
+        def handle(self, message) -> None:
+            command = message.payload
             return None
 
     run_spec = build_neuron_app(DummyNeuronBackend, title="Dummy")
@@ -1175,7 +1182,8 @@ def test_build_neuron_app_requires_lazy_session_source():
         def advance(self) -> None:
             return None
 
-        def handle(self, command) -> None:
+        def handle(self, message) -> None:
+            command = message.payload
             return None
 
     with pytest.raises(TypeError, match="requires a Backend subclass or top-level zero-argument factory"):
@@ -1196,7 +1204,8 @@ def test_build_neuron_app_supports_explicit_interaction_target_factory():
         def advance(self) -> None:
             return None
 
-        def handle(self, command) -> None:
+        def handle(self, message) -> None:
+            command = message.payload
             return None
 
     class DummyInteractionTarget:
@@ -1278,7 +1287,7 @@ def test_frontend_applies_state_patch_and_refreshes_bound_plot():
         _dead = False
 
         def poll(self):
-            updates = [StatePatch({"selected_trace_entity_ids": ["seg-b"]})]
+            updates = update_messages(StatePatch({"selected_trace_entity_ids": ["seg-b"]}))
             self.poll = lambda: []
             return updates
 
@@ -2349,7 +2358,7 @@ def test_controls_panel_renders_and_dispatches_scene_actions():
     action_button.click()
 
     window.transport.send.assert_called_once()
-    command = window.transport.send.call_args[0][0]
+    command = window.transport.send.call_args[0][0].payload
     assert command.action_id == "mark_selected"
     assert command.payload["entity_id"] == "seg-a"
 
@@ -2457,7 +2466,7 @@ def test_action_shortcut_dispatches_invoke_action():
     window.keyPressEvent(event)
 
     window.transport.send.assert_called_once()
-    command = window.transport.send.call_args[0][0]
+    command = window.transport.send.call_args[0][0].payload
     assert command.action_id == "toggle"
     assert command.payload["selected"] == "seg-a"
 
@@ -2518,7 +2527,7 @@ def test_selection_mode_action_arms_on_shortcut_and_fires_on_click():
     window._on_entity_selected("seg-b")
 
     window.transport.send.assert_called_once()
-    command = window.transport.send.call_args[0][0]
+    command = window.transport.send.call_args[0][0].payload
     assert command.action_id == "arm_add"
     assert command.payload["entity_id"] == "seg-b"
 
@@ -2602,7 +2611,7 @@ def test_interaction_callbacks_can_handle_mode_and_entity_click_without_selectio
     window._on_entity_selected("seg-b")
 
     window.transport.send.assert_called_once()
-    command = window.transport.send.call_args[0][0]
+    command = window.transport.send.call_args[0][0].payload
     assert command.action_id == "register_entity"
     assert command.payload["entity_id"] == "seg-b"
     assert interaction_target.clicked_entities == ["seg-b"]
@@ -2695,7 +2704,7 @@ def test_frontend_reset_action_sends_reset_command():
     window._on_action_invoked(scene.actions["reset"], {})
 
     window.transport.send.assert_called_once()
-    command = window.transport.send.call_args[0][0]
+    command = window.transport.send.call_args[0][0].payload
     assert isinstance(command, Reset)
 
     window.close()
@@ -2845,7 +2854,7 @@ def test_frontend_applies_field_append_updates_incrementally():
     window.timer.stop()
     window.state["selected_entity_id"] = "seg-a"
     window.transport = Mock()
-    window.transport.poll.return_value = [
+    window.transport.poll.return_value = update_messages(
         FieldAppend(
             field_id="voltage",
             append_dim="time",
@@ -2853,7 +2862,7 @@ def test_frontend_applies_field_append_updates_incrementally():
             coord_values=np.array([1.0, 2.0], dtype=np.float32),
             max_length=2,
         )
-    ]
+    )
 
     window._poll_transport()
 
@@ -2922,7 +2931,7 @@ def test_frontend_batches_multiple_field_appends_into_one_refresh_pass():
     window.transport = Mock()
     window._flush_due_line_plot_refreshes = Mock(return_value=(1, 0))
     window._flush_due_view_3d_refreshes = Mock(return_value=(1, 0))
-    window.transport.poll.return_value = [
+    window.transport.poll.return_value = update_messages(
         FieldAppend(
             field_id="voltage",
             append_dim="time",
@@ -2937,7 +2946,7 @@ def test_frontend_batches_multiple_field_appends_into_one_refresh_pass():
             coord_values=np.array([2.0], dtype=np.float32),
             max_length=3,
         ),
-    ]
+    )
 
     with patch.object(Field, "append", autospec=True, side_effect=Field.append) as append_spy:
         window._poll_transport()
@@ -3005,7 +3014,7 @@ def test_frontend_flushes_buffered_field_appends_before_field_replace():
     window.timer.stop()
     window.state["selected_entity_id"] = "seg-a"
     window.transport = Mock()
-    window.transport.poll.return_value = [
+    window.transport.poll.return_value = update_messages(
         FieldAppend(
             field_id="voltage",
             append_dim="time",
@@ -3028,7 +3037,7 @@ def test_frontend_flushes_buffered_field_appends_before_field_replace():
             coord_values=np.array([6.0], dtype=np.float32),
             max_length=4,
         ),
-    ]
+    )
 
     window._poll_transport()
 

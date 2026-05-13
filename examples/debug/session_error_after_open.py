@@ -56,7 +56,7 @@ class CrashAfterOpenBackend(BufferedBackend):
 
         if not self._warning_emitted and self._step >= self.warning_at_update:
             self._warning_emitted = True
-            self.emit(
+            self.emit_update(
                 Error(
                     "Intentional nonfatal demo warning from "
                     "CrashAfterOpenBackend.advance()."
@@ -70,7 +70,7 @@ class CrashAfterOpenBackend(BufferedBackend):
             )
 
         value = math.sin(self._time * 4.0)
-        self.emit(
+        self.emit_update(
             FieldAppend(
                 field_id="demo_trace",
                 append_dim="time",
@@ -80,7 +80,8 @@ class CrashAfterOpenBackend(BufferedBackend):
             )
         )
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         del command
 
 

@@ -49,12 +49,14 @@ from compneurovis.frontends.vispy.panels.state_graph import (
 from compneurovis.frontends.vispy.panels.view3d import (
     IndependentCanvas3DHostPanel,
 )
+from compneurovis.frontends.base import Frontend
 from compneurovis.frontends.vispy.view3d.viewport import Viewport3DPanel
 from compneurovis.backends import (
     resolve_interaction_target_source,
     resolve_startup_app_spec_source,
 )
 from compneurovis.messages import (
+    CommandPayload,
     EntityClicked,
     FieldAppend,
     FieldReplace,
@@ -68,6 +70,7 @@ from compneurovis.messages import (
     SetControl,
     StatePatch,
     Status,
+    UpdateMessage,
 )
 from compneurovis.transports import (
     PipeTransport,
@@ -139,9 +142,10 @@ def _update_type_counts(updates: list[Any]) -> dict[str, int]:
     return counts
 
 
-class VispyFrontendWindow(QtWidgets.QMainWindow):
+class VispyFrontendWindow(QtWidgets.QMainWindow, Frontend):
     def __init__(self, run_spec: RunSpec, *, transport_factory: Callable[..., Transport] | None = None):
         super().__init__()
+        Frontend.__init__(self)
         self.run_spec = run_spec
         if transport_factory is None:
             transport_factory = PipeTransport
@@ -203,6 +207,12 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._poll_transport)
         self.timer.start(1000 // 60)
+
+    def initialize(self) -> None:
+        pass
+
+    def render(self) -> None:
+        self.update()
 
     def paintEvent(self, event) -> None:
         started = time.monotonic()
@@ -831,12 +841,36 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             if self._dirty_state_graph_views:
                 self._flush_due_state_graph_refreshes(now=poll_started)
             return
+        messages = self.transport.poll()
+        self._handle_update_messages(messages, poll_started=poll_started, timer_gap_ms=timer_gap_ms)
+        self._flush_outbound_messages()
+
+    def handle(self, message: UpdateMessage) -> None:
+        self._handle_update_messages([message], poll_started=time.monotonic(), timer_gap_ms=None)
+
+    def _emit_command(self, command: CommandPayload) -> None:
+        self.emit_command(command)
+        self._flush_outbound_messages()
+
+    def _flush_outbound_messages(self) -> None:
+        if self.transport is None:
+            return
+        for message in self.take_outbound_messages():
+            self.transport.send(message)
+
+    def _handle_update_messages(
+        self,
+        messages: list[UpdateMessage],
+        *,
+        poll_started: float,
+        timer_gap_ms: float | None,
+    ) -> None:
         pending_targets: set[RefreshTarget] = set()
         pending_status: str | None = None
         pending_field_appends: dict[str, FieldAppend] = {}
         flushed_field_appends = 0
         appended_samples_by_field: dict[str, int] = {}
-        updates = self.transport.poll()
+        updates = [message.payload for message in messages]
 
         def flush_pending_field_appends() -> None:
             nonlocal pending_targets, flushed_field_appends
@@ -961,7 +995,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 pending_status = msg
                 sys.stderr.write(f"{msg.rstrip()}\n")
                 sys.stderr.flush()
-                if getattr(self.transport, "_dead", False):
+                if self.transport is not None and getattr(self.transport, "_dead", False):
                     # Worker process died — stop polling and surface the error clearly.
                     self.timer.stop()
                     self.transport = None
@@ -1022,8 +1056,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                     }
                     payload[action.selection_payload_key] = entity_id
                     self._send_action(action, payload)
-            elif not consumed and self.transport is not None:
-                self.transport.send(EntityClicked(entity_id))
+            elif not consumed:
+                self._emit_command(EntityClicked(entity_id))
         if self.refresh_planner is not None:
             self._apply_refresh_targets(self.refresh_planner.targets_for_state_change("selected_entity_id"))
 
@@ -1037,8 +1071,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
             value=value,
             send_to_backend=control.send_to_backend,
         )
-        if self.transport is not None and control.send_to_backend:
-            self.transport.send(SetControl(control.id, value))
+        if control.send_to_backend:
+            self._emit_command(SetControl(control.id, value))
         if self.refresh_planner is not None:
             self._apply_refresh_targets(
                 self.refresh_planner.targets_for_state_change(control.resolved_state_key()),
@@ -1054,11 +1088,10 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
         self._send_action(action, payload)
 
     def _send_action(self, action, payload: dict[str, Any]) -> None:
-        if self.transport is not None:
-            if action.id == "reset":
-                self.transport.send(Reset())
-            else:
-                self.transport.send(InvokeAction(action.id, payload))
+        if action.id == "reset":
+            self._emit_command(Reset())
+        else:
+            self._emit_command(InvokeAction(action.id, payload))
 
     def keyPressEvent(self, event) -> None:
         key_text = self._event_key_text(event)
@@ -1075,12 +1108,12 @@ class VispyFrontendWindow(QtWidgets.QMainWindow):
                 self._on_action_invoked(matched_action, payload)
                 event.accept()
                 return
-        if event.key() == Qt.Key.Key_Space and self.transport is not None:
-            self.transport.send(Reset())
+        if event.key() == Qt.Key.Key_Space:
+            self._emit_command(Reset())
             event.accept()
             return
-        if key_text and self.transport is not None:
-            self.transport.send(KeyPressed(key_text))
+        if key_text:
+            self._emit_command(KeyPressed(key_text))
             event.accept()
             return
         super().keyPressEvent(event)

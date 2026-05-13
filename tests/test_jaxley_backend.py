@@ -233,7 +233,7 @@ def test_jaxley_multicell_reset_restores_closed_synapses():
         f"""
         import json
         import jax
-        from compneurovis.messages import Reset
+        from compneurovis.messages import Reset, command_message
 
         example_path = r"{example_path}"
         text = {example_text!r}
@@ -245,7 +245,7 @@ def test_jaxley_multicell_reset_restores_closed_synapses():
         backend.initialize()
         for _ in range(50):
             backend.advance()
-        backend.handle(Reset())
+        backend.handle(command_message(Reset()))
 
         print(json.dumps({{
             "edge_s_after_reset": float(backend.network.edges["IonotropicSynapse_s"].dropna().iloc[0]),
@@ -266,7 +266,7 @@ def test_jaxley_reset_rebuilds_from_updated_network_parameters():
         import json
         import numpy as np
         import jax
-        from compneurovis.messages import Reset
+        from compneurovis.messages import Reset, command_message
 
         example_path = r"{example_path}"
         text = {example_text!r}
@@ -301,7 +301,7 @@ def test_jaxley_reset_rebuilds_from_updated_network_parameters():
         reused.apply_control("syn_gs", 0.01)
         reused.apply_control("syn_v_th", -45.0)
         reused.apply_control("syn_delta", 10.0)
-        reused.handle(Reset())
+        reused.handle(command_message(Reset()))
         reused_max = run_max(reused)
 
         fresh = SweepBackend()

@@ -257,9 +257,9 @@ class HHSectionInspectorBackend(NeuronBackend):
         if control_id == "morphology_quantity":
             self.morphology_quantity = str(value)
             if self._latest_snapshot is not None:
-                self.emit(FieldReplace(field_id=DISPLAY_FIELD_ID, values=self._display_values(self._latest_snapshot)))
-            self.emit(AppSpecPatch(view_updates={"morphology": {"color_map": self._display_color_map(self.morphology_quantity)}}))
-            self.emit(StatePatch({"morph_color_limits": self._display_color_limits(self.morphology_quantity)}))
+                self.emit_update(FieldReplace(field_id=DISPLAY_FIELD_ID, values=self._display_values(self._latest_snapshot)))
+            self.emit_update(AppSpecPatch(view_updates={"morphology": {"color_map": self._display_color_map(self.morphology_quantity)}}))
+            self.emit_update(StatePatch({"morph_color_limits": self._display_color_limits(self.morphology_quantity)}))
             return True
         return super().apply_control(control_id, value)
 
@@ -474,7 +474,7 @@ class HHSectionInspectorBackend(NeuronBackend):
             self._ui_state["selected_entity_id"] = initial_entity_id
             self._ui_state["selected_entity_label"] = self.geometry.label_for(initial_entity_id)
 
-        self.emit(StatePatch(dict(self._ui_state)))
+        self.emit_update(StatePatch(dict(self._ui_state)))
         return scene
 
     def _prepare_recorders(self) -> None:
@@ -601,7 +601,7 @@ class HHSectionInspectorBackend(NeuronBackend):
     def _emit_batch(self, times_array: np.ndarray, steps: list) -> None:
         latest_snapshot = steps[-1]
         self._latest_snapshot = latest_snapshot
-        self.emit(FieldReplace(field_id=DISPLAY_FIELD_ID, values=self._display_values(latest_snapshot)))
+        self.emit_update(FieldReplace(field_id=DISPLAY_FIELD_ID, values=self._display_values(latest_snapshot)))
 
         voltage_batch = np.stack([s["voltage"] for s in steps], axis=1).astype(np.float32)
         current_batch = np.stack([s["input_current"] for s in steps], axis=1).astype(np.float32)
@@ -613,7 +613,7 @@ class HHSectionInspectorBackend(NeuronBackend):
             gating_batch=gating_batch,
         )
 
-        self.emit(
+        self.emit_update(
             FieldAppend(
                 field_id=VOLTAGE_HISTORY_FIELD_ID,
                 append_dim=TIME_DIM,
@@ -622,7 +622,7 @@ class HHSectionInspectorBackend(NeuronBackend):
                 max_length=self._field_max_samples[VOLTAGE_HISTORY_FIELD_ID],
             )
         )
-        self.emit(
+        self.emit_update(
             FieldAppend(
                 field_id=CURRENT_HISTORY_FIELD_ID,
                 append_dim=TIME_DIM,
@@ -631,7 +631,7 @@ class HHSectionInspectorBackend(NeuronBackend):
                 max_length=self._field_max_samples[CURRENT_HISTORY_FIELD_ID],
             )
         )
-        self.emit(
+        self.emit_update(
             FieldAppend(
                 field_id=GATING_HISTORY_FIELD_ID,
                 append_dim=TIME_DIM,
@@ -641,18 +641,19 @@ class HHSectionInspectorBackend(NeuronBackend):
             )
         )
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         if isinstance(command, Reset):
             h.finitialize(self.v_init)
             snapshot = self._sample_step()
             time_value = float(h.t)
             self._latest_snapshot = snapshot
             self._initialize_histories(time_value, snapshot)
-            self.emit(FieldReplace(field_id=DISPLAY_FIELD_ID, values=self._display_values(snapshot)))
-            self.emit(self._voltage_history_replace())
-            self.emit(self._current_history_replace())
-            self.emit(self._gating_history_replace())
-            self.emit(StatePatch({"morph_color_limits": self._display_color_limits(self.morphology_quantity)}))
+            self.emit_update(FieldReplace(field_id=DISPLAY_FIELD_ID, values=self._display_values(snapshot)))
+            self.emit_update(self._voltage_history_replace())
+            self.emit_update(self._current_history_replace())
+            self.emit_update(self._gating_history_replace())
+            self.emit_update(StatePatch({"morph_color_limits": self._display_color_limits(self.morphology_quantity)}))
             return
         if isinstance(command, SetControl):
             self.apply_control(command.control_id, command.value)

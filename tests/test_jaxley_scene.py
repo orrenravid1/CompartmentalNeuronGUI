@@ -4,7 +4,7 @@ import numpy as np
 
 from compneurovis.backends.jaxley import JaxleyAppSpecBuilder, JaxleyBackend
 from compneurovis.core import MorphologyGeometry
-from compneurovis.messages import EntityClicked, FieldReplace
+from compneurovis.messages import EntityClicked, FieldReplace, command_message
 
 
 def test_jaxley_scene_builder_splits_display_and_trace_fields():
@@ -97,8 +97,8 @@ def test_jaxley_session_captures_new_trace_history_on_click():
     backend._entity_index_by_id = {"seg-a": 0, "seg-b": 1}
     backend._initialize_trace_history(0.0, display_values)
 
-    backend.handle(EntityClicked("seg-b"))
-    updates = backend.take_outbound_messages()
+    backend.handle(command_message(EntityClicked("seg-b")))
+    updates = [message.payload for message in backend.take_outbound_messages()]
 
     assert len(updates) == 1
     assert isinstance(updates[0], FieldReplace)

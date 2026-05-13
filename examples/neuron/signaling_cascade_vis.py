@@ -310,14 +310,15 @@ class SignalingCascadeBackend(BufferedBackend):
             sample_time, sample_values = self._capture_sample()
             time_values[step_index] = sample_time
             batch_values[:, step_index] = sample_values
-        self.emit(self._field_append(time_values, batch_values))
+        self.emit_update(self._field_append(time_values, batch_values))
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         if isinstance(command, Reset):
             h.finitialize(self.v_init)
             self._reset_history()
             self._capture_sample()
-            self.emit(self._field_replace())
+            self.emit_update(self._field_replace())
             return
         if isinstance(command, SetControl):
             self.apply_control(command.control_id, command.value)

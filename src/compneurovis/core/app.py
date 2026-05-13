@@ -274,29 +274,157 @@ class LayoutSpec:
 
 
 @dataclass(slots=True)
-class AppSpec:
-    fields: dict[str, Field]
-    geometries: dict[str, Geometry]
-    views: dict[str, ViewSpec]
-    operators: dict[str, OperatorSpec] = field(default_factory=dict)
-    controls: dict[str, ControlSpec] = field(default_factory=dict)
-    actions: dict[str, ActionSpec] = field(default_factory=dict)
-    layout: LayoutSpec = field(default_factory=LayoutSpec)
-    metadata: dict[str, Any] = field(default_factory=dict)
+class DataCatalog:
+    fields: dict[str, Field] = field(default_factory=dict)
+    geometries: dict[str, Geometry] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.fields = dict(self.fields)
         self.geometries = dict(self.geometries)
+
+
+@dataclass(slots=True)
+class ViewCatalog:
+    views: dict[str, ViewSpec] = field(default_factory=dict)
+    operators: dict[str, OperatorSpec] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
         self.views = dict(self.views)
         self.operators = dict(self.operators)
+
+
+@dataclass(slots=True)
+class InteractionCatalog:
+    controls: dict[str, ControlSpec] = field(default_factory=dict)
+    actions: dict[str, ActionSpec] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
         self.controls = dict(self.controls)
         self.actions = dict(self.actions)
-        self.metadata = dict(self.metadata)
-        self.layout.normalize_panels(
-            views=self.views,
-            controls=self.controls,
-            actions=self.actions,
+
+
+@dataclass(slots=True)
+class LayoutCatalog:
+    layouts: dict[str, LayoutSpec] = field(default_factory=lambda: {"default": LayoutSpec()})
+    active: str = "default"
+
+    def __post_init__(self) -> None:
+        self.layouts = dict(self.layouts)
+        if not self.layouts:
+            self.layouts = {"default": LayoutSpec()}
+            self.active = "default"
+        if self.active not in self.layouts:
+            raise ValueError(f"Active layout {self.active!r} is not present in LayoutCatalog.layouts")
+
+    @classmethod
+    def single(cls, layout: LayoutSpec | None = None) -> "LayoutCatalog":
+        return cls(layouts={"default": layout or LayoutSpec()}, active="default")
+
+    def active_layout(self) -> LayoutSpec:
+        return self.layouts[self.active]
+
+
+@dataclass(slots=True, init=False)
+class AppSpec:
+    data: DataCatalog
+    view_catalog: ViewCatalog
+    interactions: InteractionCatalog
+    layout_catalog: LayoutCatalog
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __init__(
+        self,
+        *,
+        data: DataCatalog | None = None,
+        view_catalog: ViewCatalog | None = None,
+        interactions: InteractionCatalog | None = None,
+        layout_catalog: LayoutCatalog | None = None,
+        fields: dict[str, Field] | None = None,
+        geometries: dict[str, Geometry] | None = None,
+        views: dict[str, ViewSpec] | None = None,
+        operators: dict[str, OperatorSpec] | None = None,
+        controls: dict[str, ControlSpec] | None = None,
+        actions: dict[str, ActionSpec] | None = None,
+        layout: LayoutSpec | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        if data is not None and (fields is not None or geometries is not None):
+            raise TypeError("Pass either data=DataCatalog or fields=/geometries=, not both")
+        if view_catalog is not None and (views is not None or operators is not None):
+            raise TypeError("Pass either view_catalog=ViewCatalog or views=/operators=, not both")
+        if interactions is not None and (controls is not None or actions is not None):
+            raise TypeError("Pass either interactions=InteractionCatalog or controls=/actions=, not both")
+        if layout_catalog is not None and layout is not None:
+            raise TypeError("Pass either layout_catalog=LayoutCatalog or layout=, not both")
+
+        self.data = DataCatalog(
+            fields=data.fields,
+            geometries=data.geometries,
+        ) if data is not None else DataCatalog(
+            fields=fields or {},
+            geometries=geometries or {},
         )
+        self.view_catalog = ViewCatalog(
+            views=view_catalog.views,
+            operators=view_catalog.operators,
+        ) if view_catalog is not None else ViewCatalog(
+            views=views or {},
+            operators=operators or {},
+        )
+        self.interactions = InteractionCatalog(
+            controls=interactions.controls,
+            actions=interactions.actions,
+        ) if interactions is not None else InteractionCatalog(
+            controls=controls or {},
+            actions=actions or {},
+        )
+        self.layout_catalog = LayoutCatalog(
+            layouts=layout_catalog.layouts,
+            active=layout_catalog.active,
+        ) if layout_catalog is not None else LayoutCatalog.single(layout)
+        self.metadata = dict(metadata or {})
+        self._normalize_layouts()
+
+    @property
+    def fields(self) -> dict[str, Field]:
+        return self.data.fields
+
+    @property
+    def geometries(self) -> dict[str, Geometry]:
+        return self.data.geometries
+
+    @property
+    def views(self) -> dict[str, ViewSpec]:
+        return self.view_catalog.views
+
+    @property
+    def operators(self) -> dict[str, OperatorSpec]:
+        return self.view_catalog.operators
+
+    @property
+    def controls(self) -> dict[str, ControlSpec]:
+        return self.interactions.controls
+
+    @property
+    def actions(self) -> dict[str, ActionSpec]:
+        return self.interactions.actions
+
+    @property
+    def layout(self) -> LayoutSpec:
+        return self.layout_catalog.active_layout()
+
+    @layout.setter
+    def layout(self, value: LayoutSpec) -> None:
+        self.layout_catalog = LayoutCatalog.single(value)
+        self._normalize_layouts()
+
+    def _normalize_layouts(self) -> None:
+        for layout in self.layout_catalog.layouts.values():
+            layout.normalize_panels(
+                views=self.views,
+                controls=self.controls,
+                actions=self.actions,
+            )
 
     def replace_view(self, view_id: str, updates: dict[str, Any]) -> None:
         self.views[view_id] = replace(self.views[view_id], **updates)

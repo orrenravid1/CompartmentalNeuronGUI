@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib import import_module
 
+from compneurovis.actors import MessageActor
 from compneurovis.backends import Backend, BackendSource, BufferedBackend, HistoryCaptureMode
 from compneurovis.builders import ReplayBackend, build_replay_app, build_surface_app, grid_field
 from compneurovis.core import (
@@ -14,11 +15,14 @@ from compneurovis.core import (
     ChoiceValueSpec,
     ControlPresentationSpec,
     ControlSpec,
+    DataCatalog,
     DiagnosticsSpec,
     Field,
     Geometry,
     GridGeometry,
     GridSliceOperatorSpec,
+    InteractionCatalog,
+    LayoutCatalog,
     LayoutSpec,
     LinePlotViewSpec,
     StateGraphViewSpec,
@@ -32,9 +36,20 @@ from compneurovis.core import (
     StateBinding,
     SurfaceViewSpec,
     ViewSpec,
+    ViewCatalog,
     XYValueSpec,
 )
 from compneurovis.frontends import Frontend, VispyFrontendWindow, run_app
+from compneurovis.messages import (
+    CommandMessage,
+    Message,
+    MessageType,
+    UpdateMessage,
+    command_message,
+    make_message,
+    message_type_for_payload,
+    update_message,
+)
 from compneurovis.transports import PipeTransport, Transport
 
 __all__ = [
@@ -48,6 +63,7 @@ __all__ = [
     "ChoiceValueSpec",
     "ControlPresentationSpec",
     "ControlSpec",
+    "DataCatalog",
     "DiagnosticsSpec",
     "Field",
     "Frontend",
@@ -55,11 +71,17 @@ __all__ = [
     "GridGeometry",
     "GridSliceOperatorSpec",
     "HistoryCaptureMode",
+    "InteractionCatalog",
+    "LayoutCatalog",
     "LayoutSpec",
     "LinePlotViewSpec",
+    "CommandMessage",
     "StateGraphViewSpec",
     "MorphologyGeometry",
     "MorphologyViewSpec",
+    "Message",
+    "MessageActor",
+    "MessageType",
     "OperatorSpec",
     "PanelSpec",
     "PipeTransport",
@@ -70,13 +92,19 @@ __all__ = [
     "StateBinding",
     "SurfaceViewSpec",
     "Transport",
+    "UpdateMessage",
     "ViewSpec",
+    "ViewCatalog",
     "XYValueSpec",
     "VispyFrontendWindow",
     "build_replay_app",
     "build_surface_app",
+    "command_message",
     "grid_field",
+    "make_message",
+    "message_type_for_payload",
     "run_app",
+    "update_message",
     "NeuronAppSpecBuilder",
     "NeuronBackend",
     "build_neuron_app",

@@ -102,9 +102,10 @@ class LiveAnimationBackend(BufferedBackend):
         self._t += 0.05 * self._speed
         Z = (np.sinc((R - self._t) / np.pi) * 2.0).astype(np.float32)
         # coords=None — the grid coordinates don't change, only the height values.
-        self.emit(FieldReplace(field_id=field.id, values=Z, coords=None))
+        self.emit_update(FieldReplace(field_id=field.id, values=Z, coords=None))
 
-    def handle(self, command):
+    def handle(self, message):
+        command = message.payload
         if isinstance(command, SetControl) and command.control_id == "speed":
             self._speed = float(command.value)
         elif isinstance(command, InvokeAction) and command.action_id == "pause":

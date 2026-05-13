@@ -92,14 +92,15 @@ class AnimatedTwoMorphologyViewsBackend(BufferedBackend):
     def advance(self) -> None:
         time.sleep(self.update_delay_s)
         self.phase += 0.18
-        self.emit(
+        self.emit_update(
             FieldReplace(
                 field_id=DISPLAY_FIELD_ID,
                 values=display_values(self.phase),
             )
         )
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         del command
 
 

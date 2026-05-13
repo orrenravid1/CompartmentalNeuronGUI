@@ -20,7 +20,7 @@ class BackendInteractionContext:
 
     def set_state(self, key: str, value: Any) -> None:
         self.backend._ui_state[key] = value
-        self.backend.emit(StatePatch({key: value}))
+        self.backend.emit_update(StatePatch({key: value}))
 
     def state(self, key: str, default: Any = None) -> Any:
         return self.backend._ui_state.get(key, default)
@@ -40,10 +40,10 @@ class BackendInteractionContext:
             return None
 
     def show_status(self, message: str, timeout_ms: int | None = None) -> None:
-        self.backend.emit(Status(message, timeout_ms))
+        self.backend.emit_update(Status(message, timeout_ms))
 
     def clear_status(self) -> None:
-        self.backend.emit(Status("", 0))
+        self.backend.emit_update(Status("", 0))
 
     def invoke_action(self, action_id: str, payload: dict[str, Any] | None = None) -> None:
         self.backend._dispatch_action(action_id, payload or {})
@@ -282,7 +282,7 @@ class NeuronBackend(BufferedBackend, ABC):
         if self.geometry is not None and self.geometry.entity_ids:
             initial_entity_id = self.geometry.entity_ids[0]
             self._ui_state["selected_entity_id"] = initial_entity_id
-            self.emit(StatePatch({
+            self.emit_update(StatePatch({
                 "selected_entity_id": initial_entity_id,
                 "selected_entity_label": self.geometry.label_for(initial_entity_id),
             }))
@@ -486,10 +486,10 @@ class NeuronBackend(BufferedBackend, ABC):
         self._last_display_values = np.asarray(steps[-1], dtype=np.float32)
         self._last_voltage_values = self._last_display_values
 
-        self.emit(self._display_field_replace(self._last_display_values))
+        self.emit_update(self._display_field_replace(self._last_display_values))
 
         if self.history_capture_mode == HistoryCaptureMode.FULL:
-            self.emit(
+            self.emit_update(
                 FieldAppend(
                     field_id=self.history_field_id(),
                     append_dim="time",
@@ -502,7 +502,7 @@ class NeuronBackend(BufferedBackend, ABC):
             self._append_selected_trace_history(batch_values, times_array.tolist())
             if self._trace_segment_ids:
                 indices = [self._entity_index_by_id[entity_id] for entity_id in self._trace_segment_ids]
-                self.emit(
+                self.emit_update(
                     FieldAppend(
                         field_id=self.history_field_id(),
                         append_dim="time",
@@ -549,17 +549,18 @@ class NeuronBackend(BufferedBackend, ABC):
             return True
         return self.apply_action(action_id, payload)
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         if isinstance(command, Reset):
             from neuron import h
 
             h.finitialize(self.v_init)
             time_value, display_values = self._sample()
             self._initialize_trace_history(time_value, display_values)
-            self.emit(
+            self.emit_update(
                 self._display_field_replace(display_values)
             )
-            self.emit(self._trace_field_replace())
+            self.emit_update(self._trace_field_replace())
         elif isinstance(command, SetControl):
             self.apply_control(command.control_id, command.value)
         elif isinstance(command, InvokeAction):
@@ -569,7 +570,7 @@ class NeuronBackend(BufferedBackend, ABC):
             context = self._interaction_context()
             if self.history_capture_mode == HistoryCaptureMode.ON_DEMAND and self.should_capture_trace_on_click(command.entity_id, context):
                 if self._capture_trace_entity(command.entity_id, include_current_sample=True):
-                    self.emit(self._trace_field_replace())
+                    self.emit_update(self._trace_field_replace())
             self.on_entity_clicked(command.entity_id, context)
         elif isinstance(command, KeyPressed):
             self.on_key_press(command.key, self._interaction_context())

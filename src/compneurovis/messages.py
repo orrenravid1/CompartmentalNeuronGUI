@@ -1,11 +1,38 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Generic, Literal, TypeVar, cast
 
 import numpy as np
 
 from compneurovis.core.app import AppSpec, PanelSpec
+
+MessageIntent = Literal["command", "update"]
+PayloadT = TypeVar("PayloadT")
+
+
+@dataclass(frozen=True, slots=True)
+class MessageType(Generic[PayloadT]):
+    name: str
+    payload_type: type[PayloadT]
+    allowed_intents: tuple[MessageIntent, ...]
+
+    def validate(self, intent: MessageIntent, payload: PayloadT) -> None:
+        if intent not in self.allowed_intents:
+            allowed = ", ".join(self.allowed_intents)
+            raise ValueError(f"Message type {self.name!r} does not allow {intent!r} intent; allowed: {allowed}")
+        if not isinstance(payload, self.payload_type):
+            raise TypeError(
+                f"Message type {self.name!r} expects payload {self.payload_type.__name__}, "
+                f"got {type(payload).__name__}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class Message(Generic[PayloadT]):
+    type: MessageType[PayloadT]
+    intent: MessageIntent
+    payload: PayloadT
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,3 +153,93 @@ class Status(UpdatePayload):
 @dataclass(frozen=True, slots=True)
 class Error(UpdatePayload):
     message: str
+
+
+def _message_type(
+    name: str,
+    payload_type: type[PayloadT],
+    allowed_intents: tuple[MessageIntent, ...],
+) -> MessageType[PayloadT]:
+    return MessageType(name=name, payload_type=payload_type, allowed_intents=allowed_intents)
+
+
+RESET = _message_type("reset", Reset, ("command",))
+SET_CONTROL = _message_type("set_control", SetControl, ("command",))
+INVOKE_ACTION = _message_type("invoke_action", InvokeAction, ("command",))
+KEY_PRESSED = _message_type("key_pressed", KeyPressed, ("command",))
+ENTITY_CLICKED = _message_type("entity_clicked", EntityClicked, ("command",))
+STOP_BACKEND = _message_type("stop_backend", StopBackend, ("command",))
+
+APP_SPEC_READY = _message_type("app_spec_ready", AppSpecReady, ("update",))
+FIELD_REPLACE = _message_type("field_replace", FieldReplace, ("update",))
+FIELD_APPEND = _message_type("field_append", FieldAppend, ("update",))
+APP_SPEC_PATCH = _message_type("app_spec_patch", AppSpecPatch, ("update",))
+STATE_PATCH = _message_type("state_patch", StatePatch, ("update",))
+PANEL_PATCH = _message_type("panel_patch", PanelPatch, ("update",))
+LAYOUT_REPLACE = _message_type("layout_replace", LayoutReplace, ("update",))
+STATUS = _message_type("status", Status, ("update",))
+ERROR = _message_type("error", Error, ("update",))
+
+MESSAGE_TYPES: tuple[MessageType[Any], ...] = (
+    RESET,
+    SET_CONTROL,
+    INVOKE_ACTION,
+    KEY_PRESSED,
+    ENTITY_CLICKED,
+    STOP_BACKEND,
+    APP_SPEC_READY,
+    FIELD_REPLACE,
+    FIELD_APPEND,
+    APP_SPEC_PATCH,
+    STATE_PATCH,
+    PANEL_PATCH,
+    LAYOUT_REPLACE,
+    STATUS,
+    ERROR,
+)
+MESSAGE_TYPES_BY_NAME: dict[str, MessageType[Any]] = {message_type.name: message_type for message_type in MESSAGE_TYPES}
+MESSAGE_TYPES_BY_PAYLOAD: dict[type[Any], MessageType[Any]] = {
+    message_type.payload_type: message_type for message_type in MESSAGE_TYPES
+}
+
+
+def message_type_for_payload(payload: PayloadT) -> MessageType[PayloadT]:
+    payload_type = type(payload)
+    try:
+        return cast(MessageType[PayloadT], MESSAGE_TYPES_BY_PAYLOAD[payload_type])
+    except KeyError as exc:
+        raise ValueError(
+            f"No registered message type for payload {payload_type.__name__}. "
+            "Pass an explicit MessageType when constructing the message."
+        ) from exc
+
+
+def make_message(
+    intent: MessageIntent,
+    payload: PayloadT,
+    *,
+    message_type: MessageType[PayloadT] | None = None,
+) -> Message[PayloadT]:
+    resolved_type = message_type or message_type_for_payload(payload)
+    resolved_type.validate(intent, payload)
+    return Message(type=resolved_type, intent=intent, payload=payload)
+
+
+def command_message(
+    payload: CommandPayload,
+    *,
+    message_type: MessageType[CommandPayload] | None = None,
+) -> Message[CommandPayload]:
+    return make_message("command", payload, message_type=message_type)
+
+
+def update_message(
+    payload: UpdatePayload,
+    *,
+    message_type: MessageType[UpdatePayload] | None = None,
+) -> Message[UpdatePayload]:
+    return make_message("update", payload, message_type=message_type)
+
+
+CommandMessage = Message[CommandPayload]
+UpdateMessage = Message[UpdatePayload]

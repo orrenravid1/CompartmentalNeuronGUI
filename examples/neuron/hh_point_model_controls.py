@@ -157,7 +157,7 @@ class HHPointModelBackend(BufferedBackend):
             return
 
         times = np.asarray(time_values, dtype=np.float32)
-        self.emit(
+        self.emit_update(
             FieldAppend(
                 field_id=VOLTAGE_FIELD_ID,
                 append_dim=TIME_DIM,
@@ -166,7 +166,7 @@ class HHPointModelBackend(BufferedBackend):
                 max_length=self.max_samples,
             )
         )
-        self.emit(
+        self.emit_update(
             FieldAppend(
                 field_id=CURRENT_FIELD_ID,
                 append_dim=TIME_DIM,
@@ -175,7 +175,7 @@ class HHPointModelBackend(BufferedBackend):
                 max_length=self.max_samples,
             )
         )
-        self.emit(
+        self.emit_update(
             FieldAppend(
                 field_id=STATE_FIELD_ID,
                 append_dim=TIME_DIM,
@@ -185,7 +185,8 @@ class HHPointModelBackend(BufferedBackend):
             )
         )
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         if isinstance(command, Reset):
             self._reset_and_replace()
             return
@@ -311,8 +312,8 @@ class HHPointModelBackend(BufferedBackend):
             return False
         self._restore_default_controls()
         self._reset_and_replace()
-        self.emit(StatePatch(dict(DEFAULT_CONTROL_VALUES)))
-        self.emit(Status("Restored default controls", 1200))
+        self.emit_update(StatePatch(dict(DEFAULT_CONTROL_VALUES)))
+        self.emit_update(Status("Restored default controls", 1200))
         return True
 
     def _build_model(self) -> None:
@@ -428,8 +429,8 @@ class HHPointModelBackend(BufferedBackend):
     def _reset_and_replace(self) -> None:
         self._reset_simulation()
         for update in self._field_replaces():
-            self.emit(update)
-        self.emit(Status("Simulation reset", 1200))
+            self.emit_update(update)
+        self.emit_update(Status("Simulation reset", 1200))
 
     def _restore_default_controls(self) -> None:
         self.display_dt = max(self.dt, float(DEFAULT_CONTROL_VALUES["display_dt"]))

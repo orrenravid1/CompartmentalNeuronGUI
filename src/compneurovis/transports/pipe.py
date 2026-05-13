@@ -12,23 +12,33 @@ from PyQt6 import QtCore
 from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
 from compneurovis.core.app import DiagnosticsSpec
 from compneurovis.backends.base import Backend, BackendSource, resolve_backend_source
-from compneurovis.messages import AppSpecReady, CommandPayload, Error, StopBackend, UpdatePayload
+from compneurovis.messages import (
+    AppSpecReady,
+    CommandMessage,
+    Error,
+    StopBackend,
+    UpdateMessage,
+    command_message,
+    update_message,
+)
 
 DEFAULT_MAX_UPDATE_PAYLOADS_PER_POLL = 16
 DEFAULT_MAX_POLL_DURATION_S = 0.004
 
 
-def _update_type_counts(updates: list[UpdatePayload]) -> dict[str, int]:
+def _update_type_counts(messages: list[UpdateMessage]) -> dict[str, int]:
     counts: dict[str, int] = {}
-    for update in updates:
+    for message in messages:
+        update = message.payload
         name = type(update).__name__
         counts[name] = counts.get(name, 0) + 1
     return counts
 
 
-def _update_sample_counts(updates: list[UpdatePayload]) -> dict[str, int]:
+def _update_sample_counts(messages: list[UpdateMessage]) -> dict[str, int]:
     counts: dict[str, int] = {}
-    for update in updates:
+    for message in messages:
+        update = message.payload
         coord_values = getattr(update, "coord_values", None)
         field_id = getattr(update, "field_id", None)
         if coord_values is None or field_id is None:
@@ -68,16 +78,17 @@ def _backend_process(backend_source: BackendSource, diagnostics: DiagnosticsSpec
             idle_sleep_s=backend.idle_sleep(),
         )
         if app_spec is not None:
-            update_pipe.send(AppSpecReady(app_spec))
+            update_pipe.send(update_message(AppSpecReady(app_spec)))
 
         while True:
             tick_started = time.monotonic()
             while command_pipe.poll():
-                command = command_pipe.recv()
+                message = command_pipe.recv()
+                command = message.payload
                 if isinstance(command, StopBackend):
                     return
                 command_started = time.monotonic()
-                backend.handle(command)
+                backend.handle(message)
                 perf_log(
                     "backend_worker",
                     "handle_command",
@@ -95,24 +106,24 @@ def _backend_process(backend_source: BackendSource, diagnostics: DiagnosticsSpec
                 backend.advance()
             advance_ms = round((time.monotonic() - advance_started) * 1000.0, 3)
 
-            updates = backend.take_outbound_messages()
-            if updates:
-                update_pipe.send(updates if len(updates) > 1 else updates[0])
+            messages = backend.take_outbound_messages()
+            if messages:
+                update_pipe.send(messages if len(messages) > 1 else messages[0])
             perf_log(
                 "backend_worker",
                 "tick",
                 backend_type=type(backend).__name__,
                 is_live=backend.is_live(),
                 advance_ms=advance_ms,
-                emitted_update_count=len(updates),
-                emitted_update_types=_update_type_counts(updates),
-                emitted_field_append_samples=_update_sample_counts(updates),
+                emitted_update_count=len(messages),
+                emitted_update_types=_update_type_counts(messages),
+                emitted_field_append_samples=_update_sample_counts(messages),
             )
             _sleep_to_backend_cadence(backend, tick_started)
     except Exception as exc:  # pragma: no cover - safety net for worker errors
         detail = "".join(traceback.format_exception(exc))
         perf_log("backend_worker", "error", error_type=type(exc).__name__, message=str(exc))
-        update_pipe.send(Error(detail))
+        update_pipe.send(update_message(Error(detail)))
     finally:
         try:
             if backend is not None:
@@ -144,21 +155,22 @@ def _backend_process_queue(
             transport_mode="thread",
         )
         if app_spec is not None:
-            update_queue.put(AppSpecReady(app_spec))
+            update_queue.put(update_message(AppSpecReady(app_spec)))
 
         while True:
             tick_started = time.monotonic()
             if stop_event is not None and stop_event.is_set():
                 return
             try:
-                command = command_queue.get_nowait()
+                message = command_queue.get_nowait()
             except queue.Empty:
-                command = None
-            if command is not None:
+                message = None
+            if message is not None:
+                command = message.payload
                 if isinstance(command, StopBackend):
                     return
                 command_started = time.monotonic()
-                backend.handle(command)
+                backend.handle(message)
                 perf_log(
                     "backend_worker",
                     "handle_command",
@@ -177,9 +189,9 @@ def _backend_process_queue(
                 backend.advance()
             advance_ms = round((time.monotonic() - advance_started) * 1000.0, 3)
 
-            updates = backend.take_outbound_messages()
-            if updates:
-                update_queue.put(updates if len(updates) > 1 else updates[0])
+            messages = backend.take_outbound_messages()
+            if messages:
+                update_queue.put(messages if len(messages) > 1 else messages[0])
             perf_log(
                 "backend_worker",
                 "tick",
@@ -187,15 +199,15 @@ def _backend_process_queue(
                 is_live=backend.is_live(),
                 transport_mode="thread",
                 advance_ms=advance_ms,
-                emitted_update_count=len(updates),
-                emitted_update_types=_update_type_counts(updates),
-                emitted_field_append_samples=_update_sample_counts(updates),
+                emitted_update_count=len(messages),
+                emitted_update_types=_update_type_counts(messages),
+                emitted_field_append_samples=_update_sample_counts(messages),
             )
             _sleep_to_backend_cadence(backend, tick_started)
     except Exception as exc:  # pragma: no cover - safety net for worker errors
         detail = "".join(traceback.format_exception(exc))
         perf_log("backend_worker", "error", transport_mode="thread", error_type=type(exc).__name__, message=str(exc))
-        update_queue.put(Error(detail))
+        update_queue.put(update_message(Error(detail)))
     finally:
         if backend is not None:
             backend.shutdown()
@@ -251,18 +263,18 @@ class PipeTransport(QtCore.QObject):
             for child in self._children:
                 child.close()
 
-    def poll(self) -> list[UpdatePayload]:
+    def poll(self) -> list[UpdateMessage]:
         poll_started = time.monotonic()
-        updates: list[UpdatePayload] = []
+        messages: list[UpdateMessage] = []
         payload_count = 0
         truncated = False
         more_pending = False
 
         def append_payload(payload) -> None:
             if isinstance(payload, list):
-                updates.extend(payload)
+                messages.extend(payload)
             else:
-                updates.append(payload)
+                messages.append(payload)
 
         if self._mode == "pipe":
             try:
@@ -277,7 +289,7 @@ class PipeTransport(QtCore.QObject):
                     payload_count += 1
             except (BrokenPipeError, EOFError, OSError) as exc:
                 self._dead = True
-                updates.append(Error(f"Worker process ended unexpectedly: {exc}"))
+                messages.append(update_message(Error(f"Worker process ended unexpectedly: {exc}")))
         else:
             while True:
                 if payload_count >= self._max_update_payloads_per_poll or time.monotonic() - poll_started >= self._max_poll_duration_s:
@@ -299,16 +311,17 @@ class PipeTransport(QtCore.QObject):
             "poll",
             mode=self._mode,
             payload_count=payload_count,
-            update_count=len(updates),
-            update_types=_update_type_counts(updates),
-            field_append_samples=_update_sample_counts(updates),
+            update_count=len(messages),
+            update_types=_update_type_counts(messages),
+            field_append_samples=_update_sample_counts(messages),
             truncated=truncated,
             more_pending=more_pending,
             duration_ms=duration_ms,
         )
-        return updates
+        return messages
 
-    def send(self, command: CommandPayload) -> None:
+    def send(self, message: CommandMessage) -> None:
+        command = message.payload
         perf_log(
             "transport",
             "send",
@@ -321,21 +334,21 @@ class PipeTransport(QtCore.QObject):
             value=getattr(command, "value", None),
         )
         if self._mode == "pipe":
-            self.command_parent.send(command)
+            self.command_parent.send(message)
         else:
-            self.command_parent.put(command)
+            self.command_parent.put(message)
 
     def stop(self) -> None:
         if self._mode == "thread":
             if self.thread is not None and self.thread.is_alive():
                 self._stop_event.set()
-                self.command_parent.put(StopBackend())
+                self.command_parent.put(command_message(StopBackend()))
                 self.thread.join(timeout=1)
             return
 
         if self.process.is_alive():
             try:
-                self.send(StopBackend())
+                self.send(command_message(StopBackend()))
                 self.process.join(1)
             except Exception:
                 pass

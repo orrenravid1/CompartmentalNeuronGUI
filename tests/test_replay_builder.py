@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from compneurovis import Field, LayoutSpec, PanelSpec, AppSpec, SurfaceViewSpec, build_replay_app
-from compneurovis.messages import FieldReplace, Reset
+from compneurovis.messages import FieldReplace, Reset, command_message
 
 
 def _scene() -> AppSpec:
@@ -59,12 +59,12 @@ def test_replay_session_reset_emits_first_frame():
 
     backend.initialize()
     backend.advance()
-    backend.take_outbound_messages()
+    [message.payload for message in backend.take_outbound_messages()]
     backend.advance()
-    backend.take_outbound_messages()
+    [message.payload for message in backend.take_outbound_messages()]
 
-    backend.handle(Reset())
-    updates = backend.take_outbound_messages()
+    backend.handle(command_message(Reset()))
+    updates = [message.payload for message in backend.take_outbound_messages()]
 
     assert len(updates) == 1
     assert isinstance(updates[0], FieldReplace)

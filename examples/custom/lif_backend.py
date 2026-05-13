@@ -506,9 +506,10 @@ class CustomLIFBackend(BufferedBackend):
             current_samples=current_samples,
             event_samples=event_samples,
         ):
-            self.emit(update)
+            self.emit_update(update)
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         if isinstance(command, Reset):
             self._reset_and_replace()
             return
@@ -606,8 +607,8 @@ class CustomLIFBackend(BufferedBackend):
         self._reset_history()
         self._append_current_sample()
         for update in self._field_replaces():
-            self.emit(update)
-        self.emit(Status("Simulation reset", 1500))
+            self.emit_update(update)
+        self.emit_update(Status("Simulation reset", 1500))
 
     def apply_control(self, control_id: str, value) -> bool:
         if control_id == "display_dt":
@@ -630,11 +631,11 @@ class CustomLIFBackend(BufferedBackend):
     def apply_action(self, action_id: str) -> bool:
         if action_id == "toggle_pause":
             self._paused = not self._paused
-            self.emit(Status("Paused" if self._paused else "Running", 1500))
+            self.emit_update(Status("Paused" if self._paused else "Running", 1500))
             return True
         if action_id == "inject_pulse":
             self.model.deliver_pulse()
-            self.emit(Status(f"Injected pulse: {self.model.pulse_amplitude_na:.2f} nA", 1500))
+            self.emit_update(Status(f"Injected pulse: {self.model.pulse_amplitude_na:.2f} nA", 1500))
             return True
         if action_id == "reset_state":
             self._reset_and_replace()

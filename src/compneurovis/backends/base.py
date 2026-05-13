@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections import deque
-from typing import Any, Callable, Deque, TypeAlias
+from typing import Any, Callable, TypeAlias
 
+from compneurovis.actors import MessageActor
 from compneurovis.core.app import AppSpec
-from compneurovis.messages import CommandPayload, UpdatePayload
+from compneurovis.messages import CommandMessage, UpdateMessage, UpdatePayload, update_message
 
 
-class Backend(ABC):
+class Backend(MessageActor[CommandMessage, UpdateMessage], ABC):
+    def __init__(self) -> None:
+        super().__init__()
+
     @classmethod
     def startup_app_spec(cls) -> AppSpec | None:
         return None
@@ -22,12 +25,11 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    def handle(self, command: CommandPayload) -> None:
+    def handle(self, message: CommandMessage) -> None:
         pass
 
-    @abstractmethod
-    def take_outbound_messages(self) -> list[UpdatePayload]:
-        pass
+    def emit_update(self, update: UpdatePayload) -> None:
+        self.emit(update_message(update))
 
     def is_live(self) -> bool:
         return True
@@ -40,16 +42,7 @@ class Backend(ABC):
 
 
 class BufferedBackend(Backend):
-    def __init__(self) -> None:
-        self._updates: Deque[UpdatePayload] = deque()
-
-    def emit(self, update: UpdatePayload) -> None:
-        self._updates.append(update)
-
-    def take_outbound_messages(self) -> list[UpdatePayload]:
-        updates = list(self._updates)
-        self._updates.clear()
-        return updates
+    pass
 
 
 BackendFactory: TypeAlias = Callable[[], Backend]

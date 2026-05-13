@@ -28,16 +28,17 @@ class ReplayBackend(BufferedBackend):
         if not self.frames:
             return
         values, coords = self.frames[self.index]
-        self.emit(FieldReplace(field_id=self.field_id, values=values, coords=coords))
+        self.emit_update(FieldReplace(field_id=self.field_id, values=values, coords=coords))
         self.index = (self.index + 1) % len(self.frames)
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         if isinstance(command, Reset):
             self.index = 0
             if not self.frames:
                 return None
             values, coords = self.frames[0]
-            self.emit(FieldReplace(field_id=self.field_id, values=values, coords=coords))
+            self.emit_update(FieldReplace(field_id=self.field_id, values=values, coords=coords))
         return None
 
 

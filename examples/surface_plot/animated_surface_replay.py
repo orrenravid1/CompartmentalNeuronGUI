@@ -93,10 +93,11 @@ class ReplayAnimationBackend(BufferedBackend):
         if not self._playing:
             return
         values, coords = frames[self._index]
-        self.emit(FieldReplace(field_id=field.id, values=values, coords=coords))
+        self.emit_update(FieldReplace(field_id=field.id, values=values, coords=coords))
         self._index = (self._index + 1) % len(frames)
 
-    def handle(self, command):
+    def handle(self, message):
+        command = message.payload
         if isinstance(command, InvokeAction) and command.action_id == "pause":
             self._playing = not self._playing
         elif isinstance(command, Reset):

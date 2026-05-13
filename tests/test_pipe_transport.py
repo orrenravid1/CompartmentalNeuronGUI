@@ -4,8 +4,19 @@ import numpy as np
 import pytest
 
 from compneurovis.core import Field, LayoutSpec, AppSpec
+from compneurovis.actors import MessageActor
 from compneurovis.backends import BufferedBackend
-from compneurovis.messages import EntityClicked, Error, FieldReplace, SetControl, StatePatch, Status
+from compneurovis.frontends import Frontend
+from compneurovis.messages import (
+    EntityClicked,
+    Error,
+    FieldReplace,
+    SetControl,
+    StatePatch,
+    Status,
+    command_message,
+    update_message,
+)
 from compneurovis.transports import PipeTransport
 from compneurovis.transports.pipe import _sleep_to_backend_cadence
 
@@ -26,9 +37,10 @@ class DummyBackend(BufferedBackend):
     def advance(self) -> None:
         return None
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         if isinstance(command, SetControl):
-            self.emit(
+            self.emit_update(
                 FieldReplace(
                     field_id="demo",
                     values=np.array([command.value, command.value + 1], dtype=np.float32),
@@ -52,10 +64,11 @@ class DummyInteractionBackend(BufferedBackend):
     def advance(self) -> None:
         return None
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         if isinstance(command, EntityClicked):
-            self.emit(StatePatch({"selected_trace_entity_ids": [command.entity_id]}))
-            self.emit(Status(f"Clicked {command.entity_id}", 1000))
+            self.emit_update(StatePatch({"selected_trace_entity_ids": [command.entity_id]}))
+            self.emit_update(Status(f"Clicked {command.entity_id}", 1000))
 
 
 class FailingInitializeBackend(BufferedBackend):
@@ -68,7 +81,8 @@ class FailingInitializeBackend(BufferedBackend):
     def advance(self) -> None:
         return None
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         del command
 
 
@@ -82,9 +96,10 @@ class FastLiveBackend(BufferedBackend):
 
     def advance(self) -> None:
         self.tick_count += 1
-        self.emit(Status(f"tick:{self.tick_count}", 0))
+        self.emit_update(Status(f"tick:{self.tick_count}", 0))
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         del command
 
     def idle_sleep(self) -> float:
@@ -101,9 +116,10 @@ class FloodLiveBackend(BufferedBackend):
 
     def advance(self) -> None:
         self.tick_count += 1
-        self.emit(Status(f"tick:{self.tick_count}", 0))
+        self.emit_update(Status(f"tick:{self.tick_count}", 0))
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         del command
 
     def idle_sleep(self) -> float:
@@ -114,6 +130,28 @@ def make_dummy_backend() -> DummyBackend:
     return DummyBackend()
 
 
+def test_backend_and_frontend_share_message_actor_contract():
+    class DummyFrontend(Frontend):
+        def handle(self, message) -> None:
+            del message
+
+    backend = DummyBackend()
+    frontend = DummyFrontend()
+
+    assert isinstance(backend, MessageActor)
+    assert isinstance(frontend, MessageActor)
+
+    backend.emit(update_message(Status("ready", 0)))
+    frontend.emit_command(SetControl("demo", 3.0))
+
+    assert backend.take_outbound_messages()[0].payload == Status("ready", 0)
+    assert frontend.take_outbound_messages()[0].payload == SetControl("demo", 3.0)
+
+
+def update_payloads(messages):
+    return [message.payload for message in messages]
+
+
 def test_pipe_transport_roundtrip():
     transport = PipeTransport(DummyBackend)
     transport.start()
@@ -121,15 +159,15 @@ def test_pipe_transport_roundtrip():
         deadline = time.time() + 5
         updates = []
         while time.time() < deadline and not updates:
-            updates = transport.poll()
+            updates = update_payloads(transport.poll())
             time.sleep(0.05)
         assert updates, "expected initial app spec update"
 
-        transport.send(SetControl("demo", 5.0))
+        transport.send(command_message(SetControl("demo", 5.0)))
         deadline = time.time() + 5
         field_replace = None
         while time.time() < deadline and field_replace is None:
-            for update in transport.poll():
+            for update in update_payloads(transport.poll()):
                 if isinstance(update, FieldReplace):
                     field_replace = update
                     break
@@ -153,15 +191,15 @@ def test_pipe_transport_roundtrip_from_factory():
         deadline = time.time() + 5
         updates = []
         while time.time() < deadline and not updates:
-            updates = transport.poll()
+            updates = update_payloads(transport.poll())
             time.sleep(0.05)
         assert updates, "expected initial app spec update"
 
-        transport.send(SetControl("demo", 7.0))
+        transport.send(command_message(SetControl("demo", 7.0)))
         deadline = time.time() + 5
         field_replace = None
         while time.time() < deadline and field_replace is None:
-            for update in transport.poll():
+            for update in update_payloads(transport.poll()):
                 if isinstance(update, FieldReplace):
                     field_replace = update
                     break
@@ -180,16 +218,16 @@ def test_pipe_transport_roundtrip_interaction_commands():
         deadline = time.time() + 5
         updates = []
         while time.time() < deadline and not updates:
-            updates = transport.poll()
+            updates = update_payloads(transport.poll())
             time.sleep(0.05)
         assert updates, "expected initial app spec update"
 
-        transport.send(EntityClicked("seg-a"))
+        transport.send(command_message(EntityClicked("seg-a")))
         deadline = time.time() + 5
         state_patch = None
         status = None
         while time.time() < deadline and (state_patch is None or status is None):
-            for update in transport.poll():
+            for update in update_payloads(transport.poll()):
                 if isinstance(update, StatePatch):
                     state_patch = update
                 elif isinstance(update, Status):
@@ -212,7 +250,7 @@ def test_pipe_transport_surfaces_worker_initialize_errors():
         deadline = time.time() + 5
         error = None
         while time.time() < deadline and error is None:
-            for update in transport.poll():
+            for update in update_payloads(transport.poll()):
                 if isinstance(update, Error):
                     error = update
                     break
@@ -225,7 +263,7 @@ def test_pipe_transport_surfaces_worker_initialize_errors():
         transport.stop()
 
 
-def test_sleep_to_session_cadence_waits_out_remaining_tick_time():
+def test_sleep_to_backend_cadence_waits_out_remaining_tick_time():
     backend = FastLiveBackend()
     started = time.monotonic()
     _sleep_to_backend_cadence(backend, started)
@@ -236,7 +274,7 @@ def test_sleep_to_session_cadence_waits_out_remaining_tick_time():
 def _wait_for_first_update(transport, *, deadline_s: float = 8.0) -> list:
     deadline = time.time() + deadline_s
     while time.time() < deadline:
-        updates = transport.poll()
+        updates = update_payloads(transport.poll())
         if updates:
             return updates
         time.sleep(0.05)
@@ -252,7 +290,7 @@ def test_live_pipe_transport_respects_idle_sleep_cadence():
         first = _wait_for_first_update(transport)
         assert first, "expected backend to start within 8 seconds"
         time.sleep(0.25)
-        updates = transport.poll()
+        updates = update_payloads(transport.poll())
         all_updates = first + updates
         statuses = [update for update in all_updates if isinstance(update, Status)]
         assert statuses, "expected paced live status updates"
@@ -272,7 +310,7 @@ def test_pipe_transport_bounds_update_drain_per_poll_to_preserve_ui_responsivene
         first = _wait_for_first_update(transport)
         assert first, "expected backend to start within 8 seconds"
         time.sleep(0.2)
-        updates = transport.poll()
+        updates = update_payloads(transport.poll())
         statuses = [update for update in updates if isinstance(update, Status)]
         assert statuses, "expected flood backend updates"
         assert len(updates) <= 8

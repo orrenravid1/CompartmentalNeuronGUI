@@ -107,7 +107,7 @@ class AnimatedTwoLinePlotsBackend(BufferedBackend):
     def advance(self) -> None:
         time.sleep(self.update_delay_s)
         self.time_s += 0.05
-        self.emit(
+        self.emit_update(
             FieldAppend(
                 field_id=SIGNALS_FIELD_ID,
                 append_dim="time",
@@ -117,7 +117,8 @@ class AnimatedTwoLinePlotsBackend(BufferedBackend):
             )
         )
 
-    def handle(self, command) -> None:
+    def handle(self, message) -> None:
+        command = message.payload
         del command
 
 
