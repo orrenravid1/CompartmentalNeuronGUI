@@ -5,10 +5,10 @@ from typing import Any, Generic, Literal, TypeVar, cast
 
 import numpy as np
 
-from compneurovis.core.app import AppSpec, PanelSpec
+from compneurovis.core.app import PanelSpec
 
 MessageIntent = Literal["command", "update"]
-PayloadT = TypeVar("PayloadT")
+PayloadT = TypeVar("PayloadT", bound="MessagePayload")
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +36,17 @@ class Message(Generic[PayloadT]):
 
 
 @dataclass(frozen=True, slots=True)
-class CommandPayload:
+class MessagePayload:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class CommandPayload(MessagePayload):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class UpdatePayload(MessagePayload):
     pass
 
 
@@ -70,16 +80,6 @@ class EntityClicked(CommandPayload):
 @dataclass(frozen=True, slots=True)
 class StopBackend(CommandPayload):
     pass
-
-
-@dataclass(frozen=True, slots=True)
-class UpdatePayload:
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class AppSpecReady(UpdatePayload):
-    app_spec: AppSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +170,6 @@ KEY_PRESSED = _message_type("key_pressed", KeyPressed, ("command",))
 ENTITY_CLICKED = _message_type("entity_clicked", EntityClicked, ("command",))
 STOP_BACKEND = _message_type("stop_backend", StopBackend, ("command",))
 
-APP_SPEC_READY = _message_type("app_spec_ready", AppSpecReady, ("update",))
 FIELD_REPLACE = _message_type("field_replace", FieldReplace, ("update",))
 FIELD_APPEND = _message_type("field_append", FieldAppend, ("update",))
 APP_SPEC_PATCH = _message_type("app_spec_patch", AppSpecPatch, ("update",))
@@ -187,7 +186,6 @@ MESSAGE_TYPES: tuple[MessageType[Any], ...] = (
     KEY_PRESSED,
     ENTITY_CLICKED,
     STOP_BACKEND,
-    APP_SPEC_READY,
     FIELD_REPLACE,
     FIELD_APPEND,
     APP_SPEC_PATCH,

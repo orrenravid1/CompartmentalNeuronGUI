@@ -53,12 +53,12 @@ def _resolve_surface_state(view: SurfaceViewSpec, state: dict[str, Any]) -> dict
 
 
 def _get_panel_slice_operators(ctx: View3DRefreshContext, view: SurfaceViewSpec) -> list[GridSliceOperatorSpec]:
-    panel = ctx.app_spec.layout.panel_for_view(ctx.view_id, kind=PANEL_KIND_VIEW_3D)
+    panel = ctx.app_spec.active_layout().panel_for_view(ctx.view_id, kind=PANEL_KIND_VIEW_3D)
     if panel is None:
         return []
     ops = []
     for op_id in panel.operator_ids:
-        op = ctx.app_spec.operators.get(op_id)
+        op = ctx.app_spec.view_catalog.operators.get(op_id)
         if not isinstance(op, GridSliceOperatorSpec):
             continue
         if op.field_id != view.field_id or op.geometry_id not in {None, view.geometry_id}:
@@ -97,12 +97,12 @@ class Morphology3DVisual:
         view: MorphologyViewSpec,
         ctx: View3DRefreshContext,
     ) -> None:
-        geometry = ctx.app_spec.geometries.get(view.geometry_id)
+        geometry = ctx.app_spec.data.geometries.get(view.geometry_id)
         if not isinstance(geometry, MorphologyGeometry):
             return
         morphology_colors = None
         if view.color_field_id:
-            field = ctx.app_spec.fields.get(view.color_field_id)
+            field = ctx.app_spec.data.fields.get(view.color_field_id)
             if field is not None:
                 if view.sample_dim and view.sample_dim in field.dims:
                     morphology_colors = field.select({view.sample_dim: -1}).values
@@ -188,10 +188,10 @@ class Surface3DVisual:
     ) -> None:
         resolved_state = _resolve_surface_state(view, ctx.state)
         if kind == "surface_visual":
-            surface_field = ctx.app_spec.fields.get(view.field_id)
+            surface_field = ctx.app_spec.data.fields.get(view.field_id)
             if surface_field is None:
                 return
-            grid_geometry = ctx.app_spec.geometries.get(view.geometry_id) if view.geometry_id else None
+            grid_geometry = ctx.app_spec.data.geometries.get(view.geometry_id) if view.geometry_id else None
             self.refresh_visual(
                 surface_view=view,
                 surface_field=surface_field,

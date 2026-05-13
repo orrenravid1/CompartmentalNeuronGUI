@@ -5,7 +5,19 @@ import time
 
 import numpy as np
 
-from compneurovis import AppSpec, Field, LayoutSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, RunSpec, run_app
+from compneurovis import (
+    AppSpec,
+    DataCatalog,
+    Field,
+    LayoutCatalog,
+    LayoutSpec,
+    MorphologyGeometry,
+    MorphologyViewSpec,
+    PanelSpec,
+    RunSpec,
+    ViewCatalog,
+    run_app,
+)
 from compneurovis.backends import BufferedBackend
 from compneurovis.messages import FieldReplace
 
@@ -51,31 +63,34 @@ def build_app_spec() -> AppSpec:
         unit="mV",
     )
     return AppSpec(
-        fields={field.id: field},
-        geometries={geometry.id: geometry},
-        views={
-            "morphology-left": MorphologyViewSpec(
-                id="morphology-left",
-                title="Morphology View A",
-                geometry_id=geometry.id,
-                color_field_id=field.id,
-                background_color="#fbfbfb",
+        data=DataCatalog(fields={field.id: field}, geometries={geometry.id: geometry}),
+        view_catalog=ViewCatalog(
+            views={
+                "morphology-left": MorphologyViewSpec(
+                    id="morphology-left",
+                    title="Morphology View A",
+                    geometry_id=geometry.id,
+                    color_field_id=field.id,
+                    background_color="#fbfbfb",
+                ),
+                "morphology-right": MorphologyViewSpec(
+                    id="morphology-right",
+                    title="Morphology View B",
+                    geometry_id=geometry.id,
+                    color_field_id=field.id,
+                    background_color="#f4f7fb",
+                ),
+            },
+        ),
+        layout_catalog=LayoutCatalog.single(
+            LayoutSpec(
+                title="Two Morphology Views",
+                panels=(
+                    PanelSpec(id="left-host", kind="view_3d", view_ids=("morphology-left",), title="Morphology View A"),
+                    PanelSpec(id="right-host", kind="view_3d", view_ids=("morphology-right",), title="Morphology View B"),
+                ),
+                panel_grid=(("left-host", "right-host"),),
             ),
-            "morphology-right": MorphologyViewSpec(
-                id="morphology-right",
-                title="Morphology View B",
-                geometry_id=geometry.id,
-                color_field_id=field.id,
-                background_color="#f4f7fb",
-            ),
-        },
-        layout=LayoutSpec(
-            title="Two Morphology Views",
-            panels=(
-                PanelSpec(id="left-host", kind="view_3d", view_ids=("morphology-left",), title="Morphology View A"),
-                PanelSpec(id="right-host", kind="view_3d", view_ids=("morphology-right",), title="Morphology View B"),
-            ),
-            panel_grid=(("left-host", "right-host"),),
         ),
     )
 

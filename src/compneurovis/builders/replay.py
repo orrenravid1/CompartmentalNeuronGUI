@@ -18,8 +18,8 @@ class ReplayBackend(BufferedBackend):
         self.index = 0
         self.interval_live = interval_live
 
-    def initialize(self):
-        return self.app_spec
+    def initialize(self, app_spec: AppSpec) -> None:
+        pass
 
     def is_live(self) -> bool:
         return self.interval_live
@@ -45,15 +45,15 @@ class ReplayBackend(BufferedBackend):
 def build_replay_app(*, app_spec: AppSpec, field_id: str, frames) -> RunSpec:
     """Build an app that replays precomputed frames through ReplayBackend."""
 
-    app_spec.actions.setdefault("reset", ActionSpec("reset", "Reset", shortcuts=("Space",)))
-    app_spec.layout.normalize_panels(
-        views=app_spec.views,
-        controls=app_spec.controls,
-        actions=app_spec.actions,
+    app_spec.interactions.actions.setdefault("reset", ActionSpec("reset", "Reset", shortcuts=("Space",)))
+    app_spec.active_layout().normalize_panels(
+        views=app_spec.view_catalog.views,
+        controls=app_spec.interactions.controls,
+        actions=app_spec.interactions.actions,
     )
 
     return RunSpec(
         app_spec=app_spec,
         backend=partial(ReplayBackend, app_spec=app_spec, field_id=field_id, frames=frames),
-        title=app_spec.layout.title,
+        title=app_spec.active_layout().title,
     )

@@ -12,12 +12,8 @@ class Backend(MessageActor[CommandMessage, UpdateMessage], ABC):
     def __init__(self) -> None:
         super().__init__()
 
-    @classmethod
-    def startup_app_spec(cls) -> AppSpec | None:
-        return None
-
     @abstractmethod
-    def initialize(self) -> AppSpec | None:
+    def initialize(self, app_spec: AppSpec) -> None:
         pass
 
     @abstractmethod
@@ -47,28 +43,6 @@ class BufferedBackend(Backend):
 
 BackendFactory: TypeAlias = Callable[[], Backend]
 BackendSource: TypeAlias = type[Backend] | BackendFactory
-
-
-def resolve_startup_app_spec_source(source: BackendSource | None) -> AppSpec | None:
-    if source is None:
-        return None
-    if isinstance(source, type):
-        if not issubclass(source, Backend):
-            raise TypeError(f"Expected Backend subclass, got {source!r}")
-        app_spec = source.startup_app_spec()
-    else:
-        if isinstance(source, Backend):
-            raise TypeError(
-                "Eager backend instances are not supported for worker-backed apps. "
-                "Pass a Backend subclass or a top-level zero-argument factory instead."
-            )
-        startup_fn = getattr(source, "startup_app_spec", None)
-        if not callable(startup_fn):
-            return None
-        app_spec = startup_fn()
-    if app_spec is not None and not isinstance(app_spec, AppSpec):
-        raise TypeError(f"Startup app spec source returned {type(app_spec)!r}, expected AppSpec | None")
-    return app_spec
 
 
 def resolve_backend_source(source: BackendSource) -> Backend:

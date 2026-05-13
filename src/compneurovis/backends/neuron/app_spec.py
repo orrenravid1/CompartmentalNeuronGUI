@@ -4,7 +4,20 @@ import time
 
 import numpy as np
 
-from compneurovis.core import Field, LayoutSpec, LinePlotViewSpec, MorphologyGeometry, MorphologyViewSpec, PanelSpec, AppSpec, StateBinding
+from compneurovis.core import (
+    AppSpec,
+    DataCatalog,
+    Field,
+    InteractionCatalog,
+    LayoutCatalog,
+    LayoutSpec,
+    LinePlotViewSpec,
+    MorphologyGeometry,
+    MorphologyViewSpec,
+    PanelSpec,
+    StateBinding,
+    ViewCatalog,
+)
 from compneurovis.core.app import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
 
 
@@ -215,14 +228,17 @@ class NeuronAppSpecBuilder:
             )
             panel_grid.append(("controls-panel",))
         return AppSpec(
-            fields={display_field.id: display_field, trace_field.id: trace_field},
-            geometries={geometry.id: geometry},
-            views=views,
-            controls=controls_dict,
-            actions=actions_dict,
-            layout=LayoutSpec(
-                title=title,
-                panels=tuple(panels),
-                panel_grid=tuple(panel_grid),
+            data=DataCatalog(
+                fields={display_field.id: display_field, trace_field.id: trace_field},
+                geometries={geometry.id: geometry},
+            ),
+            view_catalog=ViewCatalog(views=views),
+            interactions=InteractionCatalog(controls=controls_dict, actions=actions_dict),
+            layout_catalog=LayoutCatalog.single(
+                LayoutSpec(
+                    title=title,
+                    panels=tuple(panels),
+                    panel_grid=tuple(panel_grid),
+                )
             ),
         )

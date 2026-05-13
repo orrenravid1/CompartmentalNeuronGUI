@@ -33,14 +33,18 @@ from compneurovis import (
     AttributeRef,
     ControlPresentationSpec,
     ControlSpec,
+    DataCatalog,
     DiagnosticsSpec,
     Field,
+    InteractionCatalog,
+    LayoutCatalog,
     LayoutSpec,
     LinePlotViewSpec,
     PanelSpec,
     ScalarValueSpec,
     RunSpec,
     SeriesSpec,
+    ViewCatalog,
     run_app,
 )
 from compneurovis.backends import BufferedBackend
@@ -323,29 +327,34 @@ def build_app_spec(
     }
 
     return AppSpec(
-        fields={
-            voltage_field.id: voltage_field,
-            state_field.id: state_field,
-            term_field.id: term_field,
-        },
-        geometries={},
-        views=views,
-        controls=controls,
-        actions={action.id: action for action in ACTIONS},
-        layout=LayoutSpec(
-            title=TITLE,
-            panels=(
-                PanelSpec(id="voltage-panel", kind="line_plot", view_ids=(VOLTAGE_VIEW_ID,)),
-                PanelSpec(id="state-panel", kind="line_plot", view_ids=(STATE_VIEW_ID,)),
-                PanelSpec(id="terms-panel", kind="line_plot", view_ids=(TERM_VIEW_ID,)),
-                PanelSpec(
-                    id="controls-panel",
-                    kind="controls",
-                    control_ids=tuple(control.id for control in CONTROLS),
-                    action_ids=tuple(action.id for action in ACTIONS),
+        data=DataCatalog(
+            fields={
+                voltage_field.id: voltage_field,
+                state_field.id: state_field,
+                term_field.id: term_field,
+            },
+        ),
+        view_catalog=ViewCatalog(views=views),
+        interactions=InteractionCatalog(
+            controls=controls,
+            actions={action.id: action for action in ACTIONS},
+        ),
+        layout_catalog=LayoutCatalog.single(
+            LayoutSpec(
+                title=TITLE,
+                panels=(
+                    PanelSpec(id="voltage-panel", kind="line_plot", view_ids=(VOLTAGE_VIEW_ID,)),
+                    PanelSpec(id="state-panel", kind="line_plot", view_ids=(STATE_VIEW_ID,)),
+                    PanelSpec(id="terms-panel", kind="line_plot", view_ids=(TERM_VIEW_ID,)),
+                    PanelSpec(
+                        id="controls-panel",
+                        kind="controls",
+                        control_ids=tuple(control.id for control in CONTROLS),
+                        action_ids=tuple(action.id for action in ACTIONS),
+                    ),
                 ),
+                panel_grid=(("voltage-panel", "state-panel", "terms-panel"), ("controls-panel",)),
             ),
-            panel_grid=(("voltage-panel", "state-panel", "terms-panel"), ("controls-panel",)),
         ),
     )
 

@@ -7,6 +7,7 @@ from compneurovis.messages import (
     STATUS,
     CommandPayload,
     MessageType,
+    MessagePayload,
     Reset,
     SetControl,
     Status,
@@ -59,3 +60,8 @@ def test_custom_payloads_require_explicit_message_type():
 
     assert message.type is custom_type
     assert message.payload is payload
+
+
+def test_command_and_update_payloads_share_message_payload_base():
+    assert isinstance(SetControl("gain", 1.0), MessagePayload)
+    assert isinstance(Status("ready", 0), MessagePayload)

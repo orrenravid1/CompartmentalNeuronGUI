@@ -82,8 +82,8 @@ scene = build_surface_app(
     panel_grid=(("surface-host",), ("controls-panel",)),
 ).app_spec
 
-scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=("Space",))
-scene.actions["reset"] = ActionSpec("reset", "Reset", shortcuts=("R",))
+scene.interactions.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=("Space",))
+scene.interactions.actions["reset"] = ActionSpec("reset", "Reset", shortcuts=("R",))
 
 
 class LiveAnimationBackend(BufferedBackend):

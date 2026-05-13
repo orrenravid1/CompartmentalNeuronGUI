@@ -16,7 +16,7 @@ import time
 
 import numpy as np
 
-from compneurovis import AppSpec, Field, LayoutSpec, LinePlotViewSpec, PanelSpec, RunSpec, run_app
+from compneurovis import AppSpec, DataCatalog, Field, LayoutCatalog, LayoutSpec, LinePlotViewSpec, PanelSpec, RunSpec, ViewCatalog, run_app
 from compneurovis.backends import BufferedBackend
 from compneurovis.messages import FieldAppend
 
@@ -81,16 +81,17 @@ def build_app_spec() -> AppSpec:
         ),
     }
     return AppSpec(
-        fields={field.id: field},
-        geometries={},
-        views=views,
-        layout=LayoutSpec(
-            title="Two Line Plots",
-            panels=(
-                PanelSpec(id="trace-fast-panel", kind="line_plot", view_ids=("trace-fast",)),
-                PanelSpec(id="trace-slow-panel", kind="line_plot", view_ids=("trace-slow",)),
+        data=DataCatalog(fields={field.id: field}),
+        view_catalog=ViewCatalog(views=views),
+        layout_catalog=LayoutCatalog.single(
+            LayoutSpec(
+                title="Two Line Plots",
+                panels=(
+                    PanelSpec(id="trace-fast-panel", kind="line_plot", view_ids=("trace-fast",)),
+                    PanelSpec(id="trace-slow-panel", kind="line_plot", view_ids=("trace-slow",)),
+                ),
+                panel_grid=(("trace-fast-panel", "trace-slow-panel"),),
             ),
-            panel_grid=(("trace-fast-panel", "trace-slow-panel"),),
         ),
     )
 

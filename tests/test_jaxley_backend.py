@@ -171,7 +171,8 @@ def test_jaxley_multicell_example_controls_reconfigure_runtime():
         MultiCellBackend = ns["MultiCellBackend"]
 
         backend = MultiCellBackend()
-        backend.initialize()
+        app_spec = backend.build_startup_app_spec()
+        backend.initialize(app_spec)
 
         initial_gna = float(backend.network.nodes["HH_gNa"].dropna().iloc[0])
         initial_syn = float(backend.network.edges["IonotropicSynapse_gS"].dropna().iloc[0])
@@ -242,7 +243,8 @@ def test_jaxley_multicell_reset_restores_closed_synapses():
         MultiCellBackend = ns["MultiCellBackend"]
 
         backend = MultiCellBackend()
-        backend.initialize()
+        app_spec = backend.build_startup_app_spec()
+        backend.initialize(app_spec)
         for _ in range(50):
             backend.advance()
         backend.handle(command_message(Reset()))
@@ -297,7 +299,8 @@ def test_jaxley_reset_rebuilds_from_updated_network_parameters():
             return max_v
 
         reused = SweepBackend()
-        reused.initialize()
+        app_spec = reused.build_startup_app_spec()
+        reused.initialize(app_spec)
         reused.apply_control("syn_gs", 0.01)
         reused.apply_control("syn_v_th", -45.0)
         reused.apply_control("syn_delta", 10.0)
@@ -308,7 +311,8 @@ def test_jaxley_reset_rebuilds_from_updated_network_parameters():
         fresh.syn_gs = 0.01
         fresh.syn_v_th = -45.0
         fresh.syn_delta = 10.0
-        fresh.initialize()
+        fresh_app_spec = fresh.build_startup_app_spec()
+        fresh.initialize(fresh_app_spec)
         fresh_max = run_max(fresh)
 
         print(json.dumps({{

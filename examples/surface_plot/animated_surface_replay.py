@@ -76,8 +76,8 @@ scene = build_surface_app(
 ).app_spec
 
 # Add explicit playback controls so the example exposes buttons in the controls panel.
-scene.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=("Space",))
-scene.actions["reset"] = ActionSpec("reset", "Reset", shortcuts=("R",))
+scene.interactions.actions["pause"] = ActionSpec("pause", "Pause / Resume", shortcuts=("Space",))
+scene.interactions.actions["reset"] = ActionSpec("reset", "Reset", shortcuts=("R",))
 
 
 class ReplayAnimationBackend(BufferedBackend):

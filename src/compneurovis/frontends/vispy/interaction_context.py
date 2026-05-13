@@ -31,7 +31,7 @@ class FrontendInteractionContext:
         current_id = entity_id or self.selected_entity_id
         if current_id is None or self.window.app_spec is None:
             return None
-        for geometry in self.window.app_spec.geometries.values():
+        for geometry in self.window.app_spec.data.geometries.values():
             if not isinstance(geometry, MorphologyGeometry):
                 continue
             try:
@@ -59,7 +59,7 @@ class FrontendInteractionContext:
     def invoke_action(self, action_id: str, payload: dict[str, Any] | None = None) -> None:
         if self.window.app_spec is None:
             return
-        action = self.window.app_spec.actions.get(action_id)
+        action = self.window.app_spec.interactions.actions.get(action_id)
         if action is None:
             return
         resolved_payload = payload if payload is not None else {
@@ -71,7 +71,7 @@ class FrontendInteractionContext:
     def set_control(self, control_id: str, value: Any) -> None:
         if self.window.app_spec is None:
             return
-        control = self.window.app_spec.controls.get(control_id)
+        control = self.window.app_spec.interactions.controls.get(control_id)
         if control is None:
             return
         self.window._on_control_changed(control, value)

@@ -5,15 +5,19 @@ import numpy as np
 from compneurovis.core import (
     AppSpec,
     ControlSpec,
+    DataCatalog,
     Field,
     GridSliceOperatorSpec,
     GridGeometry,
+    InteractionCatalog,
+    LayoutCatalog,
     LayoutSpec,
     LinePlotViewSpec,
     OperatorSpec,
     PanelSpec,
     RunSpec,
     SurfaceViewSpec,
+    ViewCatalog,
 )
 from compneurovis.core.app import PANEL_KIND_CONTROLS, PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
 
@@ -152,11 +156,12 @@ def build_surface_app(
         layout.panel_grid = tuple(rows)
 
     app_spec = AppSpec(
-        fields={field.id: field},
-        geometries={} if geometry is None else {geometry.id: geometry},
-        views=views,
-        operators=operators,
-        controls=controls,
-        layout=layout,
+        data=DataCatalog(
+            fields={field.id: field},
+            geometries={} if geometry is None else {geometry.id: geometry},
+        ),
+        view_catalog=ViewCatalog(views=views, operators=operators),
+        interactions=InteractionCatalog(controls=controls),
+        layout_catalog=LayoutCatalog.single(layout),
     )
     return RunSpec(app_spec=app_spec, title=title)

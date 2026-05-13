@@ -40,9 +40,9 @@ def test_build_replay_app_exposes_reset_action():
     )
 
     assert app.app_spec is scene
-    assert "reset" in scene.actions
-    assert scene.actions["reset"].shortcuts == ("Space",)
-    controls_panel = scene.layout.panel("controls-panel")
+    assert "reset" in scene.interactions.actions
+    assert scene.interactions.actions["reset"].shortcuts == ("Space",)
+    controls_panel = scene.active_layout().panel("controls-panel")
     assert controls_panel is not None
     assert controls_panel.action_ids == ("reset",)
 
@@ -57,7 +57,7 @@ def test_replay_session_reset_emits_first_frame():
     )
     backend = app.backend()
 
-    backend.initialize()
+    backend.initialize(app.app_spec)
     backend.advance()
     [message.payload for message in backend.take_outbound_messages()]
     backend.advance()

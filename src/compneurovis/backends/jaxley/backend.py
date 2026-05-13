@@ -243,8 +243,8 @@ class JaxleyBackend(BufferedBackend, ABC):
             app_spec.replace_view("trace", trace_updates)
         return app_spec
 
-    def initialize(self):
-        """Initialize the Jaxley model, sample it once, and return the first AppSpec."""
+    def build_startup_app_spec(self) -> AppSpec:
+        """Build the Jaxley model, sample it once, and return the initial AppSpec."""
 
         print(f"[{self.title}] Importing JAX and Jaxley...")
         import jax  # noqa: F401
@@ -289,19 +289,20 @@ class JaxleyBackend(BufferedBackend, ABC):
         display_values = self._read_display_values()
         self._entity_index_by_id = {entity_id: index for index, entity_id in enumerate(self.geometry.entity_ids)}
         self._initialize_trace_history(self._time, display_values)
-        app_spec = self.build_app_spec(
+        print(f"[{self.title}] Ready.")
+        return self.build_app_spec(
             geometry=self.geometry,
             display_values=display_values,
             time_value=self._time,
         )
+
+    def initialize(self, app_spec: AppSpec) -> None:
         self._field_max_samples[self.history_field_id()] = self._resolved_field_max_samples(
             app_spec,
             field_id=self.history_field_id(),
             append_dim="time",
         )
         self._ui_state = {}
-        print(f"[{self.title}] Ready.")
-        return app_spec
 
     def _read_display_values(self) -> np.ndarray:
         if self._rec_indices is None:
@@ -423,7 +424,7 @@ class JaxleyBackend(BufferedBackend, ABC):
         required = int(self.max_samples)
         if self.dt <= 0:
             return required
-        for view in app_spec.views.values():
+        for view in app_spec.view_catalog.views.values():
             if not isinstance(view, LinePlotViewSpec):
                 continue
             if view.field_id != field_id:

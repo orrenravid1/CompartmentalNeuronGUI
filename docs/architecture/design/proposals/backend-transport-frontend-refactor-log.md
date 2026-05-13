@@ -186,6 +186,59 @@ python scripts/check_architecture_invariants.py
 currently fails because generated reference docs are stale. That is expected
 until the docs/index regeneration step runs.
 
+### 2026-05-13: AppSpec as Bootstrap Contract
+
+Implemented the agreed model where AppSpec is a declarative bootstrap contract
+distributed to all actors before the runtime message loop begins — not a runtime
+message.
+
+- `AppSpecReady` removed from `messages.py` and all message type registries
+- `Backend.initialize(app_spec: AppSpec)` now *consumes* AppSpec (both base
+  and all concrete implementations)
+- `Frontend.initialize(app_spec: AppSpec)` same symmetric contract
+- `Backend.startup_app_spec()` classmethod removed from the base protocol
+- `resolve_startup_app_spec_source()` removed from `backends/base.py`
+- Concrete backends split into two phases:
+  - `build_startup_app_spec(self) -> AppSpec` — pre-protocol, runs in the
+    worker's startup phase, builds model and returns AppSpec; not part of
+    the base `Backend` protocol
+  - `initialize(self, app_spec: AppSpec)` — protocol-level, called after
+    AppSpec is distributed
+- `PipeTransport` gains a bootstrap channel (one-way `Pipe` for process mode,
+  `SimpleQueue` for thread mode) separate from the runtime update pipe
+- Worker calls `build_startup_app_spec()` when no `provided_app_spec` is
+  given, sends result on bootstrap channel, then calls `initialize(app_spec)`
+- `PipeTransport.poll_bootstrap() -> AppSpec | None` lets the frontend poll
+  for the bootstrap AppSpec without treating it as a runtime message
+- `VispyFrontendWindow._poll_transport()` calls `poll_bootstrap()` on each
+  tick until `app_spec` is set, then calls `initialize(app_spec)`
+- When `RunSpec.app_spec` is provided (replay, static apps), the frontend
+  initializes immediately in `__init__` and the worker receives the same
+  AppSpec as `provided_app_spec` — no bootstrap channel send needed
+
+### Cross-Language Design Intent
+
+The architecture is designed to support non-Python backends and frontends (e.g.
+Unity/C#, browser JS). The current Python-only path is coherent, but the
+following contracts need wire-format definitions before cross-language actors
+can participate:
+
+- **AppSpec wire format** — AppSpec is pure data; a JSON schema allows any
+  language to receive and deserialize the bootstrap contract. The bootstrap
+  channel sends a serialized AppSpec, not a Python pickle.
+- **Message wire format** — `UpdateMessage` and `CommandMessage` payloads need
+  a JSON or protobuf schema for non-Python transports. The `Transport`
+  abstraction already isolates this: a WebSocket transport can serialize on
+  send and deserialize on poll without the backend or frontend knowing.
+- **Protocol is behavioral, not Python-specific** — `Backend` and `Frontend`
+  are Python ABCs for the Python path. For other languages, the protocol is
+  defined by the wire format alone: implement `initialize(app_spec)`,
+  `advance()`, `handle(message)`, `emit_update(payload)` in your language and
+  connect via a compatible transport.
+
+Nothing in the current refactor breaks this path. The next step that forces it
+is writing the first non-Python transport (WebSocket backend or Unity frontend).
+
 ## Current Open Work
 
 Immediate cleanup:

@@ -28,20 +28,20 @@ def test_jaxley_scene_builder_splits_display_and_trace_fields():
         trace_times=np.array([0.0], dtype=np.float32),
     )
 
-    display_field = scene.fields[JaxleyAppSpecBuilder.DISPLAY_FIELD_ID]
-    trace_field = scene.fields[JaxleyAppSpecBuilder.HISTORY_FIELD_ID]
+    display_field = scene.data.fields[JaxleyAppSpecBuilder.DISPLAY_FIELD_ID]
+    trace_field = scene.data.fields[JaxleyAppSpecBuilder.HISTORY_FIELD_ID]
 
     assert display_field.dims == ("segment",)
     assert np.allclose(display_field.values, np.array([1.0, 2.0], dtype=np.float32))
     assert trace_field.dims == ("segment", "time")
     assert trace_field.coords["segment"].tolist() == ["seg-a", "seg-b"]
     assert trace_field.coords["time"].tolist() == [0.0]
-    morphology_view = scene.views["morphology"]
+    morphology_view = scene.view_catalog.views["morphology"]
     assert morphology_view.color_field_id == JaxleyAppSpecBuilder.DISPLAY_FIELD_ID
     assert morphology_view.sample_dim is None
     assert morphology_view.color_map == "scalar"
     assert morphology_view.color_norm == "auto"
-    trace_view = scene.views["trace"]
+    trace_view = scene.view_catalog.views["trace"]
     assert trace_view.field_id == JaxleyAppSpecBuilder.HISTORY_FIELD_ID
 
 
@@ -74,7 +74,7 @@ def test_jaxley_session_build_app_spec_uses_sparse_trace_history_contract():
         time_value=0.0,
     )
 
-    trace_field = scene.fields[JaxleyAppSpecBuilder.HISTORY_FIELD_ID]
+    trace_field = scene.data.fields[JaxleyAppSpecBuilder.HISTORY_FIELD_ID]
     assert trace_field.coords["segment"].tolist() == ["seg-a"]
     assert trace_field.coords["time"].tolist() == [0.0]
 
@@ -182,8 +182,8 @@ def test_jaxley_session_default_scene_uses_generic_auto_morphology_coloring():
         time_value=0.0,
     )
 
-    assert scene.views["morphology"].color_map == "scalar"
-    assert scene.views["morphology"].color_norm == "auto"
+    assert scene.view_catalog.views["morphology"].color_map == "scalar"
+    assert scene.view_catalog.views["morphology"].color_norm == "auto"
 
 
 def test_jaxley_session_default_scene_exposes_reset_action():
@@ -209,9 +209,9 @@ def test_jaxley_session_default_scene_exposes_reset_action():
         time_value=0.0,
     )
 
-    assert "reset" in scene.actions
-    assert scene.actions["reset"].label == "Reset"
-    assert scene.actions["reset"].shortcuts == ("Space",)
-    controls_panel = scene.layout.panel("controls-panel")
+    assert "reset" in scene.interactions.actions
+    assert scene.interactions.actions["reset"].label == "Reset"
+    assert scene.interactions.actions["reset"].shortcuts == ("Space",)
+    controls_panel = scene.active_layout().panel("controls-panel")
     assert controls_panel is not None
     assert controls_panel.action_ids == ("reset",)

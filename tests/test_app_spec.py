@@ -40,12 +40,12 @@ def test_app_spec_accepts_catalogs_and_exposes_legacy_views():
     assert app_spec.data.fields == {field.id: field}
     assert app_spec.view_catalog.views == {view.id: view}
     assert app_spec.interactions.controls == {control.id: control}
-    assert app_spec.layout.title == "Main"
+    assert app_spec.active_layout().title == "Main"
     assert app_spec.metadata == {"source": "test"}
 
-    assert app_spec.fields is app_spec.data.fields
-    assert app_spec.views is app_spec.view_catalog.views
-    assert app_spec.controls is app_spec.interactions.controls
+    assert app_spec.data.fields is app_spec.data.fields
+    assert app_spec.view_catalog.views is app_spec.view_catalog.views
+    assert app_spec.interactions.controls is app_spec.interactions.controls
 
 
 def test_app_spec_keeps_flat_constructor_as_catalog_lowering():
@@ -61,8 +61,8 @@ def test_app_spec_keeps_flat_constructor_as_catalog_lowering():
 
     assert app_spec.data.fields[field.id] is field
     assert app_spec.view_catalog.views[view.id] is view
-    assert app_spec.layout_catalog.active == "default"
-    assert app_spec.layout.title == "Flat"
+    assert app_spec.active_layout()_catalog.active == "default"
+    assert app_spec.active_layout().title == "Flat"
 
 
 def test_app_spec_rejects_mixed_catalog_and_flat_inputs():

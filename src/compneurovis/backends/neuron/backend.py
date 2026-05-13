@@ -250,8 +250,8 @@ class NeuronBackend(BufferedBackend, ABC):
             app_spec.replace_view("trace", trace_updates)
         return app_spec
 
-    def initialize(self):
-        """Initialize the NEURON model, sample it once, and return the first AppSpec."""
+    def build_startup_app_spec(self) -> AppSpec:
+        """Build the NEURON model, sample it once, and return the initial AppSpec."""
 
         from neuron import h
 
@@ -268,11 +268,13 @@ class NeuronBackend(BufferedBackend, ABC):
         h.finitialize(self.v_init)
         time_value, display_values = self._sample()
         self._initialize_trace_history(time_value, display_values)
-        app_spec = self.build_app_spec(
+        return self.build_app_spec(
             geometry=self.geometry,
             display_values=display_values,
             time_value=time_value,
         )
+
+    def initialize(self, app_spec: AppSpec) -> None:
         self._field_max_samples[self.history_field_id()] = self._resolved_field_max_samples(
             app_spec,
             field_id=self.history_field_id(),
@@ -286,7 +288,6 @@ class NeuronBackend(BufferedBackend, ABC):
                 "selected_entity_id": initial_entity_id,
                 "selected_entity_label": self.geometry.label_for(initial_entity_id),
             }))
-        return app_spec
 
     def _prepare_recorders(self):
         from neuron import h
@@ -453,7 +454,7 @@ class NeuronBackend(BufferedBackend, ABC):
         required = int(self.max_samples)
         if self.dt <= 0:
             return required
-        for view in app_spec.views.values():
+        for view in app_spec.view_catalog.views.values():
             if not isinstance(view, LinePlotViewSpec):
                 continue
             if view.field_id != field_id:

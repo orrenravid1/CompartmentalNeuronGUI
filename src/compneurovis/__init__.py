@@ -43,6 +43,7 @@ from compneurovis.frontends import Frontend, VispyFrontendWindow, run_app
 from compneurovis.messages import (
     CommandMessage,
     Message,
+    MessagePayload,
     MessageType,
     UpdateMessage,
     command_message,
@@ -81,6 +82,7 @@ __all__ = [
     "MorphologyViewSpec",
     "Message",
     "MessageActor",
+    "MessagePayload",
     "MessageType",
     "OperatorSpec",
     "PanelSpec",

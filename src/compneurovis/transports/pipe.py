@@ -10,10 +10,9 @@ from multiprocessing import Pipe, Process
 from PyQt6 import QtCore
 
 from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
-from compneurovis.core.app import DiagnosticsSpec
+from compneurovis.core.app import AppSpec, DiagnosticsSpec
 from compneurovis.backends.base import Backend, BackendSource, resolve_backend_source
 from compneurovis.messages import (
-    AppSpecReady,
     CommandMessage,
     Error,
     StopBackend,
@@ -63,22 +62,32 @@ def _apply_perf_logging_configuration(diagnostics: DiagnosticsSpec | None) -> No
         configure_perf_logging(diagnostics)
 
 
-def _backend_process(backend_source: BackendSource, diagnostics: DiagnosticsSpec | None, update_pipe, command_pipe) -> None:
+def _backend_process(
+    backend_source: BackendSource,
+    provided_app_spec: AppSpec | None,
+    diagnostics: DiagnosticsSpec | None,
+    update_pipe,
+    command_pipe,
+    bootstrap_pipe,
+) -> None:
     backend: Backend | None = None
     try:
         _apply_perf_logging_configuration(diagnostics)
         backend = resolve_backend_source(backend_source)
-        app_spec = backend.initialize()
+        if provided_app_spec is not None:
+            app_spec = provided_app_spec
+        else:
+            app_spec = backend.build_startup_app_spec()
+            bootstrap_pipe.send(app_spec)
+        bootstrap_pipe.close()
+        backend.initialize(app_spec)
         perf_log(
             "backend_worker",
             "initialize",
             backend_type=type(backend).__name__,
-            has_app_spec=app_spec is not None,
             is_live=backend.is_live(),
             idle_sleep_s=backend.idle_sleep(),
         )
-        if app_spec is not None:
-            update_pipe.send(update_message(AppSpecReady(app_spec)))
 
         while True:
             tick_started = time.monotonic()
@@ -135,27 +144,31 @@ def _backend_process(backend_source: BackendSource, diagnostics: DiagnosticsSpec
 
 def _backend_process_queue(
     backend_source: BackendSource,
+    provided_app_spec: AppSpec | None,
     diagnostics: DiagnosticsSpec | None,
     update_queue,
     command_queue,
+    bootstrap_queue,
     stop_event=None,
 ) -> None:
     backend: Backend | None = None
     try:
         _apply_perf_logging_configuration(diagnostics)
         backend = resolve_backend_source(backend_source)
-        app_spec = backend.initialize()
+        if provided_app_spec is not None:
+            app_spec = provided_app_spec
+        else:
+            app_spec = backend.build_startup_app_spec()
+            bootstrap_queue.put(app_spec)
+        backend.initialize(app_spec)
         perf_log(
             "backend_worker",
             "initialize",
             backend_type=type(backend).__name__,
-            has_app_spec=app_spec is not None,
             is_live=backend.is_live(),
             idle_sleep_s=backend.idle_sleep(),
             transport_mode="thread",
         )
-        if app_spec is not None:
-            update_queue.put(update_message(AppSpecReady(app_spec)))
 
         while True:
             tick_started = time.monotonic()
@@ -214,7 +227,13 @@ def _backend_process_queue(
 
 
 class PipeTransport(QtCore.QObject):
-    def __init__(self, backend: BackendSource, diagnostics: DiagnosticsSpec | None = None, parent=None) -> None:
+    def __init__(
+        self,
+        backend: BackendSource,
+        provided_app_spec: AppSpec | None = None,
+        diagnostics: DiagnosticsSpec | None = None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         if isinstance(backend, Backend):
             raise TypeError(
@@ -222,6 +241,7 @@ class PipeTransport(QtCore.QObject):
                 "Do not pass an already-created backend instance."
             )
         self.backend = backend
+        self.provided_app_spec = provided_app_spec
         self.diagnostics = diagnostics
         self._mode = "pipe"
         self._dead = False
@@ -234,24 +254,29 @@ class PipeTransport(QtCore.QObject):
         self._last_poll_truncated = False
         self._last_poll_more_pending = False
         self._last_poll_duration_ms = 0.0
+        self.bootstrap_parent = None
+        self._bootstrap_queue = None
         try:
             self.update_parent, update_child = Pipe()
             self.command_child, command_parent = Pipe()
             self.command_parent = command_parent
+            bootstrap_parent, bootstrap_child = Pipe(duplex=False)
+            self.bootstrap_parent = bootstrap_parent
             self.process = Process(
                 target=_backend_process,
-                args=(backend, diagnostics, update_child, self.command_child),
+                args=(backend, provided_app_spec, diagnostics, update_child, self.command_child, bootstrap_child),
             )
-            self._children = (update_child, self.command_child)
+            self._children = (update_child, self.command_child, bootstrap_child)
         except PermissionError:
             self._mode = "thread"
             self.process = None
             self.update_parent = queue.Queue()
             self.command_parent = queue.Queue()
+            self._bootstrap_queue = queue.SimpleQueue()
             self._stop_event = threading.Event()
             self.thread = threading.Thread(
                 target=_backend_process_queue,
-                args=(backend, diagnostics, self.update_parent, self.command_parent, self._stop_event),
+                args=(backend, provided_app_spec, diagnostics, self.update_parent, self.command_parent, self._bootstrap_queue, self._stop_event),
                 daemon=True,
             )
 
@@ -262,6 +287,19 @@ class PipeTransport(QtCore.QObject):
             self.process.start()
             for child in self._children:
                 child.close()
+
+    def poll_bootstrap(self) -> AppSpec | None:
+        if self._mode == "pipe":
+            if self.bootstrap_parent is not None and self.bootstrap_parent.poll():
+                return self.bootstrap_parent.recv()
+            return None
+        else:
+            if self._bootstrap_queue is not None:
+                try:
+                    return self._bootstrap_queue.get_nowait()
+                except queue.Empty:
+                    pass
+            return None
 
     def poll(self) -> list[UpdateMessage]:
         poll_started = time.monotonic()
@@ -357,6 +395,8 @@ class PipeTransport(QtCore.QObject):
             self.process.join()
         self.update_parent.close()
         self.command_parent.close()
+        if self.bootstrap_parent is not None:
+            self.bootstrap_parent.close()
 
 
 def configure_multiprocessing() -> None:

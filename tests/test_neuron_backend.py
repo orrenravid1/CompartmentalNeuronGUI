@@ -40,15 +40,15 @@ def test_neuron_scene_builder_splits_display_and_trace_fields():
         title="Neuron split fields",
     )
 
-    assert set(scene.fields.keys()) == {
+    assert set(scene.data.fields.keys()) == {
         NeuronAppSpecBuilder.DISPLAY_FIELD_ID,
         NeuronAppSpecBuilder.HISTORY_FIELD_ID,
     }
 
-    display_field = scene.fields[NeuronAppSpecBuilder.DISPLAY_FIELD_ID]
-    trace_field = scene.fields[NeuronAppSpecBuilder.HISTORY_FIELD_ID]
-    morphology_view = scene.views["morphology"]
-    trace_view = scene.views["trace"]
+    display_field = scene.data.fields[NeuronAppSpecBuilder.DISPLAY_FIELD_ID]
+    trace_field = scene.data.fields[NeuronAppSpecBuilder.HISTORY_FIELD_ID]
+    morphology_view = scene.view_catalog.views["morphology"]
+    trace_view = scene.view_catalog.views["trace"]
 
     assert display_field.dims == ("segment",)
     assert np.allclose(display_field.values, np.array([1.0, 2.0], dtype=np.float32))
@@ -157,9 +157,9 @@ def test_neuron_session_default_scene_uses_fixed_morphology_color_limits():
         time_value=0.0,
     )
 
-    assert scene.views["morphology"].color_map == "scalar"
-    assert scene.views["morphology"].color_limits == (-80.0, 50.0)
-    assert scene.views["morphology"].color_norm == "auto"
+    assert scene.view_catalog.views["morphology"].color_map == "scalar"
+    assert scene.view_catalog.views["morphology"].color_limits == (-80.0, 50.0)
+    assert scene.view_catalog.views["morphology"].color_norm == "auto"
 
 
 def test_neuron_session_default_scene_exposes_reset_action():
@@ -172,9 +172,9 @@ def test_neuron_session_default_scene_exposes_reset_action():
         time_value=0.0,
     )
 
-    assert "reset" in scene.actions
-    assert scene.actions["reset"].label == "Reset"
-    assert scene.actions["reset"].shortcuts == ("Space",)
-    controls_panel = scene.layout.panel("controls-panel")
+    assert "reset" in scene.interactions.actions
+    assert scene.interactions.actions["reset"].label == "Reset"
+    assert scene.interactions.actions["reset"].shortcuts == ("Space",)
+    controls_panel = scene.active_layout().panel("controls-panel")
     assert controls_panel is not None
     assert controls_panel.action_ids == ("reset",)

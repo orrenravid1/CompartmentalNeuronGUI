@@ -397,7 +397,7 @@ def test_surface_control_change_avoids_surface_mesh_refresh():
     window._line_plot_last_refresh_s["surface-line"] = 10.0
 
     with patch.object(frontend_module.time, "monotonic", return_value=10.01):
-        window._on_control_changed(window.app_spec.controls["slice_position"], 0.4)
+        window._on_control_changed(window.app_spec.interactions.controls["slice_position"], 0.4)
 
     surface_visual.refresh_visual.assert_not_called()
     surface_visual.refresh_axes_geometry.assert_not_called()
@@ -535,7 +535,7 @@ def test_field_replace_with_identical_coords_does_not_refresh_surface_axes_geome
     app_spec.app_spec.replace_view("surface-view", {"color_limits": (0.0, 2.0)})
     window = VispyFrontendWindow(app_spec)
     window.timer.stop()
-    field = window.app_spec.fields["surface"]
+    field = window.app_spec.data.fields["surface"]
     original_x_coord = field.coords["x"]
     original_y_coord = field.coords["y"]
     surface_visual = view_3d_visual(window, "surface-view", SURFACE_3D_VISUAL_KEY)
@@ -557,8 +557,8 @@ def test_field_replace_with_identical_coords_does_not_refresh_surface_axes_geome
 
     surface_visual.refresh_visual.assert_called_once()
     surface_visual.refresh_axes_geometry.assert_not_called()
-    assert window.app_spec.fields["surface"].coords["x"] is original_x_coord
-    assert window.app_spec.fields["surface"].coords["y"] is original_y_coord
+    assert window.app_spec.data.fields["surface"].coords["x"] is original_x_coord
+    assert window.app_spec.data.fields["surface"].coords["y"] is original_y_coord
 
     window.close()
     app.quit()
@@ -575,7 +575,7 @@ def test_surface_axis_style_control_change_avoids_geometry_refresh():
     surface_visual.refresh_operator_overlays = Mock()
     window.viewport.commit = Mock()
 
-    window._on_control_changed(window.app_spec.controls["tick_label_size"], 18.0)
+    window._on_control_changed(window.app_spec.interactions.controls["tick_label_size"], 18.0)
 
     surface_visual.refresh_visual.assert_not_called()
     surface_visual.refresh_axes_geometry.assert_not_called()
@@ -595,10 +595,10 @@ def test_surface_slice_overlay_moves_with_control_changes():
     surface_visual = view_3d_visual(window, "surface-view", SURFACE_3D_VISUAL_KEY)
     overlay = surface_visual.renderer._slice_overlays["surface-slice"]
     initial_pos = np.array(overlay._line._pos, copy=True)
-    window._on_control_changed(window.app_spec.controls["slice_position"], 1.0)
+    window._on_control_changed(window.app_spec.interactions.controls["slice_position"], 1.0)
     overlay = surface_visual.renderer._slice_overlays["surface-slice"]
     moved_pos = np.array(overlay._line._pos, copy=True)
-    window._on_control_changed(window.app_spec.controls["slice_axis"], "y")
+    window._on_control_changed(window.app_spec.interactions.controls["slice_axis"], "y")
     overlay = surface_visual.renderer._slice_overlays["surface-slice"]
     axis_switched_pos = np.array(overlay._line._pos, copy=True)
 
@@ -799,7 +799,7 @@ def test_build_surface_app_accepts_custom_3d_hosts():
     )
 
     assert app_spec.app_spec is not None
-    assert app_spec.app_spec.layout.panels == (host,)
+    assert app_spec.app_spec.active_layout().panels == (host,)
 
 
 def test_build_surface_app_accepts_multiple_line_views():
@@ -823,7 +823,7 @@ def test_build_surface_app_accepts_multiple_line_views():
     assert app_spec.app_spec is not None
     assert tuple(
         panel.view_ids[0]
-        for panel in app_spec.app_spec.layout.panels
+        for panel in app_spec.app_spec.active_layout().panels
         if panel.kind == "line_plot"
     ) == ("surface-line-x", "surface-line-y")
 
@@ -1034,8 +1034,7 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
     class BootstrapBackend(BufferedBackend):
-        @classmethod
-        def startup_app_spec(cls):
+        def build_startup_app_spec(self):
             field = Field(
                 id="bootstrap",
                 values=np.array([[0.0]], dtype=np.float32),
@@ -1064,31 +1063,39 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
                 ),
             )
 
-        def initialize(self):
-            raise AssertionError("worker initialization should not be used to build the startup app spec")
+        def initialize(self, app_spec):
+            pass
 
         def advance(self) -> None:
             return None
 
         def handle(self, message) -> None:
-            command = message.payload
             return None
 
     class FakeTransport:
-        def __init__(self, backend, diagnostics=None, parent=None):
+        def __init__(self, backend, provided_app_spec, diagnostics=None, parent=None):
             self.backend = backend
+            self.provided_app_spec = provided_app_spec
             self.diagnostics = diagnostics
             self.parent = parent
             self._dead = False
+            self._bootstrap_app_spec = None
 
         def start(self):
-            return None
+            if self.provided_app_spec is None:
+                instance = self.backend()
+                self._bootstrap_app_spec = instance.build_startup_app_spec()
 
         def stop(self):
             return None
 
         def poll(self):
             return []
+
+        def poll_bootstrap(self):
+            result = self._bootstrap_app_spec
+            self._bootstrap_app_spec = None
+            return result
 
     monkeypatch.setattr(frontend_module, "PipeTransport", FakeTransport)
 
@@ -1099,8 +1106,13 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
     assert isinstance(window.transport, FakeTransport)
     assert window.transport.backend is BootstrapBackend
     assert window.transport.diagnostics == diagnostics
+    assert window.app_spec is None
+    assert window._stack.currentWidget() is window._loading_label
+
+    window._poll_transport()
+
     assert window.app_spec is not None
-    assert window.app_spec.layout.panel("bootstrap-view-panel") is not None
+    assert window.app_spec.active_layout().panel("bootstrap-view-panel") is not None
     assert window._stack.currentWidget() is window._layout_splitter
 
     window.close()
@@ -1151,7 +1163,7 @@ def test_build_neuron_app_accepts_session_class():
         def build_sections(self):
             return []
 
-        def initialize(self):
+        def initialize(self, app_spec):
             raise AssertionError("should not initialize during app construction")
 
         def advance(self) -> None:
@@ -1176,7 +1188,7 @@ def test_build_neuron_app_requires_lazy_session_source():
         def build_sections(self):
             return []
 
-        def initialize(self):
+        def initialize(self, app_spec):
             raise AssertionError("should not initialize during app construction")
 
         def advance(self) -> None:
@@ -1198,7 +1210,7 @@ def test_build_neuron_app_supports_explicit_interaction_target_factory():
         def build_sections(self):
             return []
 
-        def initialize(self):
+        def initialize(self, app_spec):
             raise AssertionError("should not initialize during app construction")
 
         def advance(self) -> None:
@@ -2255,14 +2267,14 @@ def test_layout_spec_derives_default_panels_with_standardized_ids():
         layout=LayoutSpec(title="Derived panels"),
     )
 
-    assert tuple(panel.id for panel in scene.layout.panels) == (
+    assert tuple(panel.id for panel in scene.active_layout().panels) == (
         "morphology-panel",
         "surface-panel",
         "trace-panel",
         "states-panel",
         "controls-panel",
     )
-    assert scene.layout.panel_grid == ()
+    assert scene.active_layout().panel_grid == ()
 
 
 def test_frontend_builds_explicit_independent_3d_hosts():
@@ -2701,7 +2713,7 @@ def test_frontend_reset_action_sends_reset_command():
     window.timer.stop()
     window.transport = Mock()
 
-    window._on_action_invoked(scene.actions["reset"], {})
+    window._on_action_invoked(scene.interactions.actions["reset"], {})
 
     window.transport.send.assert_called_once()
     command = window.transport.send.call_args[0][0].payload
@@ -2754,11 +2766,11 @@ def test_neuron_session_build_app_spec_applies_orders_and_trace_updates():
         time_value=0.0,
     )
 
-    controls_panel = scene.layout.panel("controls-panel")
+    controls_panel = scene.active_layout().panel("controls-panel")
     assert controls_panel is not None
     assert controls_panel.control_ids == ("gain",)
     assert controls_panel.action_ids == ("toggle_mode",)
-    trace_view = scene.views["trace"]
+    trace_view = scene.view_catalog.views["trace"]
     assert trace_view.rolling_window == 25.0
     assert trace_view.trim_to_rolling_window is True
 
@@ -2866,7 +2878,7 @@ def test_frontend_applies_field_append_updates_incrementally():
 
     window._poll_transport()
 
-    updated = window.app_spec.fields["voltage"]
+    updated = window.app_spec.data.fields["voltage"]
     assert updated.coord("time").tolist() == [1.0, 2.0]
     assert np.allclose(updated.values, np.array([[2.0, 3.0], [20.0, 30.0]], dtype=np.float32))
     window._flush_due_line_plot_refreshes(force=True)
@@ -2951,7 +2963,7 @@ def test_frontend_batches_multiple_field_appends_into_one_refresh_pass():
     with patch.object(Field, "append", autospec=True, side_effect=Field.append) as append_spy:
         window._poll_transport()
 
-    updated = window.app_spec.fields["voltage"]
+    updated = window.app_spec.data.fields["voltage"]
     assert updated.coord("time").tolist() == [0.0, 1.0, 2.0]
     assert np.allclose(updated.values, np.array([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]], dtype=np.float32))
     append_spy.assert_called_once()
@@ -3041,7 +3053,7 @@ def test_frontend_flushes_buffered_field_appends_before_field_replace():
 
     window._poll_transport()
 
-    updated = window.app_spec.fields["voltage"]
+    updated = window.app_spec.data.fields["voltage"]
     assert updated.coord("time").tolist() == [5.0, 6.0]
     assert np.allclose(updated.values, np.array([[100.0, 300.0], [200.0, 400.0]], dtype=np.float32))
 
