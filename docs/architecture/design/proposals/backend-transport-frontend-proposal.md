@@ -139,8 +139,8 @@ flowchart LR
 
 Arrows in high-level architecture diagrams show logical message flow, not object
 references. Backends and frontends do not receive a transport object in their
-base protocol. A runner or transport worker calls `take_outbound_messages()`
-on the actor, then calls `Transport.send(...)` for each produced message.
+base protocol. An actor host or runner calls `take_outbound_messages()` on the
+actor, then calls `Transport.send(...)` for each produced message.
 
 Future extensions hang off that core, but do not change the ownership model:
 
@@ -160,9 +160,10 @@ flowchart LR
     Binding -. installs into .-> Frontend
 ```
 
-The diagram intentionally has no `Host` layer. Startup, event-loop ownership,
-and object construction belong to a composition concern named `AppRuntime` or a
-runner such as `run_app(...)`; they are not part of message or state ownership.
+The diagram intentionally has no `Host` box as a state owner. Startup,
+event-loop ownership, process ownership, and object construction belong to a
+composition concern named `AppRuntime` or to subordinate actor hosts/runners;
+they are not part of message or state ownership.
 
 ## Why This Fits Current Code And Planned Gaps
 
@@ -173,7 +174,7 @@ implemented today.
 | Proposed name | Stage | Current concrete code | Current role |
 |---|---|---|---|
 | `Backend` | Runtime core | `Backend`, `BufferedBackend`, `NeuronBackend`, `JaxleyBackend`, `ReplayBackend` | Advances model, handles semantic messages, emits typed runtime updates. Transitional code may still return startup app specs until the startup refactor lands. |
-| `Transport` | Runtime core | `PipeTransport` | Starts/stops backend worker, polls updates, sends commands. |
+| `Transport` | Runtime core | `PipeTransport` | Transitional concrete pipe implementation. It currently also starts/stops the backend worker, but the target split is a pure pipe message endpoint plus an actor host that owns backend execution. |
 | `Frontend` | Runtime core | `VispyFrontendWindow` | Owns Qt/VisPy/pyqtgraph widgets, frontend state, refresh planning, rendering, and user input. |
 | `Message` | Runtime core | `Message` plus typed message registries | Thin transport payload with `type`, `intent`, and typed payload. |
 | `Command` intent | Runtime core | `CommandPayload` subclasses | Request to do something; direction is not baked into the intent name. |
@@ -314,6 +315,10 @@ Notes:
   command/update directions. The target shape makes `Transport` move one
   typed message value, like WebSocket and Socket.IO transports move
   application-level envelopes without owning their semantics.
+- `Transport.start()` and `Transport.stop()` mean opening and closing transport
+  resources such as pipes, sockets, queues, or router links. They do not mean
+  constructing, initializing, advancing, or shutting down backend/frontend
+  actors. That actor lifecycle belongs to actor hosts or runners.
 - `read(...)` and `subscribe(...)` do not belong on base `Transport`. They are
   future `ResourceTransport` methods once the state/resource plane is needed.
 - `Frontend` is intentionally smaller than `VispyFrontendWindow`. The desktop
@@ -385,6 +390,48 @@ class ResourceTransport(Protocol):
     def read(self, ref: ResourceRef) -> Snapshot: ...
     def subscribe(self, ref: ResourceRef) -> None: ...
 ```
+
+## Actor Hosts And Message Ports
+
+`Backend`, `Transport`, and `Frontend` stay the main runtime concepts. A host is
+only lifecycle glue: it owns where an actor runs and when the actor is polled,
+but it does not own semantic state.
+
+The clean split is:
+
+| Concept | Owns | Must not own |
+|---|---|---|
+| `Backend` | simulator/model state, command handling, update emission | transport object, frontend state, process lifecycle |
+| `Frontend` | widgets, renderer state, frontend interaction state, command/update emission | backend state, process lifecycle |
+| `Transport` / message port | bidirectional message movement over pipes, queues, sockets, notebook comms, or router links | backend construction, backend stepping, frontend rendering, app-spec ownership |
+| actor host / runner | process/thread/event-loop lifecycle, actor polling, startup delivery, shutdown | simulator state, frontend state, message payload semantics |
+
+For the simple local path, this should remain visually and operationally simple:
+
+```text
+BackendWorkerHost(Backend, AppSpec)
+    <-> PipeMessagePortPair
+VisPyFrontendHost(Frontend, AppSpec)
+```
+
+The host names do not need to become public authoring concepts. They make the
+implementation boundary explicit:
+
+- `PipeMessagePort` or `PipeMessagePortPair` owns `send`, `poll`, `close`, and
+  pipe/queue/socket resources only.
+- `BackendWorkerHost` owns backend source resolution, `initialize(app_spec)`,
+  `handle`, `advance`, `take_outbound_messages`, cadence policy, diagnostics,
+  and shutdown.
+- `FrontendHost` owns Qt/notebook/Unity event-loop integration, polling its
+  message port, passing inbound messages to the frontend actor, rendering, and
+  flushing outbound messages.
+- `RouterHost` is only needed for multi-actor deployments; it wraps bare
+  messages in `MessageEnvelope` for source/target/channel policy.
+
+The current `PipeTransport` combines message port and backend worker host
+responsibilities. That is acceptable only as transitional code. The target
+shape splits it so adding WebSocket, notebook comms, Unity, or in-process tests
+does not require each transport to know how to construct and step a backend.
 
 ## AppSpec: Declarative Application Contract
 
@@ -1203,8 +1250,8 @@ the target AppSpec startup contract lands.
 
 Under the target names, both actors use the same queued outbound pickup
 contract. App composition distributes `AppSpec` before the transport starts
-moving runtime messages. The runner or transport worker owns the transport
-reference; the frontend does not call `transport.send(...)` directly:
+moving runtime messages. Actor hosts or runners own transport endpoints; the
+backend and frontend actors do not call `transport.send(...)` directly:
 
 ```mermaid
 sequenceDiagram
@@ -1625,8 +1672,9 @@ That composition role may:
 - build, load, or serialize the complete `AppSpec`
 - distribute `AppSpec` to each actor before runtime messaging starts
 - create or resolve a backend source
-- create a transport
+- create transport endpoints or router connections
 - create a frontend
+- create actor hosts/runners for process, thread, and event-loop lifecycle
 - collect actor role/capability handshakes for multi-process deployments
 - connect lifecycle hooks
 - start and stop the event loop
@@ -1634,6 +1682,10 @@ That composition role may:
 It should not own simulator state, frontend presentation state, runtime message
 semantics, or semantic shared resources. Those stay owned by `Backend` or
 `Frontend`.
+
+Actor hosts/runners are subordinate composition objects. They may own operating
+system resources and polling cadence, but they must not become a fourth semantic
+state owner beside `Backend`, `Transport`, and `Frontend`.
 
 ```mermaid
 flowchart TD
@@ -1665,6 +1717,10 @@ docs; update them in the same phase instead of adding long-lived shims.
   `ReplaySession` → `ReplayBackend`, `BufferedSession` → `BufferedBackend`.
 - Keep `PipeTransport` as the concrete pipe variant while introducing
   `Transport` as the protocol name.
+- Split the current `PipeTransport` worker-runner responsibility into a
+  pipe message endpoint and a backend actor host. The endpoint moves messages;
+  the host constructs, initializes, advances, drains, and shuts down the
+  backend.
 - Add a narrow `Frontend` protocol around the runner-independent parts of
   `VispyFrontendWindow`.
 - Rename `SessionCommand` → command-intent payload base; rename `SessionUpdate`
@@ -1679,6 +1735,9 @@ docs; update them in the same phase instead of adding long-lived shims.
 - Remove `SceneReady` / `AppSpecReady` as the initial startup path. `AppSpec`
   is startup input consumed by `Backend.initialize(app_spec)` and
   `Frontend.initialize(app_spec)`.
+- Remove stable transport startup methods such as `poll_bootstrap`; any
+  serialized app-spec delivery for remote actors belongs to startup
+  composition, not the runtime transport protocol.
 - Rename `ScenePatch` to `AppSpecPatch` for runtime declaration changes after
   startup.
 - Update architecture docs to teach `Backend <-> Transport <-> Frontend` and

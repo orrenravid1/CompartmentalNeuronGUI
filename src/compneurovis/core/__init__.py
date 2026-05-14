@@ -1,20 +1,16 @@
+from compneurovis.core.actor import ActorBase, ActorRole
 from compneurovis.core.bindings import AttributeRef, SeriesSpec
 from compneurovis.core.controls import ActionSpec, BoolValueSpec, ChoiceValueSpec, ControlPresentationSpec, ControlSpec, ScalarValueSpec, XYValueSpec
 from compneurovis.core.app import (
+    ActorSpec,
     AppSpec,
-    BackendProtocol,
-    BackendSource,
     DataCatalog,
     DiagnosticsSpec,
-    FrontendProtocol,
-    FrontendSource,
     InteractionCatalog,
     LayoutCatalog,
     LayoutSpec,
     PanelSpec,
     RunSpec,
-    Transport,
-    TransportSource,
     ViewCatalog,
 )
 from compneurovis.core.field import Field
@@ -25,10 +21,11 @@ from compneurovis.core.views import LinePlotViewSpec, StateGraphViewSpec, Morpho
 
 __all__ = [
     "ActionSpec",
+    "ActorBase",
+    "ActorRole",
+    "ActorSpec",
     "AttributeRef",
     "AppSpec",
-    "BackendProtocol",
-    "BackendSource",
     "BoolValueSpec",
     "ChoiceValueSpec",
     "ControlPresentationSpec",
@@ -36,8 +33,6 @@ __all__ = [
     "DataCatalog",
     "DiagnosticsSpec",
     "Field",
-    "FrontendProtocol",
-    "FrontendSource",
     "Geometry",
     "GridGeometry",
     "GridSliceOperatorSpec",
@@ -55,8 +50,6 @@ __all__ = [
     "ScalarValueSpec",
     "StateBinding",
     "SurfaceViewSpec",
-    "Transport",
-    "TransportSource",
     "ViewSpec",
     "ViewCatalog",
     "XYValueSpec",

@@ -1,22 +1,17 @@
 from __future__ import annotations
 
-import multiprocessing as mp
 import sys
 import time
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtGui, QtWidgets
 from PyQt6.QtCore import Qt
-from vispy import app as vispy_app, use
+from vispy import use
 
 use(app="pyqt6", gl="gl+")
 
-from compneurovis._perf import (
-    clear_perf_logging_configuration,
-    configure_perf_logging,
-    perf_log,
-)
+from compneurovis._perf import perf_log
 from compneurovis.core import (
     ActionSpec,
     AppSpec,
@@ -25,7 +20,6 @@ from compneurovis.core import (
     LinePlotViewSpec,
     MorphologyGeometry,
     PanelSpec,
-    RunSpec,
     StateGraphViewSpec,
 )
 from compneurovis.core.app import (
@@ -51,9 +45,7 @@ from compneurovis.frontends.vispy.panels.view3d import (
 )
 from compneurovis.frontends.base import FrontendBase
 from compneurovis.frontends.vispy.view3d.viewport import Viewport3DPanel
-from compneurovis.backends import (
-    resolve_interaction_target_source,
-)
+from compneurovis.hosts import resolve_interaction_target_source
 from compneurovis.messages import (
     CommandPayload,
     EntityClicked,
@@ -70,11 +62,6 @@ from compneurovis.messages import (
     SetControl,
     StatePatch,
     Status,
-)
-from compneurovis.transports import (
-    PipeTransport,
-    Transport,
-    configure_multiprocessing,
 )
 from compneurovis.frontends.vispy.interaction_context import FrontendInteractionContext
 from compneurovis.frontends.vispy.refresh_planning import (
@@ -142,24 +129,16 @@ def _update_type_counts(updates: list[Any]) -> dict[str, int]:
 
 
 class VispyFrontendWindow(QtWidgets.QMainWindow, FrontendBase):
-    def __init__(self, run_spec: RunSpec, *, transport_factory: Callable[..., Transport] | None = None):
+    def __init__(self, *, title: str | None = None, interaction_target: Any = None):
         super().__init__()
         FrontendBase.__init__(self)
-        self.run_spec = run_spec
-        if transport_factory is None:
-            transport_factory = PipeTransport
-        if run_spec.diagnostics is None:
-            clear_perf_logging_configuration()
-        else:
-            configure_perf_logging(run_spec.diagnostics)
-        initial_app_spec = run_spec.app_spec
+        self._title = title
         self.app_spec: AppSpec | None = None
         self.state: dict[str, Any] = {}
-        self.transport: Transport | None = None
         self.refresh_planner: RefreshPlanner | None = None
         self._active_selection_action_id: str | None = None
-        if run_spec.interaction_target is not None:
-            self.interaction_target = resolve_interaction_target_source(run_spec.interaction_target)
+        if interaction_target is not None:
+            self.interaction_target = resolve_interaction_target_source(interaction_target)
         else:
             self.interaction_target = None
 
@@ -193,23 +172,14 @@ class VispyFrontendWindow(QtWidgets.QMainWindow, FrontendBase):
         self.statusBar().showMessage("Starting CompNeuroVis")
         self._show_loading_state()
 
-        if initial_app_spec is not None:
-            self.initialize(initial_app_spec)
-
-        if run_spec.backend is not None:
-            configure_multiprocessing()
-            self.transport = transport_factory(run_spec.backend, run_spec.app_spec, diagnostics=run_spec.diagnostics, parent=self)
-            self.transport.start()
-
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self._poll_transport)
-        self.timer.start(1000 // 60)
-
     def initialize(self, app_spec: AppSpec) -> None:
         self._set_app_spec(app_spec)
 
     def render(self) -> None:
         self.update()
+
+    def shutdown(self) -> None:
+        pass
 
     def paintEvent(self, event) -> None:
         started = time.monotonic()
@@ -262,7 +232,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow, FrontendBase):
         self.app_spec = app_spec
         self.refresh_planner = RefreshPlanner(app_spec)
         self._active_selection_action_id = None
-        self.setWindowTitle(self.run_spec.title or app_spec.active_layout().title)
+        self.setWindowTitle(self._title or app_spec.active_layout().title)
         for control in app_spec.interactions.controls.values():
             self.state.setdefault(control.resolved_state_key(), control.default_value())
 
@@ -826,38 +796,19 @@ class VispyFrontendWindow(QtWidgets.QMainWindow, FrontendBase):
             duration_ms=round((time.monotonic() - started) * 1000.0, 3),
         )
 
-    def _poll_transport(self) -> None:
-        poll_started = time.monotonic()
-        timer_gap_ms = None if self._last_poll_started_s is None else round((poll_started - self._last_poll_started_s) * 1000.0, 3)
-        self._last_poll_started_s = poll_started
-        if self.transport is None:
-            if self._dirty_line_plot_views:
-                self._flush_due_line_plot_refreshes(now=poll_started)
-            if self._dirty_view_3d_targets:
-                self._flush_due_view_3d_refreshes(now=poll_started)
-            if self._dirty_state_graph_views:
-                self._flush_due_state_graph_refreshes(now=poll_started)
-            return
-        if self.app_spec is None:
-            bootstrap_app_spec = self.transport.poll_bootstrap()
-            if bootstrap_app_spec is not None:
-                self.initialize(bootstrap_app_spec)
-        messages = self.transport.poll()
-        self._handle_update_messages(messages, poll_started=poll_started, timer_gap_ms=timer_gap_ms)
-        self._flush_outbound_messages()
+    def flush_due_refreshes(self, *, now: float) -> None:
+        if self._dirty_line_plot_views:
+            self._flush_due_line_plot_refreshes(now=now)
+        if self._dirty_view_3d_targets:
+            self._flush_due_view_3d_refreshes(now=now)
+        if self._dirty_state_graph_views:
+            self._flush_due_state_graph_refreshes(now=now)
 
     def handle(self, message: Message[MessagePayload]) -> None:
         self._handle_update_messages([message], poll_started=time.monotonic(), timer_gap_ms=None)
 
     def _emit_command(self, command: CommandPayload) -> None:
         self.emit_command(command)
-        self._flush_outbound_messages()
-
-    def _flush_outbound_messages(self) -> None:
-        if self.transport is None:
-            return
-        for message in self.take_outbound_messages():
-            self.transport.send(message)
 
     def _handle_update_messages(
         self,
@@ -992,14 +943,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow, FrontendBase):
                 pending_status = msg
                 sys.stderr.write(f"{msg.rstrip()}\n")
                 sys.stderr.flush()
-                if self.transport is not None and getattr(self.transport, "_dead", False):
+                # Error payloads are rendered as status text by the frontend actor.
                     # Worker process died — stop polling and surface the error clearly.
-                    self.timer.stop()
-                    self.transport = None
-                    sys.stderr.write(f"{msg.rstrip()}\n")
-                    sys.stderr.flush()
-                    QtWidgets.QMessageBox.critical(self, "Backend error", msg)
-                    return
         flush_pending_field_appends()
         has_line_plot_targets = any(target.kind == "line_plot" for target in pending_targets)
         has_view_3d_targets = any(target.kind in VIEW_3D_TARGET_KINDS for target in pending_targets)
@@ -1016,12 +961,7 @@ class VispyFrontendWindow(QtWidgets.QMainWindow, FrontendBase):
             self.statusBar().showMessage(pending_status)
         perf_log(
             "frontend",
-            "poll_transport",
-            transport_mode=getattr(self.transport, "_mode", None),
-            transport_payload_count=getattr(self.transport, "_last_poll_payload_count", None),
-            transport_poll_truncated=getattr(self.transport, "_last_poll_truncated", None),
-            transport_more_pending=getattr(self.transport, "_last_poll_more_pending", None),
-            transport_poll_duration_ms=getattr(self.transport, "_last_poll_duration_ms", None),
+            "handle_messages",
             update_count=len(updates),
             update_types=_update_type_counts(updates),
             coalesced_field_append_count=flushed_field_appends,
@@ -1170,20 +1110,5 @@ class VispyFrontendWindow(QtWidgets.QMainWindow, FrontendBase):
         return bool(handler(entity_id, self._interaction_context()))
 
     def closeEvent(self, event) -> None:
-        self.timer.stop()
-        if self.transport is not None:
-            self.transport.stop()
+        self.shutdown()
         super().closeEvent(event)
-
-
-def run_app(run_spec: RunSpec, *, transport_factory: Callable[..., Transport] | None = None) -> None:
-    if mp.current_process().name != "MainProcess":
-        return
-    qt_app = QtWidgets.QApplication.instance()
-    owns_app = qt_app is None
-    if qt_app is None:
-        qt_app = QtWidgets.QApplication(sys.argv)
-    window = VispyFrontendWindow(run_spec, transport_factory=transport_factory)
-    window.show()
-    if owns_app:
-        vispy_app.run()

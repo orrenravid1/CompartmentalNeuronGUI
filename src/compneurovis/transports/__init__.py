@@ -1,8 +1,12 @@
-from compneurovis.transports.base import Transport
-from compneurovis.transports.pipe import PipeTransport, configure_multiprocessing
+from compneurovis.transports.base import Transport, TransportEndpoint
+from compneurovis.transports.pipe import PipeEndpoint, PipeEndpointPair, make_inprocess_pair, make_pipe_pair, pipe_transport
 
 __all__ = [
-    "PipeTransport",
+    "PipeEndpoint",
+    "PipeEndpointPair",
     "Transport",
-    "configure_multiprocessing",
+    "TransportEndpoint",
+    "make_inprocess_pair",
+    "make_pipe_pair",
+    "pipe_transport",
 ]

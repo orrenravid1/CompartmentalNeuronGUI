@@ -1,402 +1,152 @@
 from __future__ import annotations
 
-import multiprocessing as mp
 import queue
-import threading
 import time
-import traceback
-from multiprocessing import Pipe, Process
+from dataclasses import dataclass
+from multiprocessing import Pipe
+from multiprocessing.connection import Connection
+from typing import Any
 
-from PyQt6 import QtCore
+from compneurovis._perf import perf_log
+from compneurovis.messages import Error, Message, MessagePayload, update_message
 
-from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
-from compneurovis.core.app import AppSpec, DiagnosticsSpec
-from compneurovis.backends.base import BackendBase, BackendSource, resolve_backend_source
-from compneurovis.messages import (
-    CommandMessage,
-    Error,
-    StopBackend,
-    UpdateMessage,
-    command_message,
-    update_message,
-)
-
-DEFAULT_MAX_UPDATE_PAYLOADS_PER_POLL = 16
+DEFAULT_MAX_PAYLOADS_PER_POLL = 16
 DEFAULT_MAX_POLL_DURATION_S = 0.004
 
 
-def _update_type_counts(messages: list[UpdateMessage]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for message in messages:
-        update = message.payload
-        name = type(update).__name__
-        counts[name] = counts.get(name, 0) + 1
-    return counts
+class PipeEndpoint:
+    """One endpoint of a bidirectional local message pipe."""
 
-
-def _update_sample_counts(messages: list[UpdateMessage]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for message in messages:
-        update = message.payload
-        coord_values = getattr(update, "coord_values", None)
-        field_id = getattr(update, "field_id", None)
-        if coord_values is None or field_id is None:
-            continue
-        counts[str(field_id)] = int(getattr(coord_values, "shape", [len(coord_values)])[0])
-    return counts
-
-
-def _sleep_to_backend_cadence(backend: BackendBase, started_at: float) -> None:
-    delay = float(backend.idle_sleep())
-    if delay <= 0:
-        return
-    remaining = delay - (time.monotonic() - started_at)
-    if remaining > 0:
-        time.sleep(remaining)
-
-
-def _apply_perf_logging_configuration(diagnostics: DiagnosticsSpec | None) -> None:
-    if diagnostics is None:
-        clear_perf_logging_configuration()
-    else:
-        configure_perf_logging(diagnostics)
-
-
-def _backend_process(
-    backend_source: BackendSource,
-    provided_app_spec: AppSpec | None,
-    diagnostics: DiagnosticsSpec | None,
-    update_pipe,
-    command_pipe,
-    bootstrap_pipe,
-) -> None:
-    backend: BackendBase | None = None
-    try:
-        _apply_perf_logging_configuration(diagnostics)
-        if provided_app_spec is None:
-            raise ValueError(
-                "No AppSpec provided to the backend worker. Pass app_spec=... in RunSpec."
-            )
-        backend = resolve_backend_source(backend_source)
-        bootstrap_pipe.close()
-        backend.initialize(provided_app_spec)
-        perf_log(
-            "backend_worker",
-            "initialize",
-            backend_type=type(backend).__name__,
-            is_live=backend.is_live(),
-            idle_sleep_s=backend.idle_sleep(),
-        )
-
-        while True:
-            tick_started = time.monotonic()
-            while command_pipe.poll():
-                message = command_pipe.recv()
-                command = message.payload
-                if isinstance(command, StopBackend):
-                    return
-                command_started = time.monotonic()
-                backend.handle(message)
-                perf_log(
-                    "backend_worker",
-                    "handle_command",
-                    command_type=type(command).__name__,
-                    control_id=getattr(command, "control_id", None),
-                    action_id=getattr(command, "action_id", None),
-                    key=getattr(command, "key", None),
-                    entity_id=getattr(command, "entity_id", None),
-                    value=getattr(command, "value", None),
-                    duration_ms=round((time.monotonic() - command_started) * 1000.0, 3),
-                )
-
-            advance_started = time.monotonic()
-            if backend.is_live():
-                backend.advance()
-            advance_ms = round((time.monotonic() - advance_started) * 1000.0, 3)
-
-            messages = backend.take_outbound_messages()
-            if messages:
-                update_pipe.send(messages if len(messages) > 1 else messages[0])
-            perf_log(
-                "backend_worker",
-                "tick",
-                backend_type=type(backend).__name__,
-                is_live=backend.is_live(),
-                advance_ms=advance_ms,
-                emitted_update_count=len(messages),
-                emitted_update_types=_update_type_counts(messages),
-                emitted_field_append_samples=_update_sample_counts(messages),
-            )
-            _sleep_to_backend_cadence(backend, tick_started)
-    except Exception as exc:  # pragma: no cover - safety net for worker errors
-        detail = "".join(traceback.format_exception(exc))
-        perf_log("backend_worker", "error", error_type=type(exc).__name__, message=str(exc))
-        update_pipe.send(update_message(Error(detail)))
-    finally:
-        try:
-            if backend is not None:
-                backend.shutdown()
-        finally:
-            update_pipe.close()
-            command_pipe.close()
-
-
-def _backend_process_queue(
-    backend_source: BackendSource,
-    provided_app_spec: AppSpec | None,
-    diagnostics: DiagnosticsSpec | None,
-    update_queue,
-    command_queue,
-    bootstrap_queue,
-    stop_event=None,
-) -> None:
-    backend: BackendBase | None = None
-    try:
-        _apply_perf_logging_configuration(diagnostics)
-        if provided_app_spec is None:
-            raise ValueError(
-                "No AppSpec provided to the backend worker. Pass app_spec=... in RunSpec."
-            )
-        backend = resolve_backend_source(backend_source)
-        backend.initialize(provided_app_spec)
-        perf_log(
-            "backend_worker",
-            "initialize",
-            backend_type=type(backend).__name__,
-            is_live=backend.is_live(),
-            idle_sleep_s=backend.idle_sleep(),
-            transport_mode="thread",
-        )
-
-        while True:
-            tick_started = time.monotonic()
-            if stop_event is not None and stop_event.is_set():
-                return
-            try:
-                message = command_queue.get_nowait()
-            except queue.Empty:
-                message = None
-            if message is not None:
-                command = message.payload
-                if isinstance(command, StopBackend):
-                    return
-                command_started = time.monotonic()
-                backend.handle(message)
-                perf_log(
-                    "backend_worker",
-                    "handle_command",
-                    transport_mode="thread",
-                    command_type=type(command).__name__,
-                    control_id=getattr(command, "control_id", None),
-                    action_id=getattr(command, "action_id", None),
-                    key=getattr(command, "key", None),
-                    entity_id=getattr(command, "entity_id", None),
-                    value=getattr(command, "value", None),
-                    duration_ms=round((time.monotonic() - command_started) * 1000.0, 3),
-                )
-
-            advance_started = time.monotonic()
-            if backend.is_live():
-                backend.advance()
-            advance_ms = round((time.monotonic() - advance_started) * 1000.0, 3)
-
-            messages = backend.take_outbound_messages()
-            if messages:
-                update_queue.put(messages if len(messages) > 1 else messages[0])
-            perf_log(
-                "backend_worker",
-                "tick",
-                backend_type=type(backend).__name__,
-                is_live=backend.is_live(),
-                transport_mode="thread",
-                advance_ms=advance_ms,
-                emitted_update_count=len(messages),
-                emitted_update_types=_update_type_counts(messages),
-                emitted_field_append_samples=_update_sample_counts(messages),
-            )
-            _sleep_to_backend_cadence(backend, tick_started)
-    except Exception as exc:  # pragma: no cover - safety net for worker errors
-        detail = "".join(traceback.format_exception(exc))
-        perf_log("backend_worker", "error", transport_mode="thread", error_type=type(exc).__name__, message=str(exc))
-        update_queue.put(update_message(Error(detail)))
-    finally:
-        if backend is not None:
-            backend.shutdown()
-
-
-class PipeTransport(QtCore.QObject):
     def __init__(
         self,
-        backend: BackendSource,
-        provided_app_spec: AppSpec | None = None,
-        diagnostics: DiagnosticsSpec | None = None,
-        parent=None,
+        *,
+        inbound: Connection | queue.Queue,
+        outbound: Connection | queue.Queue,
+        mode: str,
+        name: str,
     ) -> None:
-        super().__init__(parent)
-        if isinstance(backend, BackendBase):
-            raise TypeError(
-                "PipeTransport requires a Backend subclass or top-level zero-argument factory. "
-                "Do not pass an already-created backend instance."
-            )
-        self.backend = backend
-        self.provided_app_spec = provided_app_spec
-        self.diagnostics = diagnostics
-        self._mode = "pipe"
-        self._dead = False
-        self._children = ()
-        self.thread = None
-        self._stop_event = None
-        self._max_update_payloads_per_poll = DEFAULT_MAX_UPDATE_PAYLOADS_PER_POLL
-        self._max_poll_duration_s = DEFAULT_MAX_POLL_DURATION_S
-        self._last_poll_payload_count = 0
-        self._last_poll_truncated = False
-        self._last_poll_more_pending = False
-        self._last_poll_duration_ms = 0.0
-        self.bootstrap_parent = None
-        self._bootstrap_queue = None
-        try:
-            self.update_parent, update_child = Pipe()
-            self.command_child, command_parent = Pipe()
-            self.command_parent = command_parent
-            bootstrap_parent, bootstrap_child = Pipe(duplex=False)
-            self.bootstrap_parent = bootstrap_parent
-            self.process = Process(
-                target=_backend_process,
-                args=(backend, provided_app_spec, diagnostics, update_child, self.command_child, bootstrap_child),
-            )
-            self._children = (update_child, self.command_child, bootstrap_child)
-        except PermissionError:
-            self._mode = "thread"
-            self.process = None
-            self.update_parent = queue.Queue()
-            self.command_parent = queue.Queue()
-            self._bootstrap_queue = queue.SimpleQueue()
-            self._stop_event = threading.Event()
-            self.thread = threading.Thread(
-                target=_backend_process_queue,
-                args=(backend, provided_app_spec, diagnostics, self.update_parent, self.command_parent, self._bootstrap_queue, self._stop_event),
-                daemon=True,
-            )
+        self._inbound = inbound
+        self._outbound = outbound
+        self.mode = mode
+        self.name = name
+        self.dead = False
+        self.max_payloads_per_poll = DEFAULT_MAX_PAYLOADS_PER_POLL
+        self.max_poll_duration_s = DEFAULT_MAX_POLL_DURATION_S
+        self.last_payload_count = 0
+        self.last_poll_truncated = False
+        self.last_more_pending = False
+        self.last_poll_duration_ms = 0.0
 
-    def start(self) -> None:
-        if self._mode == "thread":
-            self.thread.start()
-        else:
-            self.process.start()
-            for child in self._children:
-                child.close()
-
-    def poll_bootstrap(self) -> AppSpec | None:
-        if self._mode == "pipe":
-            if self.bootstrap_parent is not None and self.bootstrap_parent.poll():
-                return self.bootstrap_parent.recv()
-            return None
-        else:
-            if self._bootstrap_queue is not None:
-                try:
-                    return self._bootstrap_queue.get_nowait()
-                except queue.Empty:
-                    pass
-            return None
-
-    def poll(self) -> list[UpdateMessage]:
-        poll_started = time.monotonic()
-        messages: list[UpdateMessage] = []
+    def poll(self) -> list[Message[MessagePayload]]:
+        started = time.monotonic()
+        messages: list[Message[MessagePayload]] = []
         payload_count = 0
         truncated = False
         more_pending = False
 
-        def append_payload(payload) -> None:
+        def append_payload(payload: Any) -> None:
             if isinstance(payload, list):
                 messages.extend(payload)
             else:
                 messages.append(payload)
 
-        if self._mode == "pipe":
+        if self.mode == "pipe":
             try:
-                while not self._dead:
-                    if payload_count >= self._max_update_payloads_per_poll or time.monotonic() - poll_started >= self._max_poll_duration_s:
+                while not self.dead:
+                    if payload_count >= self.max_payloads_per_poll or time.monotonic() - started >= self.max_poll_duration_s:
                         truncated = True
-                        more_pending = self.update_parent.poll()
+                        more_pending = self._inbound.poll()
                         break
-                    if not self.update_parent.poll():
+                    if not self._inbound.poll():
                         break
-                    append_payload(self.update_parent.recv())
+                    append_payload(self._inbound.recv())
                     payload_count += 1
             except (BrokenPipeError, EOFError, OSError) as exc:
-                self._dead = True
-                messages.append(update_message(Error(f"Worker process ended unexpectedly: {exc}")))
+                self.dead = True
+                messages.append(update_message(Error(f"Pipe endpoint {self.name!r} ended unexpectedly: {exc}")))
         else:
             while True:
-                if payload_count >= self._max_update_payloads_per_poll or time.monotonic() - poll_started >= self._max_poll_duration_s:
+                if payload_count >= self.max_payloads_per_poll or time.monotonic() - started >= self.max_poll_duration_s:
                     truncated = True
-                    more_pending = not self.update_parent.empty()
+                    more_pending = not self._inbound.empty()
                     break
                 try:
-                    append_payload(self.update_parent.get_nowait())
+                    append_payload(self._inbound.get_nowait())
                     payload_count += 1
                 except queue.Empty:
                     break
-        duration_ms = round((time.monotonic() - poll_started) * 1000.0, 3)
-        self._last_poll_payload_count = payload_count
-        self._last_poll_truncated = truncated
-        self._last_poll_more_pending = more_pending
-        self._last_poll_duration_ms = duration_ms
+
+        self.last_payload_count = payload_count
+        self.last_poll_truncated = truncated
+        self.last_more_pending = more_pending
+        self.last_poll_duration_ms = round((time.monotonic() - started) * 1000.0, 3)
         perf_log(
             "transport",
             "poll",
-            mode=self._mode,
+            endpoint=self.name,
+            mode=self.mode,
             payload_count=payload_count,
-            update_count=len(messages),
-            update_types=_update_type_counts(messages),
-            field_append_samples=_update_sample_counts(messages),
+            message_count=len(messages),
             truncated=truncated,
             more_pending=more_pending,
-            duration_ms=duration_ms,
+            duration_ms=self.last_poll_duration_ms,
         )
         return messages
 
-    def send(self, message: CommandMessage) -> None:
-        command = message.payload
+    def send(self, message: Message[MessagePayload]) -> None:
         perf_log(
             "transport",
             "send",
-            mode=self._mode,
-            command_type=type(command).__name__,
-            control_id=getattr(command, "control_id", None),
-            action_id=getattr(command, "action_id", None),
-            key=getattr(command, "key", None),
-            entity_id=getattr(command, "entity_id", None),
-            value=getattr(command, "value", None),
+            endpoint=self.name,
+            mode=self.mode,
+            intent=message.intent,
+            message_type=type(message.payload).__name__,
         )
-        if self._mode == "pipe":
-            self.command_parent.send(message)
+        if self.mode == "pipe":
+            self._outbound.send(message)
         else:
-            self.command_parent.put(message)
+            self._outbound.put(message)
 
-    def stop(self) -> None:
-        if self._mode == "thread":
-            if self.thread is not None and self.thread.is_alive():
-                self._stop_event.set()
-                self.command_parent.put(command_message(StopBackend()))
-                self.thread.join(timeout=1)
-            return
-
-        if self.process.is_alive():
-            try:
-                self.send(command_message(StopBackend()))
-                self.process.join(1)
-            except Exception:
-                pass
-        if self.process.is_alive():
-            self.process.terminate()
-            self.process.join()
-        self.update_parent.close()
-        self.command_parent.close()
-        if self.bootstrap_parent is not None:
-            self.bootstrap_parent.close()
+    def close(self) -> None:
+        for endpoint in (self._inbound, self._outbound):
+            close = getattr(endpoint, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except OSError:
+                    pass
 
 
-def configure_multiprocessing() -> None:
-    mp.freeze_support()
-    mp.set_start_method("spawn", force=True)
+@dataclass(slots=True)
+class PipeEndpointPair:
+    left: PipeEndpoint
+    right: PipeEndpoint
+
+
+def make_pipe_pair(*, left_name: str = "left", right_name: str = "right") -> PipeEndpointPair:
+    left_inbound, right_outbound = Pipe(duplex=False)
+    right_inbound, left_outbound = Pipe(duplex=False)
+    return PipeEndpointPair(
+        left=PipeEndpoint(inbound=left_inbound, outbound=left_outbound, mode="pipe", name=left_name),
+        right=PipeEndpoint(inbound=right_inbound, outbound=right_outbound, mode="pipe", name=right_name),
+    )
+
+
+def make_inprocess_pair(*, left_name: str = "left", right_name: str = "right") -> PipeEndpointPair:
+    left_inbound: queue.Queue = queue.Queue()
+    right_inbound: queue.Queue = queue.Queue()
+    return PipeEndpointPair(
+        left=PipeEndpoint(inbound=left_inbound, outbound=right_inbound, mode="inprocess", name=left_name),
+        right=PipeEndpoint(inbound=right_inbound, outbound=left_inbound, mode="inprocess", name=right_name),
+    )
+
+
+def pipe_transport(id_a: str, id_b: str):
+    """Return a TransportFactory that creates a bidirectional pipe between two actors."""
+    def factory(actors):
+        pair = make_pipe_pair(left_name=id_a, right_name=id_b)
+        return {id_a: pair.left, id_b: pair.right}
+    return factory
+
+
+__all__ = ["PipeEndpoint", "PipeEndpointPair", "make_inprocess_pair", "make_pipe_pair", "pipe_transport"]

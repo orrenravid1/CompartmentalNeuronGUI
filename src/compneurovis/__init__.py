@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from importlib import import_module
 
-from compneurovis.actors import MessageActor
-from compneurovis.backends import BackendProtocol, BackendBase, BackendSource, HistoryCaptureMode
+from compneurovis.backends import BackendBase, HistoryCaptureMode
 from compneurovis.builders import ReplayBackend, build_replay_app, build_surface_app, grid_field
 from compneurovis.core import (
     ActionSpec,
+    ActorBase,
+    ActorRole,
+    ActorSpec,
     AttributeRef,
     AppSpec,
     BoolValueSpec,
@@ -18,8 +20,6 @@ from compneurovis.core import (
     DataCatalog,
     DiagnosticsSpec,
     Field,
-    FrontendProtocol,
-    FrontendSource,
     Geometry,
     GridGeometry,
     GridSliceOperatorSpec,
@@ -41,7 +41,8 @@ from compneurovis.core import (
     ViewCatalog,
     XYValueSpec,
 )
-from compneurovis.frontends import FrontendBase, VispyFrontendWindow, run_app
+from compneurovis.frontends import FrontendBase, VispyFrontendHost, VispyFrontendWindow
+from compneurovis.run import run_app
 from compneurovis.messages import (
     CommandMessage,
     Message,
@@ -53,15 +54,16 @@ from compneurovis.messages import (
     message_type_for_payload,
     update_message,
 )
-from compneurovis.transports import PipeTransport, Transport
+from compneurovis.transports import PipeEndpoint, Transport, pipe_transport
 
 __all__ = [
     "ActionSpec",
+    "ActorBase",
+    "ActorRole",
+    "ActorSpec",
     "AttributeRef",
     "AppSpec",
-    "BackendProtocol",
     "BackendBase",
-    "BackendSource",
     "BoolValueSpec",
     "ChoiceValueSpec",
     "CommandMessage",
@@ -70,9 +72,7 @@ __all__ = [
     "DataCatalog",
     "DiagnosticsSpec",
     "Field",
-    "FrontendProtocol",
     "FrontendBase",
-    "FrontendSource",
     "Geometry",
     "GridGeometry",
     "GridSliceOperatorSpec",
@@ -82,14 +82,13 @@ __all__ = [
     "LayoutSpec",
     "LinePlotViewSpec",
     "Message",
-    "MessageActor",
     "MessagePayload",
     "MessageType",
     "MorphologyGeometry",
     "MorphologyViewSpec",
     "OperatorSpec",
     "PanelSpec",
-    "PipeTransport",
+    "PipeEndpoint",
     "ReplayBackend",
     "RunSpec",
     "ScalarValueSpec",
@@ -101,6 +100,7 @@ __all__ = [
     "UpdateMessage",
     "ViewCatalog",
     "ViewSpec",
+    "VispyFrontendHost",
     "VispyFrontendWindow",
     "XYValueSpec",
     "build_replay_app",
@@ -109,6 +109,7 @@ __all__ = [
     "grid_field",
     "make_message",
     "message_type_for_payload",
+    "pipe_transport",
     "run_app",
     "update_message",
     "NeuronAppSpecBuilder",

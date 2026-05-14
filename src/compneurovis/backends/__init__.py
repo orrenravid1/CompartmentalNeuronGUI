@@ -1,17 +1,9 @@
-from compneurovis.backends.base import (
-    BackendProtocol,
-    BackendBase,
-    BackendSource,
-    resolve_backend_source,
-    resolve_interaction_target_source,
-)
+from compneurovis.backends.base import BackendBase
+from compneurovis.backends.host import BackendHost
 from compneurovis.backends.history import HistoryCaptureMode
 
 __all__ = [
-    "BackendProtocol",
     "BackendBase",
-    "BackendSource",
+    "BackendHost",
     "HistoryCaptureMode",
-    "resolve_backend_source",
-    "resolve_interaction_target_source",
 ]

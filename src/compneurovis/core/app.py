@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Protocol, TypeAlias, runtime_checkable
-
-if TYPE_CHECKING:
-    from compneurovis.messages import Message, MessagePayload
+from typing import Any, TypeAlias
 
 from compneurovis.core.controls import ActionSpec, ControlSpec
+from compneurovis.core.actor import ActorBase, ActorRole, ActorSource
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry
 from compneurovis.core.operators import OperatorSpec
@@ -404,48 +402,18 @@ class AppSpec:
         self.interactions.controls[control_id] = replace(self.interactions.controls[control_id], **updates)
 
 
-@runtime_checkable
-class BackendProtocol(Protocol):
-    def initialize(self, app_spec: AppSpec) -> None: ...
-    def advance(self) -> None: ...
-    def handle(self, message: Message[MessagePayload]) -> None: ...
-    def take_outbound_messages(self) -> list[Message[MessagePayload]]: ...
-    def is_live(self) -> bool: ...
-    def idle_sleep(self) -> float: ...
-    def shutdown(self) -> None: ...
-
-
-@runtime_checkable
-class FrontendProtocol(Protocol):
-    def initialize(self, app_spec: AppSpec) -> None: ...
-    def handle(self, message: Message[MessagePayload]) -> None: ...
-    def take_outbound_messages(self) -> list[Message[MessagePayload]]: ...
-    def render(self) -> None: ...
-    def close(self) -> None: ...
-
-
-@runtime_checkable
-class Transport(Protocol):
-    def start(self) -> None: ...
-    def send(self, message: Message[MessagePayload]) -> None: ...
-    def poll(self) -> list[Message[MessagePayload]]: ...
-    def stop(self) -> None: ...
-    def poll_bootstrap(self) -> AppSpec | None: ...
-
-
-BackendSource: TypeAlias = type[BackendProtocol] | Callable[[], BackendProtocol]
-FrontendSource: TypeAlias = type[FrontendProtocol] | Callable[..., FrontendProtocol]
-TransportSource: TypeAlias = type[Transport] | Callable[..., Transport]
+@dataclass(slots=True)
+class ActorSpec:
+    id: str
+    role: ActorRole
+    host_source: Any  # ActorHostSource: Callable[[AppSpec, TransportEndpoint | None], Startable]
 
 
 @dataclass(slots=True)
 class RunSpec:
     app_spec: AppSpec | None = None
-    backend: BackendSource | None = None
-    transport: TransportSource | None = None
-    frontend: FrontendSource | None = None
-    interaction_target: Any = None
-    title: str | None = None
+    actors: list[ActorSpec] = field(default_factory=list)
+    transport: Any | None = None  # TransportFactory: Callable[[list[ActorSpec]], dict[str, TransportEndpoint]]
     diagnostics: DiagnosticsSpec | None = None
 
 

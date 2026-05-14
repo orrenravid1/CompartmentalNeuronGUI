@@ -1,4 +1,4 @@
-from compneurovis.frontends.vispy.frontend import VispyFrontendWindow, run_app
+from compneurovis.frontends.vispy.frontend import VispyFrontendWindow
+from compneurovis.frontends.vispy.host import VispyFrontendHost
 
-__all__ = ["VispyFrontendWindow", "run_app"]
-
+__all__ = ["VispyFrontendHost", "VispyFrontendWindow"]

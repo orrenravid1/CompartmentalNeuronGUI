@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from compneurovis.core import Field, LayoutSpec, AppSpec
-from compneurovis.actors import MessageActor
+from compneurovis.core import ActorBase, ActorRole
 from compneurovis.backends import BackendBase
 from compneurovis.frontends import FrontendBase
 from compneurovis.messages import (
@@ -128,7 +128,7 @@ def make_dummy_backend() -> DummyBackend:
     return DummyBackend()
 
 
-def test_backend_and_frontend_share_message_actor_contract():
+def test_backend_and_frontend_share_actor_contract():
     class DummyFrontend(FrontendBase):
         def handle(self, message) -> None:
             del message
@@ -136,8 +136,10 @@ def test_backend_and_frontend_share_message_actor_contract():
     backend = DummyBackend()
     frontend = DummyFrontend()
 
-    assert isinstance(backend, MessageActor)
-    assert isinstance(frontend, MessageActor)
+    assert isinstance(backend, ActorBase)
+    assert isinstance(frontend, ActorBase)
+    assert backend.role is ActorRole.BACKEND
+    assert frontend.role is ActorRole.FRONTEND
 
     backend.emit(update_message(Status("ready", 0)))
     frontend.emit_command(SetControl("demo", 3.0))
