@@ -1017,12 +1017,101 @@ Runtime follow-up:
 - keep `ResourceRef`, `Snapshot`, and resource transport separate from the base
   transport until real large/lazy state workflows force them
 
+Transport follow-up:
+
+- `InProcessTransport` is explicitly **not** a target. The backend always lives
+  in a subprocess — that is the design invariant for NEURON, Jaxley, and any
+  heavy simulator. In-process transport would only matter if backend and
+  frontend shared a process, which they deliberately do not.
+- The transport axis is: **what IPC/network mechanism crosses the process
+  boundary?** The two targets are:
+  - `PipeTransport` — local subprocess, current path
+  - `WebSocketTransport` — remote subprocess, WSL backend, or notebook kernel
+    talking to a browser or notebook frontend
+- The inline API's subprocess isolation mechanic (`_cnv_script_worker` +
+  endpoint flag) stays identical for WebSocket. The only change is what
+  endpoint type is passed to the backend worker and what the frontend host
+  connects over.
+- Notebook support is a frontend + transport addition, not a special backend
+  case. A notebook kernel spawns the backend subprocess the same way the
+  desktop path does; the frontend renders in the notebook cell over a WebSocket
+  or notebook comm transport.
+
 Authoring follow-up:
 
 - start concrete trace/control/action/selection bindings before any generic
   `Capability` abstraction
 - keep backend subclassing as an advanced escape hatch, not the primary public
   authoring path
+
+### Next: Simulator Attach APIs (`cnv.neuron.attach`, `cnv.jaxley.attach`)
+
+The inline sugar API (`cnv.trace/control/action/show`) works for pure-Python
+models but cannot express the value of the NEURON or Jaxley backends: morphology
+visualization, fast bulk voltage sampling via `h.PtrVector`, click-to-trace
+segment selection, and proper simulator dt handling. The current `NeuronBackend`
+subclass approach delivers all of that but requires scientists to rewrite their
+model into a framework class — exactly what the proposal's "Native Attachment
+Contract" says to avoid.
+
+The next authoring step is a `cnv.neuron.attach()` API:
+
+```python
+from neuron import h
+import compneurovis.neuron as cnv_neuron
+
+# Build model normally — no framework class required
+soma = h.Section(name="soma")
+soma.insert("hh")
+stim = h.IClamp(soma(0.5))
+stim.amp = 0.1
+
+app = cnv_neuron.attach(
+    sections=[soma],
+    step=lambda: h.fadvance(),
+    time=lambda: float(h.t),
+)
+app.control("IClamp (nA)", get=lambda: stim.amp, set=lambda v: setattr(stim, "amp", v), min=-0.2, max=0.5)
+app.show(title="HH attach")
+```
+
+What `attach()` provides that the plain inline API cannot:
+
+| Feature | inline API | attach API |
+|---|---|---|
+| Subprocess isolation | yes | yes |
+| Arbitrary Python traces | yes | yes |
+| Morphology 3-D view | no | yes — auto-built from sections |
+| Bulk voltage sampling | no | yes — `h.PtrVector` |
+| Click-to-trace segment | no | yes |
+| NEURON dt / display_dt | manual via `speed=` | automatic |
+
+#### Design
+
+`cnv.neuron.attach()` returns an adapter object that:
+
+1. Accepts existing NEURON section handles — no rewriting the model
+2. Calls `NeuronAppSpecBuilder` to auto-build morphology geometry and AppSpec
+   from the supplied sections, just as `NeuronBackend.build_startup_app_spec()`
+   does today
+3. Accepts optional `.trace()` / `.control()` / `.action()` calls for extra
+   bindings on top of the default voltage display and trace view
+4. Wraps everything in the same subprocess isolation as the inline API:
+   `_attach_script_worker` sets an endpoint flag, re-runs the user script,
+   and drives a `NeuronBackend`-derived actor via `BackendHost`
+
+The subprocess mechanics are identical to the inline API:
+- top-level `_attach_script_worker` function (picklable by name)
+- module-level endpoint flag checked in `.show()` to choose role
+- `mp.current_process().name == "MainProcess"` guard for the orchestrator branch
+- `BrokenPipeError` catch on window close
+
+The adapter lowers to a `NeuronBackend` subclass generated or composed at
+`.show()` time from the collected handles and bindings — the subclass is an
+implementation detail, never a public authoring surface.
+
+Same shape will apply to `cnv.jaxley.attach()` once the NEURON version is
+proven.
 
 ## Validation Questions
 
