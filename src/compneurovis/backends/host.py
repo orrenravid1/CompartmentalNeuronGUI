@@ -3,8 +3,8 @@ from __future__ import annotations
 from compneurovis.backends.base import BackendBase
 from compneurovis.core.actor import ActorSource
 from compneurovis.core.app import AppSpec
-from compneurovis.hosts import ActorHost
-from compneurovis.messages import StopBackend
+from compneurovis.core.hosts import ActorHost
+from compneurovis.core.messages import StopBackend
 
 
 class BackendHost(ActorHost):

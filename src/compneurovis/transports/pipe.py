@@ -7,8 +7,8 @@ from multiprocessing import Pipe
 from multiprocessing.connection import Connection
 from typing import Any
 
-from compneurovis._perf import perf_log
-from compneurovis.messages import Error, Message, MessagePayload, update_message
+from compneurovis.core._perf import perf_log
+from compneurovis.core.messages import Error, Message, MessagePayload, update_message
 
 DEFAULT_MAX_PAYLOADS_PER_POLL = 16
 DEFAULT_MAX_POLL_DURATION_S = 0.004
@@ -132,21 +132,16 @@ def make_pipe_pair(*, left_name: str = "left", right_name: str = "right") -> Pip
     )
 
 
-def make_inprocess_pair(*, left_name: str = "left", right_name: str = "right") -> PipeEndpointPair:
-    left_inbound: queue.Queue = queue.Queue()
-    right_inbound: queue.Queue = queue.Queue()
-    return PipeEndpointPair(
-        left=PipeEndpoint(inbound=left_inbound, outbound=right_inbound, mode="inprocess", name=left_name),
-        right=PipeEndpoint(inbound=right_inbound, outbound=left_inbound, mode="inprocess", name=right_name),
-    )
-
-
 def pipe_transport(id_a: str, id_b: str):
-    """Return a TransportFactory that creates a bidirectional pipe between two actors."""
+    """TransportFactory for two actors in separate processes (multiprocessing.Pipe).
+
+    Use when at least one actor runs in a subprocess (e.g., ActorProcess).
+    For actors that share a process, use inprocess_transport instead.
+    """
     def factory(actors):
         pair = make_pipe_pair(left_name=id_a, right_name=id_b)
         return {id_a: pair.left, id_b: pair.right}
     return factory
 
 
-__all__ = ["PipeEndpoint", "PipeEndpointPair", "make_inprocess_pair", "make_pipe_pair", "pipe_transport"]
+__all__ = ["PipeEndpoint", "PipeEndpointPair", "make_pipe_pair", "pipe_transport"]

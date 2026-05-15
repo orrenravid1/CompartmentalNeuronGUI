@@ -406,7 +406,8 @@ class AppSpec:
 class ActorSpec:
     id: str
     role: ActorRole
-    host_source: Any  # ActorHostSource: Callable[[AppSpec, TransportEndpoint | None], Startable]
+    host_source: Any = None  # ActorHostSource: Callable[[AppRuntime, TransportEndpoint | None], Startable] | None
+    runs_in_foreground: bool = False
 
 
 @dataclass(slots=True)

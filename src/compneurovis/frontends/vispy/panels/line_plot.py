@@ -8,7 +8,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt6 import QtWidgets
 
-from compneurovis._perf import perf_log
+from compneurovis.core._perf import perf_log
 from compneurovis.core.field import Field
 from compneurovis.core.views import LinePlotViewSpec
 from compneurovis.frontends.vispy.view_inputs.bindings import resolve_binding

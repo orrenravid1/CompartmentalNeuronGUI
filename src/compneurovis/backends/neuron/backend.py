@@ -10,7 +10,7 @@ from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.app import AppSpec
 from compneurovis.core.views import LinePlotViewSpec
 from compneurovis.backends import BackendBase, HistoryCaptureMode
-from compneurovis.messages import EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
+from compneurovis.core.messages import EntityClicked, FieldAppend, FieldReplace, InvokeAction, KeyPressed, Reset, SetControl, StatePatch, Status
 from compneurovis.backends.neuron.app_spec import NeuronAppSpecBuilder
 
 

@@ -729,6 +729,253 @@ can participate:
 Nothing in the current refactor breaks this path. The next step that forces it
 is writing the first non-Python transport (WebSocket backend or Unity frontend).
 
+### 2026-05-15: Inline Sugar API
+
+#### Goal
+
+Heavy simulation backends such as NEURON cannot share a process with the Qt
+event loop. Single-process approaches (step thread + Qt in same process) cause
+slider unresponsiveness and eventual freezes due to GIL contention and Qt event
+starvation. The inline API provides a matplotlib-style module-level interface
+that hides subprocess isolation entirely:
+
+```python
+import compneurovis.inline as cnv
+
+cnv.trace("Membrane voltage", read={"Vm": lambda: model.v_mv}, x=lambda: t_ms[0])
+cnv.control("tau", label="Membrane tau (ms)",
+            get=lambda: model.tau, set=lambda v: setattr(model, "tau", v),
+            min=2.0, max=80.0)
+cnv.action("reset", label="Reset state", fn=_reset, resets_fields=True)
+cnv.show(step=_step, dt_ms=DT_MS, speed=lambda: max(1, int(display_dt_ms[0] / DT_MS)),
+         title="LIF Model")
+```
+
+No `if __name__ == '__main__':` guard. No threading or subprocess management
+visible to the user.
+
+#### Architecture: Existing Infrastructure Was Sufficient
+
+The key result is that the backend/transport/frontend architecture required
+**zero changes** to support the inline API. The only new type is `InlineBackend`,
+a thin `BackendBase` subclass that wraps the user's step function and bindings.
+Everything else — `BackendHost`, `VispyFrontendHost`, `AppRuntime`,
+`PipeEndpoint`, `make_pipe_pair` — is used as-is.
+
+```
+User script
+  └── cnv.trace / cnv.control / cnv.action  →  InlineApp (binding accumulator)
+  └── cnv.show()
+        ├── [main process]  build AppSpec → spawn backend subprocess
+        │                   AppRuntime + VispyFrontendHost + VispyFrontendWindow
+        └── [subprocess]    InlineBackend(BackendBase) + BackendHost
+```
+
+`InlineApp` is not a runtime actor. It is a binding accumulator: it collects
+`TraceBinding`, `ControlBinding`, and `ActionBinding` descriptors and builds
+the `AppSpec`. `show()` is the single entry point that orchestrates the run.
+
+#### `InlineBackend` — the only new type
+
+```python
+class InlineBackend(BackendBase):
+    def handle(self, message):
+        # dispatch SetControl → c.set(value)
+        # dispatch InvokeAction → a.fn(); emit FieldReplace if resets_fields
+
+    def advance(self):
+        # run N steps, _sample() per step
+        # drain accumulators → emit_update(FieldAppend)
+
+    def idle_sleep(self) -> float:
+        return 1.0 / 60.0
+```
+
+`BackendHost.step()` calls `receive()` → `advance()` → `flush()` on each tick.
+The host already handles `StopBackend`, pipe draining, and outbound flushing —
+`InlineBackend` only contains simulation-specific logic.
+
+#### Accumulator Pattern
+
+`_sample()` is called per simulation step, appending to an in-memory buffer.
+`_drain_message()` is called once per frame and emits a single `FieldAppend`
+with shape `(n_series, n_steps_this_frame)`. This batches all steps into one
+message per frame rather than one message per step, keeping pipe traffic bounded
+regardless of simulation speed.
+
+`resets_fields=True` on an `ActionBinding` causes the backend to immediately
+emit `FieldReplace` for all traces after invoking the action, clearing the
+frontend's accumulated data when the x-axis jumps backward on reset.
+
+#### `show()` — three flat branches
+
+```python
+def show(self, *, step, dt_ms, speed, title):
+    self._title = title
+    if _backend_endpoint is not None:
+        # subprocess: _cnv_script_worker set the endpoint — run as backend actor
+        backend = InlineBackend(traces=..., controls=..., actions=..., ...)
+        host = BackendHost(endpoint=_backend_endpoint)
+        host.start(lambda: backend, self._build_app_spec())
+        try:
+            while not host.should_stop():
+                started = time.monotonic()
+                host.step()
+                remaining = host.idle_sleep() - (time.monotonic() - started)
+                if remaining > 0:
+                    time.sleep(remaining)
+        except (BrokenPipeError, OSError):
+            pass  # frontend closed the pipe — exit cleanly
+        finally:
+            host.stop()
+
+    elif mp.current_process().name == "MainProcess":
+        # main process: orchestrate — spawn backend subprocess, run Qt frontend
+        script_path = inspect.stack()[-1].filename
+        app_spec = self._build_app_spec()
+        pair = make_pipe_pair(left_name="frontend", right_name="backend")
+        configure_multiprocessing()
+        backend_process = mp.Process(target=_cnv_script_worker, args=(script_path, pair.right))
+        backend_process.start()
+        pair.right.close()
+        runtime = AppRuntime(app_spec=app_spec)
+        frontend_host = VispyFrontendHost(actor_source=VispyFrontendWindow,
+                                          runtime=runtime, endpoint=pair.left)
+        frontend_host.start()
+        frontend_host.run()   # blocks until Qt exits
+        frontend_host.stop()
+        backend_process.join(timeout=2)
+        if backend_process.is_alive():
+            backend_process.terminate()
+            backend_process.join()
+
+    # else: subprocess bootstrap re-import (Windows spawn fixup_main) — do nothing
+```
+
+The three branches map exactly to the three roles in the architecture:
+backend actor, orchestrator + frontend actor, and no-op.
+
+#### Subprocess Isolation Mechanics
+
+The challenge is spawning a subprocess from the user's top-level script without
+an `if __name__ == '__main__':` guard. Three mechanisms work together:
+
+**1. `_cnv_script_worker` at module top level**
+
+```python
+def _cnv_script_worker(script_path: str, endpoint: PipeEndpoint) -> None:
+    import compneurovis.inline as _inline
+    _inline._backend_endpoint = endpoint
+    _inline._app = _inline.InlineApp()   # reset bootstrap pollution (see below)
+    runpy.run_path(script_path, run_name="__main__")
+```
+
+Must be a top-level module function — `multiprocessing.spawn` pickles the
+target by qualified name (`compneurovis.inline._cnv_script_worker`). A lambda
+or nested function would not be picklable. Do not move or rename.
+
+**2. Module-level endpoint flag**
+
+```python
+_backend_endpoint: PipeEndpoint | None = None
+```
+
+`_cnv_script_worker` sets this before `runpy.run_path` re-runs the user script.
+`show()` checks it first to decide role. `None` in the main process; set in the
+subprocess worker.
+
+**3. Windows spawn bootstrap pitfall**
+
+On Windows, `multiprocessing.spawn` calls `_fixup_main_from_path()` which
+**re-runs the user's script as `__main__` before calling the target function**.
+At that moment `_backend_endpoint` is still `None`. Without the
+`mp.current_process().name == "MainProcess"` guard, `show()` would attempt to
+spawn a second subprocess, causing:
+
+```
+RuntimeError: An attempt has been made to start a new process before the
+current process has finished its bootstrapping phase.
+```
+
+The `name == "MainProcess"` check correctly routes:
+- `_backend_endpoint is not None` → backend actor (worker has fired)
+- `name == "MainProcess"` → orchestrator (spawn child, start frontend)
+- else → bootstrap re-import no-op (child process, before worker fires)
+
+**4. Bootstrap binding pollution**
+
+The bootstrap re-run executes all `cnv.trace/control/action` calls, populating
+`_app` with binding indices 0–N. Then `_cnv_script_worker` fires and
+`runpy.run_path` runs the script again, appending indices N+1–2N. The backend
+would send `field_3_...` but the frontend's `AppSpec` was built from `field_0_...`,
+causing a `KeyError`. Fix: reset `_app` in `_cnv_script_worker` before
+`runpy.run_path` so the real backend run starts from a clean slate.
+
+#### BrokenPipeError on Close
+
+When the user closes the Qt window, `VispyFrontendHost.stop()` closes the
+frontend pipe endpoint. The backend's next `BackendHost.flush()` →
+`endpoint.send()` throws `BrokenPipeError`. The backend loop wraps the host
+step in `try / except (BrokenPipeError, OSError)` so the subprocess exits
+cleanly rather than printing a traceback.
+
+#### Qt Import Isolation
+
+`VispyFrontendWindow` and `VispyFrontendHost` import vispy with
+`use(app="pyqt6", gl="gl+")` at module level. These imports are deferred to
+the `MainProcess` branch of `show()` so the backend subprocess never initializes
+Qt. All other imports (`BackendBase`, `BackendHost`, `AppRuntime`,
+`configure_multiprocessing`, `PipeEndpoint`) are top-level in `inline.py`.
+
+### 2026-05-15: Line Plot Refresh Rate — Critical Performance Finding
+
+#### Root Cause of QTimer Gap Doubling
+
+Setting `max_refresh_hz=60.0` on `LinePlotViewSpec` causes the Qt poll loop to
+degrade and eventually freeze. Mechanism:
+
+1. Every 16ms poll call triggers `_flush_due_line_plot_refreshes()` (rate limit
+   satisfied at 60Hz interval = 16.7ms).
+2. `host.refresh()` calls pyqtgraph `setData()` + `setXRange()` which takes
+   5–15ms per panel (CPU-side Qt widget update, not GL).
+3. QTimer fires 16ms after `_poll()` returns. If `_poll()` took 15ms, next gap
+   = 31ms instead of 16ms.
+4. At 31ms gap, the rate limit is still satisfied → render fires again → gap
+   grows to 47ms, 63ms, 78ms...
+5. Backend sends at 60Hz (16ms); frontend polls at ~32Hz. Pipe backlog grows
+   from 3 msgs/poll → 15+ msgs/poll. Eventually the pipe buffer fills, the
+   backend blocks on `send()`, and the window freezes.
+
+#### Fix
+
+Never set `max_refresh_hz` above 30 in `LinePlotViewSpec`. Leave it `None` to
+use the frontend default (`DEFAULT_LINE_PLOT_MAX_REFRESH_HZ = 15.0`).
+
+At 15Hz (66ms interval), most polls skip the render. The pyqtgraph refresh
+cost amortizes across 4+ polls, keeping average poll time well under 16ms.
+Data still accumulates at full backend rate; only the visual cadence drops
+to ~15Hz, which is smooth enough for live simulation visualization.
+
+The main branch's `DEFAULT_LINE_PLOT_MAX_REFRESH_HZ = 15.0` constant exists
+precisely because this problem was encountered before. The sugar API must
+respect this default and must not override it upward.
+
+#### Diagnostic Pattern
+
+When troubleshooting poll loop performance, add per-poll timing:
+
+```python
+if total_ms > 5.0 or gap_ms > 40.0 or _poll_count[0] % 120 == 0:
+    print(f"[frontend] poll={_poll_count[0]:6d}  gap={gap_ms:6.1f}ms  msgs={len(msgs):3d}  recv={t_recv_ms:5.2f}ms  total={total_ms:6.2f}ms")
+```
+
+Symptom pattern for refresh-rate-induced freeze:
+- Gaps grow in multiples of 16ms: 16 → 31 → 47 → 63 → 78...
+- `msgs` per poll grows proportionally (1× → 2× → 3×...)
+- Window becomes unresponsive to sliders/buttons
+- Eventually gaps plateau at a high value and window freezes entirely
+- Backend logs may continue (it is blocked on pipe send, not crashed)
+
 ## Current Open Work
 
 Immediate cleanup:

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import signal
 import sys
 import time
-from typing import Any
 
 from PyQt6 import QtCore, QtWidgets
 from vispy import app as vispy_app
 
 from compneurovis.core.actor import ActorSource
-from compneurovis.core.app import AppSpec
+from compneurovis.core.runtime import AppRuntime
 from compneurovis.frontends.host import FrontendHost
 from compneurovis.frontends.vispy.frontend import VispyFrontendWindow
 from compneurovis.transports import TransportEndpoint
@@ -21,19 +21,23 @@ class VispyFrontendHost(FrontendHost):
     def __init__(
         self,
         actor_source: ActorSource,
-        app_spec: AppSpec,
+        runtime: AppRuntime,
         endpoint: TransportEndpoint | None = None,
     ) -> None:
         super().__init__(endpoint=endpoint)
         self._actor_source = actor_source
-        self._app_spec = app_spec
+        self._runtime = runtime
+        self._qapp: QtWidgets.QApplication | None = None
         self.timer: QtCore.QTimer | None = None
         self._last_step_started_s: float | None = None
 
     def start(self) -> None:
         if QtWidgets.QApplication.instance() is None:
-            QtWidgets.QApplication(sys.argv)
-        window = super().start(self._actor_source, self._app_spec)
+            self._qapp = QtWidgets.QApplication(sys.argv)
+        else:
+            self._qapp = QtWidgets.QApplication.instance()
+        signal.signal(signal.SIGINT, lambda *_: self._qapp.quit())
+        window = super().start(self._actor_source, self._runtime.app_spec)
         assert isinstance(window, VispyFrontendWindow)
         self.timer = QtCore.QTimer(window)
         self.timer.timeout.connect(self.step)

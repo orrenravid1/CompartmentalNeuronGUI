@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Callable, ClassVar, Deque, TypeAlias
 
 if TYPE_CHECKING:
     from compneurovis.core.app import AppSpec
-    from compneurovis.messages import Message, MessagePayload
+    from compneurovis.core.messages import Message, MessagePayload
 
 
 class ActorRole(str, Enum):

@@ -6,10 +6,10 @@ import traceback
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol, TypeAlias
 
-from compneurovis._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
+from compneurovis.core._perf import clear_perf_logging_configuration, configure_perf_logging, perf_log
 from compneurovis.core.actor import ActorBase, ActorSource
 from compneurovis.core.app import AppSpec, DiagnosticsSpec
-from compneurovis.messages import Error, update_message
+from compneurovis.core.messages import Error, update_message
 from compneurovis.transports import TransportEndpoint
 
 
@@ -20,7 +20,7 @@ class Startable(Protocol):
     def stop(self) -> None: ...
 
 
-# Callable[[AppSpec, TransportEndpoint | None], Startable]
+# Callable[[AppRuntime, TransportEndpoint | None], Startable]
 ActorHostSource: TypeAlias = Callable[..., Startable]
 # Callable[[list[ActorSpec]], dict[str, TransportEndpoint]]
 TransportFactory: TypeAlias = Callable[..., dict[str, TransportEndpoint]]
@@ -54,6 +54,27 @@ def configure_diagnostics(diagnostics: DiagnosticsSpec | None) -> None:
         clear_perf_logging_configuration()
     else:
         configure_perf_logging(diagnostics)
+
+
+class ConnectionSlotHost:
+    """Holds a transport endpoint open for a remotely-connected actor.
+
+    Used by run_orchestrator for actors with host_source=None. Does not spawn
+    or own any process — the remote actor connects independently.
+    """
+
+    def __init__(self, endpoint: TransportEndpoint | None = None) -> None:
+        self.endpoint = endpoint
+
+    def start(self) -> None:
+        pass
+
+    def run(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        if self.endpoint is not None:
+            self.endpoint.close()
 
 
 class ActorHost:
@@ -170,6 +191,7 @@ __all__ = [
     "ActorHost",
     "ActorHostSource",
     "ActorProcess",
+    "ConnectionSlotHost",
     "Startable",
     "TransportFactory",
     "configure_diagnostics",

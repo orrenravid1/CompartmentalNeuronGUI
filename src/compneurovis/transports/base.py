@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol, TypeAlias, runtime_checkable
 
-from compneurovis.messages import Message, MessagePayload
+from compneurovis.core.messages import Message, MessagePayload
 
 
 @runtime_checkable

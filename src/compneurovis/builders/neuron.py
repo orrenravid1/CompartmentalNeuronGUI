@@ -7,7 +7,7 @@ from compneurovis.backends.host import BackendHost
 from compneurovis.core.actor import ActorRole, ActorSource
 from compneurovis.core.app import ActorSpec, AppSpec, RunSpec
 from compneurovis.frontends.vispy import VispyFrontendHost, VispyFrontendWindow
-from compneurovis.hosts import ActorProcess
+from compneurovis.core.hosts import ActorProcess
 from compneurovis.transports import pipe_transport
 
 

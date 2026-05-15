@@ -4,7 +4,7 @@ from functools import partial
 
 from compneurovis.core import ActionSpec, AppSpec, RunSpec
 from compneurovis.backends import BackendBase
-from compneurovis.messages import FieldReplace, Reset
+from compneurovis.core.messages import FieldReplace, Reset
 
 
 class ReplayBackend(BackendBase):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from compneurovis.core.actor import ActorSource
 from compneurovis.core.app import AppSpec
 from compneurovis.frontends.base import FrontendBase
-from compneurovis.hosts import ActorHost
+from compneurovis.core.hosts import ActorHost
 
 
 class FrontendHost(ActorHost):

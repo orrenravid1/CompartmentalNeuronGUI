@@ -5,7 +5,7 @@ import time
 import numpy as np
 from PyQt6 import QtWidgets
 
-from compneurovis._perf import perf_log
+from compneurovis.core._perf import perf_log
 from compneurovis.core.field import Field
 from compneurovis.core.views import StateGraphViewSpec
 from compneurovis.frontends.vispy.renderers.colormaps import _colormap_samples

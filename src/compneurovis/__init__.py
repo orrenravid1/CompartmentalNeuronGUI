@@ -11,6 +11,7 @@ from compneurovis.core import (
     ActorBase,
     ActorRole,
     ActorSpec,
+    AppRuntime,
     AttributeRef,
     AppSpec,
     BoolValueSpec,
@@ -42,8 +43,8 @@ from compneurovis.core import (
     XYValueSpec,
 )
 from compneurovis.frontends import FrontendBase, VispyFrontendHost, VispyFrontendWindow
-from compneurovis.run import run_app
-from compneurovis.messages import (
+from compneurovis.core.run import run_app, run_orchestrator, run_as_backend, run_as_frontend
+from compneurovis.core.messages import (
     CommandMessage,
     Message,
     MessagePayload,
@@ -54,13 +55,14 @@ from compneurovis.messages import (
     message_type_for_payload,
     update_message,
 )
-from compneurovis.transports import PipeEndpoint, Transport, pipe_transport
+from compneurovis.transports import PipeEndpoint, Transport, inprocess_transport, pipe_transport
 
 __all__ = [
     "ActionSpec",
     "ActorBase",
     "ActorRole",
     "ActorSpec",
+    "AppRuntime",
     "AttributeRef",
     "AppSpec",
     "BackendBase",
@@ -89,6 +91,7 @@ __all__ = [
     "OperatorSpec",
     "PanelSpec",
     "PipeEndpoint",
+    "inprocess_transport",
     "ReplayBackend",
     "RunSpec",
     "ScalarValueSpec",
@@ -111,6 +114,9 @@ __all__ = [
     "message_type_for_payload",
     "pipe_transport",
     "run_app",
+    "run_orchestrator",
+    "run_as_backend",
+    "run_as_frontend",
     "update_message",
     "NeuronAppSpecBuilder",
     "NeuronBackend",

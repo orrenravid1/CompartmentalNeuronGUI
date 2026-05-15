@@ -11,7 +11,7 @@ from vispy import use
 
 use(app="pyqt6", gl="gl+")
 
-from compneurovis._perf import perf_log
+from compneurovis.core._perf import perf_log
 from compneurovis.core import (
     ActionSpec,
     AppSpec,
@@ -45,8 +45,8 @@ from compneurovis.frontends.vispy.panels.view3d import (
 )
 from compneurovis.frontends.base import FrontendBase
 from compneurovis.frontends.vispy.view3d.viewport import Viewport3DPanel
-from compneurovis.hosts import resolve_interaction_target_source
-from compneurovis.messages import (
+from compneurovis.core.hosts import resolve_interaction_target_source
+from compneurovis.core.messages import (
     CommandPayload,
     EntityClicked,
     FieldAppend,

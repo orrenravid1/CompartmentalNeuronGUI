@@ -16,6 +16,7 @@ from compneurovis.core.app import (
 from compneurovis.core.field import Field
 from compneurovis.core.geometry import Geometry, GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
+from compneurovis.core.runtime import AppRuntime
 from compneurovis.core.state import StateBinding
 from compneurovis.core.views import LinePlotViewSpec, StateGraphViewSpec, MorphologyViewSpec, SurfaceViewSpec, ViewSpec
 
@@ -24,6 +25,7 @@ __all__ = [
     "ActorBase",
     "ActorRole",
     "ActorSpec",
+    "AppRuntime",
     "AttributeRef",
     "AppSpec",
     "BoolValueSpec",

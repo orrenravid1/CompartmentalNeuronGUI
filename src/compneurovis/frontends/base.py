@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from compneurovis.core.actor import ActorBase, ActorRole
-from compneurovis.messages import CommandPayload, command_message
+from compneurovis.core.messages import CommandPayload, command_message
 
 
 class FrontendBase(ActorBase):
