@@ -38,7 +38,7 @@ class DummyBackend(BackendBase):
     def is_live(self) -> bool:
         return False
 
-    def advance(self) -> None:
+    def update(self) -> None:
         return None
 
     def handle(self, message) -> None:
@@ -59,7 +59,7 @@ class DummyInteractionBackend(BackendBase):
     def is_live(self) -> bool:
         return False
 
-    def advance(self) -> None:
+    def update(self) -> None:
         return None
 
     def handle(self, message) -> None:
@@ -76,7 +76,7 @@ class FailingInitializeBackend(BackendBase):
     def is_live(self) -> bool:
         return False
 
-    def advance(self) -> None:
+    def update(self) -> None:
         return None
 
     def handle(self, message) -> None:
@@ -92,7 +92,7 @@ class FastLiveBackend(BackendBase):
     def initialize(self, app_spec: AppSpec) -> None:
         pass
 
-    def advance(self) -> None:
+    def update(self) -> None:
         self.tick_count += 1
         self.emit_update(Status(f"tick:{self.tick_count}", 0))
 
@@ -112,7 +112,7 @@ class FloodLiveBackend(BackendBase):
     def initialize(self, app_spec: AppSpec) -> None:
         pass
 
-    def advance(self) -> None:
+    def update(self) -> None:
         self.tick_count += 1
         self.emit_update(Status(f"tick:{self.tick_count}", 0))
 

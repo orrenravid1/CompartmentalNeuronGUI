@@ -513,8 +513,8 @@ class NeuronBackend(BackendBase, ABC):
                     )
                 )
 
-    def advance(self) -> None:
-        """Advance the simulation and emit incremental frontend updates."""
+    def update(self) -> None:
+        """Update the simulation and emit incremental frontend updates."""
 
         from neuron import h
 

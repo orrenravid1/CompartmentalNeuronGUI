@@ -2,20 +2,26 @@
 
 from compneurovis.adapters.base import (
     ActionBinding,
+    ActionHandle,
     ControlBinding,
-    InlineAdapterBase,
+    ControlHandle,
+    InlineSourceBase,
     SeriesReaders,
     TraceBinding,
+    TraceHandle,
     append_bindings_to_app_spec,
     emit_trace_updates,
 )
 
 __all__ = [
     "ActionBinding",
+    "ActionHandle",
     "ControlBinding",
-    "InlineAdapterBase",
+    "ControlHandle",
+    "InlineSourceBase",
     "SeriesReaders",
     "TraceBinding",
+    "TraceHandle",
     "append_bindings_to_app_spec",
     "emit_trace_updates",
 ]

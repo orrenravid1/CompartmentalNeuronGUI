@@ -536,8 +536,8 @@ class JaxleyBackend(BackendBase, ABC):
                     )
                 )
 
-    def advance(self) -> None:
-        """Advance the simulation and emit incremental frontend updates."""
+    def update(self) -> None:
+        """Update the simulation and emit incremental frontend updates."""
 
         t_target = self._time + self.sim_ms_per_frame()
         steps: list[Any] = []

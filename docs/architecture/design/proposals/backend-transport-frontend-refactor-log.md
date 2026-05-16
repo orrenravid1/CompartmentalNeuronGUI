@@ -1451,18 +1451,479 @@ Files that need updating to match the new API. `sine_wave.py` is the only one
 that should stay as raw `RunSpec` — it is the canonical "bespoke" authoring
 reference and proves the low-level API still works.
 
-| File | Current pattern | Target pattern |
+| File | Status | Notes |
 |---|---|---|
-| `scratch/lif_inline.py` | `cnv.show(step=_step, dt_ms=DT_MS, speed=..., title=...)` | `cnv.monitor(...)` declares execution; `cnv.show()` empty |
-| `scratch/sine_wave_inline.py` | `cnv.show(step=_step, dt_ms=DT_MS, title=...)` | same |
-| `scratch/hh_neuron_inline.py` | `cnv.show(step=lambda: h.fadvance(), dt_ms=0.025, speed=100, title=...)` | same |
-| `scratch/hh_neuron_attach.py` | `from backends.neuron.attach import attach` + `app.show(title=...)` | `cnv.neuron.attach(...)` + `cnv.monitor(app)` + `cnv.show()` |
-| `scratch/hh_jaxley_attach.py` | `from backends.jaxley.attach import attach` + `app.show(title=...)` | `cnv.jaxley.attach(...)` + `cnv.monitor(app)` + `cnv.show()` |
+| `scratch/lif_inline.py` | ✅ done | `cnv.source(_advance); cnv.show()` — auto-sample path |
+| `scratch/hh_neuron_inline.py` | ✅ done | `cnv.source(_advance(ctx))` — explicit `ctx.sample()` inside inner loop |
+| `scratch/sine_wave_inline.py` | ✅ done | `cnv.source(_step); cnv.show()` — simplest case |
+| `scratch/hh_neuron_attach.py` | ✅ done | `cnv.source(cnv.neuron.attach(...)); cnv.show()` |
+| `scratch/hh_jaxley_attach.py` | ✅ done | `cnv.source(cnv.jaxley.attach(...)); cnv.show()` |
 
 `sine_wave.py` — keep as-is. Raw `RunSpec` + `BackendBase` subclass. This is the
 "bespoke" authoring path — it already compiles down to `RunSpec` + `run_app` and
 requires no changes. Its verbosity is intentional: it shows the full machinery
 that the sugar API hides.
+
+### 2026-05-16: Source API, Adapter Base, And Routing
+
+#### What changed from the design
+
+The 2026-05-15 design doc used `cnv.monitor(simulation)` as the public entry
+point. Implementation settled on `cnv.source(simulation)`. The word "monitor"
+implied passive observation; "source" better captures that the argument is an
+execution source — something that will be driven and sampled. `cnv.show()` is
+still empty.
+
+#### Everything Compiles To RunSpec
+
+All authoring paths now funnel into the same `RunSpec → start_app → AppHandle`
+pipeline:
+
+| Authoring path | Compilation path |
+|---|---|
+| Raw `RunSpec` + `BackendBase` subclass | `run_app(run_spec)` directly |
+| `cnv.source(fn); cnv.show()` | `InlineAdapterBase.launch()` → `RunSpec` → `start_app` |
+| `NeuronAttachAdapter.launch()` | same |
+| `JaxleyAttachAdapter.launch()` | same |
+
+`start_app` is canonical. `run_app = start_app().wait()`. There is no authoring
+path that bypasses `RunSpec`.
+
+#### `cnv.source()` — The Public Entry Point
+
+`cnv.source(source_like)` is the single module-level entry point for registering
+an execution source. It returns the adapter object, which owns trace/control/action
+accumulation for that source:
+
+```python
+sim = cnv.source(_advance)          # callable
+sim = cnv.source(run_generator())   # iterator/generator
+sim.trace("Voltage", read=lambda: float(seg.v), x=lambda: float(h.t), ...)
+sim.control("clamp_amp", get=..., set=..., min=..., max=...)
+sim.action("reset", fn=lambda: h.finitialize(-65.0), resets_fields=True)
+cnv.show()
+```
+
+`cnv.source()` is backed by `InlineApp._sources` — a list of
+`InlineAdapterBase` instances accumulated before `cnv.show()` fires. Multiple
+`cnv.source()` calls declare multiple sources; `cnv.show()` compiles them all
+(multi-source compilation not yet routed, but the accumulation is in place).
+
+#### `SourceStepContext` — Dual Sampling Model
+
+`SourceStepContext` is passed to the user's advance function. It solves the
+problem of sources that produce multiple samples per tick (e.g. running 100
+`h.fadvance()` calls per frame and wanting a data point at each step, not just
+at the end).
+
+Two usage patterns, both valid:
+
+**Explicit sampling** — for sources with an inner loop over multiple sub-steps:
+
+```python
+def _advance(ctx):
+    for _ in range(100):
+        h.fadvance()
+        ctx.sample()   # records all registered traces at this h.t
+```
+
+Used in `scratch/hh_neuron_inline.py`. All 100 voltage samples are captured and
+batched into a single frame update. The x-axis tracks `h.t` correctly at each
+sub-step.
+
+**Auto-sampling** — for sources that do not call `ctx.sample()`:
+
+```python
+def _advance():       # no ctx argument
+    for _ in range(max(1, int(display_dt_ms[0] / DT_MS))):
+        model.step(DT_MS)
+        t_ms[0] += DT_MS
+```
+
+`InlineBackend.advance()` detects that `sampled` is still `False` after
+`step_fn` returns and calls `ctx.sample()` once automatically. Used in
+`scratch/lif_inline.py`. One data point per frame — correct for models where
+only the end-of-advance state matters.
+
+`_callable_accepts_step_context` inspects the signature to decide which wrapper
+to use — callables with zero required positional arguments get a
+`step_without_context` wrapper that ignores the ctx; callables with one required
+positional argument are called directly with the ctx.
+
+#### `InlineAdapterBase` — Shared Adapter Base
+
+All domain adapters (`PythonSourceAdapter`, `NeuronAttachAdapter`,
+`JaxleyAttachAdapter`) share a common base in `compneurovis/adapters/base.py`:
+
+- `trace()`, `control()`, `action()` accumulator methods
+- `TraceBinding`, `ControlBinding`, `ActionBinding` dataclasses — defined once,
+  used everywhere; no more copy-paste across attach files
+- `emit_trace_updates()` — shared utility that drains accumulated trace data and
+  emits `FieldAppend` / `FieldReplace` messages
+- `append_bindings_to_app_spec()` — merges bindings into an existing `AppSpec`
+  (used by `CoordinatorSourceAdapter`)
+- `launch()` — environment auto-detection → `RunSpec` → `start_app().wait()` or
+  notebook variant
+
+The single customisation point is `_make_backend() -> BackendBase`. The rest of
+the lifecycle is inherited. NEURON's `_AttachBackend` and Jaxley's backend both
+subclass `NeuronBackend` / their own base, but their adapters share the
+`InlineAdapterBase` contract entirely.
+
+#### `CoordinatorBackend` + `RemoteActorRef` — Control Routing
+
+Two topologies require routing controls to actors other than the local inline
+backend:
+
+**Local coordinator topology** — multiple local sources, controls on one should
+affect another:
+
+```python
+primary = cnv.source(neural_sim)
+body    = cnv.source(body_sim)
+coord   = cnv.coordinator(primary, body)
+coord.control("sync_dt", ...)   # this control routes to primary and/or body
+```
+
+`CoordinatorBackend` wraps a primary backend. On `SetControl` / `InvokeAction`,
+it first checks its own control list. If matched, it applies the control and uses
+a `contextvars.ContextVar` (`_current_coordinator_backend`) to expose itself as
+the routing context — allowing the control's lambda to call
+`remote.command(...)` without needing an explicit backend reference. If not
+matched, it forwards the message to `primary`.
+
+**Remote actor topology** — controls that target an actor in another process:
+
+```python
+neural = cnv.remote_actor("neural_backend", role=ActorRole.BACKEND)
+coord  = cnv.coordinator(cnv.source(local_sim), neural)
+coord.control("stim_amp",
+    get=lambda: ...,
+    set=lambda v: neural.set_control("stim_amp", v))
+```
+
+`RemoteActorRef` is a named handle for an actor hosted outside the current
+Python source. `command()` routes via either:
+1. A direct `send` callback (if provided at construction — useful for testing)
+2. `_current_coordinator_backend.get().emit_routed_command(actor_id, command)` —
+   the `CoordinatorBackend` emits a `RoutedCommand` wrapper that the transport
+   layer forwards to the named actor
+
+The `contextvars.ContextVar` pattern means `RemoteActorRef.command()` does not
+need an explicit backend reference injected at construction — it picks up the
+current coordinator from the call stack.
+
+#### Combined Sources — Future Design
+
+The `CoordinatorSourceAdapter` is the beginning of combined-source support.
+A combined source aggregates multiple adapters — traces from each are available
+independently, but controls and actions on the combined source can target any
+of them:
+
+```python
+neural  = cnv.source(neural_sim)
+physics = cnv.source(physics_sim)
+combined = cnv.coordinator(neural, physics)
+combined.trace("sync_error", read=lambda: neural_state.t - physics_state.t, ...)
+combined.control("dt", set=lambda v: (neural.set_dt(v), physics.set_dt(v)))
+cnv.show()
+```
+
+Current limitation: `InlineApp.show()` raises `NotImplementedError` for multiple
+sources until multi-backend transport routing is implemented. The accumulation
+and topology declaration (`.coordinator(...)`) is fully in place — only the
+`RunSpec` fan-out is pending.
+
+The orchestrator does not own clock synchronization between backends. Independent
+backends advance at their own rate; the user wires synchronization explicitly via
+`CoordinatorBackend` controls/actions if needed.
+
+#### Implementation Files
+
+| File | What changed |
+|---|---|
+| `src/compneurovis/inline.py` | New: `SourceStepContext`, `InlineBackend`, `PythonSourceAdapter`, `RemoteActorRef`, `CoordinatorBackend`, `CoordinatorSourceAdapter`, `InlineApp`, module-level `source/coordinator/remote_actor/show` |
+| `src/compneurovis/adapters/base.py` | New: `InlineAdapterBase`, `TraceBinding`, `ControlBinding`, `ActionBinding`, `emit_trace_updates`, `append_bindings_to_app_spec` |
+| `src/compneurovis/core/hosts.py` | `_script_backend_worker` resets inline session before re-running script; added `resolve_interaction_target_source` |
+| `src/compneurovis/backends/neuron/attach.py` | Inherits `InlineAdapterBase`; `NeuronControlBinding` + `_AttachBackend` replace the old copy-pasted binding code |
+| `scratch/lif_inline.py` | ✅ `cnv.source(_advance); cnv.show()` — auto-sample path |
+| `scratch/hh_neuron_inline.py` | ✅ `cnv.source(_advance(ctx))` with explicit `ctx.sample()` inside inner loop |
+| `scratch/sine_wave_inline.py` | ✅ `cnv.source(_step); cnv.show()` |
+| `scratch/hh_neuron_attach.py` | ✅ `cnv.source(cnv.neuron.attach(...)); cnv.show()` |
+| `scratch/hh_jaxley_attach.py` | ✅ `cnv.source(cnv.jaxley.attach(...)); cnv.show()` |
+
+### 2026-05-16: Relay Architecture, Unified Messaging, And Source Naming
+
+#### Summary
+
+Three interlocking decisions reached in this session. Together they close the
+gap between the authoring layer and the runtime actor hierarchy, and establish
+a clean foundation for arbitrary transport topologies including multi-backend
+and remote actors.
+
+---
+
+#### 1. The Full Architecture — Authoring Layer Over Runtime Layer
+
+Everything the user writes compiles down to the same `RunSpec → start_app →
+AppHandle` pipeline. Two distinct layers now exist:
+
+**Authoring layer** — user-facing, topology-agnostic source objects:
+
+```
+cnv.source(fn)                   → InlineSource(InlineSourceBase)
+cnv.source(cnv.neuron.attach())  → NeuronAttachSource(InlineSourceBase)
+cnv.source(cnv.jaxley.attach())  → JaxleyAttachSource(InlineSourceBase)
+cnv.compose(primary, *rest)      → ComposedSource(InlineSourceBase)
+cnv.remote(actor_ref)            → RemoteSource(InlineSourceBase)
+```
+
+Every authoring-layer object is an `InlineSourceBase`. From the user's
+perspective, these are all "sources" — something to observe, visualize, and
+interact with. The compilation to runtime actors is an implementation detail.
+
+**Runtime layer** — actors that execute inside the transport topology:
+
+```
+InlineSource         → InlineBackend(BackendBase)
+NeuronAttachSource   → NeuronBackend subclass (BackendBase)
+JaxleyAttachSource   → JaxleyBackend subclass (BackendBase)
+ComposedSource       → ComposedBackend(BackendRelayBase)
+RemoteSource         → connection slot / RemoteBackend(BackendBase)  [future]
+```
+
+Every runtime actor is a `BackendBase` (role = BACKEND). The relay/composed
+path happens to use `BackendRelayBase` because it routes rather than simulates,
+but from the transport's perspective it is still a backend actor.
+
+Full top-to-bottom diagram:
+
+```mermaid
+flowchart TD
+    subgraph Authoring["Authoring Layer (inline.py / adapters/)"]
+        IS[InlineSource]
+        NAS[NeuronAttachSource]
+        JAS[JaxleyAttachSource]
+        CS[ComposedSource]
+        RS[RemoteSource]
+        ISB[InlineSourceBase]
+        IS --> ISB
+        NAS --> ISB
+        JAS --> ISB
+        CS --> ISB
+        RS --> ISB
+    end
+
+    subgraph Runtime["Runtime Layer (backends/ / relays/)"]
+        IB[InlineBackend\nBackendBase]
+        NB[NeuronBackend\nBackendBase]
+        JB[JaxleyBackend\nBackendBase]
+        CB[ComposedBackend\nBackendRelayBase]
+        Slot[Connection slot\nfuture]
+    end
+
+    IS -->|_make_backend| IB
+    NAS -->|_make_backend| NB
+    JAS -->|_make_backend| JB
+    CS -->|_make_backend| CB
+    RS -.->|future| Slot
+
+    subgraph Topology["RunSpec Topology"]
+        RS2[RunSpec]
+        AT[AppRuntime]
+        TR[Transport\nRoutedEndpoint]
+        FE[FrontendBase\nVispyFrontendWindow]
+    end
+
+    IB -->|ActorSpec backend| RS2
+    NB -->|ActorSpec backend| RS2
+    JB -->|ActorSpec backend| RS2
+    CB -->|ActorSpec backend| RS2
+    FE -->|ActorSpec frontend| RS2
+    RS2 --> AT
+    RS2 --> TR
+    AT -->|start_app| FE
+    IB <-->|RoutedEndpoint| TR
+    CB <-->|RoutedEndpoint| TR
+    TR <-->|RoutedEndpoint| FE
+```
+
+---
+
+#### 2. Relay Architecture — RelayMixin, Not A Role
+
+The question was whether `relay` is an actor role (symmetric to `backend` and
+`frontend`) or a behavior that certain actors carry. The conclusion: relay is
+behavior, not identity.
+
+**`ActorRole.RELAY` removed.** A relay actor sits on the backend side of the
+transport — it receives commands from the frontend and sends updates toward it.
+Its `role` is therefore `BACKEND`. The `RELAY` variant added ambiguity without
+adding routing power.
+
+**`RelayMixin` — pure behavior mixin, no parent:**
+
+```python
+class RelayMixin:
+    def emit_routed(self: _HasEmit, target_actor_id: str, message: Message[MessagePayload]) -> None:
+        ...  # wraps as RoutedMessage and emits; outer intent mirrors inner
+    def emit_command_routed(self: _HasEmit, target_actor_id: str, command: CommandPayload) -> None:
+        ...  # convenience: wraps command payload and routes
+    def emit_update_routed(self: _HasEmit, target_actor_id: str, update: UpdatePayload) -> None:
+        ...  # convenience: wraps update payload and routes
+```
+
+Relay-ness is detected via `isinstance(actor, RelayMixin)`, not `actor.role`.
+
+**`BackendRelayBase(RelayMixin, BackendBase)`** — named combination for
+backend-side relay actors. Role is `BACKEND` (inherited from `BackendBase`).
+MRO: `BackendRelayBase → RelayMixin → BackendBase → ActorBase`.
+
+**`FrontendRelayBase(RelayMixin, FrontendBase)`** — reserved for future
+frontend-side relay (multi-window sync, selection propagation). Not yet built
+because no multi-process frontend topology exists yet.
+
+Why no shared abstract `RelayBase(ActorBase)` in the hierarchy:
+- Backend relay and frontend relay have different transport relationships
+- Shared abstract would create a diamond through `ActorBase`
+- `isinstance(actor, RelayMixin)` already detects relay-ness cleanly
+- The mixin carries behavior only; identity comes from `BackendBase` or `FrontendBase`
+
+---
+
+#### 3. `RoutedMessage` — Agnostic Message Carrier
+
+Previously `RoutedCommand(CommandPayload)` could only route commands. This was
+inconsistent with the principle that `emit_command` and `emit_update` both live
+on `ActorBase` — any actor can emit either type, so routing should not assume a
+direction.
+
+**`RoutedMessage(MessagePayload)`** replaces `RoutedCommand`:
+
+```python
+@dataclass(frozen=True, slots=True)
+class RoutedMessage(MessagePayload):
+    target_actor_id: str
+    message: Message[MessagePayload]  # inner message — preserves type + intent
+```
+
+Registered as `ROUTED_MESSAGE` allowing both `"command"` and `"update"` intents.
+The outer carrier's intent mirrors the inner message's intent.
+
+Transport handling — transparent unwrapping, receiver sees the original type:
+
+```python
+# _RoutingMixin._route() in transports/routed.py:
+if isinstance(payload, RoutedMessage):
+    return ((payload.target_actor_id, payload.message),)
+```
+
+The target actor receives `Message[SetControl]` (or whatever the inner type
+is) — it never sees `RoutedMessage`. The routing is fully transparent.
+
+`RelayMixin` API for actors that route messages:
+
+```
+emit_routed(target, message)          — generic, any Message
+emit_command_routed(target, command)  — convenience, wraps CommandPayload
+emit_update_routed(target, update)    — convenience, wraps UpdatePayload
+```
+
+---
+
+#### 4. emit_update / emit_command On ActorBase
+
+Both `emit_update` and `emit_command` were moved to `ActorBase`. Previously
+`emit_update` was only on `BackendBase` and `emit_command` only on `FrontendBase`.
+
+Motivation: relay actors need `emit_update` (forwarding backend updates toward
+frontend) and `emit_command` (routing commands to sub-backends). More broadly,
+the architecture supports knowledgeable frontends that emit commands and relay
+actors that emit updates — neither is a backend-only or frontend-only concept.
+
+---
+
+#### 5. Naming — "Adapter" Dropped, "Source" Everywhere
+
+The authoring-layer objects were previously named with "Adapter" (`InlineAdapterBase`,
+`PythonSourceAdapter`, `ComposedSourceAdapter`, etc.). The word "adapter" leaked
+the implementation detail that these objects adapt user code to the runtime actor
+hierarchy. From the user's perspective, and from the architecture's perspective,
+they are simply sources.
+
+Renames:
+
+| Old name | New name |
+|---|---|
+| `InlineAdapterBase` | `InlineSourceBase` |
+| `PythonSourceAdapter` | `InlineSource` |
+| `ComposedSourceAdapter` | `ComposedSource` |
+| `RemoteSourceAdapter` | `RemoteSource` |
+| `JaxleyAttachAdapter` | `JaxleyAttachSource` |
+| `NeuronAttachAdapter` | `NeuronAttachSource` |
+| `CoordinatorBackend` → `RelayActor` → | `ComposedBackend` |
+| `RoutingSpec` → `RelaySpec` (alias kept) | `RelaySpec` |
+
+`CoordinatorBackend` was the first name for the runtime relay actor. It was
+renamed `RelayActor` during the relay architecture work, then renamed again to
+`ComposedBackend` because: (a) the relay role was removed, so "relay" in the
+name was misleading; (b) the actor is specifically the backend produced by
+`cnv.compose()` — `Composed` is the accurate descriptor.
+
+---
+
+#### Current Package Shape
+
+```text
+compneurovis/
+  core/
+    actor.py        ActorRole (BACKEND, FRONTEND), ActorBase
+                    emit_update / emit_command both on ActorBase
+    app.py          AppSpec, RunSpec, RelaySpec (routing table), ActorSpec
+    messages.py     Message, CommandPayload, UpdatePayload,
+                    RoutedMessage (replaces RoutedCommand), all payload types
+    hosts.py        ActorHost, ActorProcess, ScriptBackendProcess,
+                    ThreadBackendHost, AppHandle
+    runtime.py      AppRuntime
+  backends/
+    base.py         BackendBase (update, is_live, idle_sleep)
+    host.py         BackendHost
+    neuron/         NeuronBackend, NeuronAppSpecBuilder, NeuronAttachSource
+    jaxley/         JaxleyBackend, JaxleyAppSpecBuilder, JaxleyAttachSource
+  frontends/
+    base.py         FrontendBase
+    vispy/          VispyFrontendWindow, VispyFrontendHost, NotebookFrontendHost
+  relays/
+    base.py         RelayMixin, BackendRelayBase
+  transports/
+    pipe.py         PipeEndpoint
+    routed.py       RoutedEndpoint, InProcessRoutedEndpoint, routed_transport
+  adapters/
+    base.py         InlineSourceBase, TraceBinding, ControlBinding, ActionBinding
+                    emit_trace_updates, append_bindings_to_app_spec
+  inline.py         InlineSource, InlineBackend, SourceStepContext,
+                    ComposedSource, ComposedBackend, RemoteSource, RemoteActorRef,
+                    InlineApp, module-level source/compose/remote/show
+  _source_runtime.py  SourceRunPlan, build_source_run_plan, launch_source,
+                      build_desktop_run_spec, build_notebook_run_spec
+  neuron.py         public namespace re-export for cnv.neuron
+  jaxley.py         public namespace re-export for cnv.jaxley
+```
+
+---
+
+#### What's Next
+
+- `RemoteSource._make_backend()` — currently raises `NotImplementedError`;
+  full compilation path requires `RemoteBackend(BackendBase)` + connection-slot
+  `ActorSpec` in the `RunSpec`
+- Multi-source `RunSpec` compilation — `InlineApp.show()` raises
+  `NotImplementedError` for multiple sources; fan-in routing via `ComposedBackend`
+  is the path
+- `FrontendRelayBase(RelayMixin, FrontendBase)` — reserved for multi-process
+  frontend coordination (shared time cursor, selection sync, multi-window camera)
+- WebSocket transport — unlocks remote backends (Unity physics + Python neural
+  topology)
 
 ## Validation Questions
 

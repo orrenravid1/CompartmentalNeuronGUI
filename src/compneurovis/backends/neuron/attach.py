@@ -10,7 +10,8 @@ import numpy as np
 from compneurovis.adapters.base import (
     ActionBinding,
     ControlBinding,
-    InlineAdapterBase,
+    ControlHandle,
+    InlineSourceBase,
     TraceBinding,
     emit_trace_updates,
 )
@@ -75,12 +76,13 @@ class _AttachBackend(NeuronBackend):
     def _emit_batch(self, times_array: np.ndarray, steps: list[Any]) -> None:
         super()._emit_batch(times_array, steps)
         for trace in self._provided_traces:
+            trace._begin_frame()
             trace._sample()
-        emit_trace_updates(self, self._provided_traces)
+        emit_trace_updates(self, self._provided_traces, auto_sample=False)
 
-    def advance(self) -> None:
+    def update(self) -> None:
         if self._custom_step_fn is None:
-            super().advance()
+            super().update()
             return
         from neuron import h
 
@@ -99,7 +101,7 @@ class _AttachBackend(NeuronBackend):
         return 1.0 / 60.0
 
 
-class NeuronAttachAdapter(InlineAdapterBase):
+class NeuronAttachSource(InlineSourceBase):
     def __init__(
         self,
         *,
@@ -124,18 +126,10 @@ class NeuronAttachAdapter(InlineAdapterBase):
         set: Callable[[Any], None],
         min: float = 0.0,
         max: float = 1.0,
-    ) -> "NeuronAttachAdapter":
-        self._add_control(
-            NeuronControlBinding(
-                name=name,
-                label=label,
-                get=get,
-                set=set,
-                min=min,
-                max=max,
-            )
-        )
-        return self
+    ) -> ControlHandle:
+        binding = NeuronControlBinding(name=name, label=label, get=get, set=set, min=min, max=max)
+        self._add_control(binding)
+        return ControlHandle(binding)
 
     def _make_backend(self) -> _AttachBackend:
         return _AttachBackend(
@@ -157,13 +151,13 @@ def attach(
     dt: float | None = None,
     v_init: float = -65.0,
     title: str = "CompNeuroVis",
-) -> NeuronAttachAdapter:
+) -> NeuronAttachSource:
     """Attach CompNeuroVis to an existing NEURON model."""
 
     from neuron import h
 
     resolved_dt = float(dt) if dt is not None else float(h.dt)
-    return NeuronAttachAdapter(
+    return NeuronAttachSource(
         sections=list(sections),
         step=step,
         dt=resolved_dt,
@@ -172,4 +166,4 @@ def attach(
     )
 
 
-__all__ = ["NeuronAttachAdapter", "NeuronControlBinding", "attach"]
+__all__ = ["NeuronAttachSource", "NeuronControlBinding", "attach"]

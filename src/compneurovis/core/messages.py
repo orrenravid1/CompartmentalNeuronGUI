@@ -68,9 +68,9 @@ class InvokeAction(CommandPayload):
 
 
 @dataclass(frozen=True, slots=True)
-class RoutedCommand(CommandPayload):
+class RoutedMessage(MessagePayload):
     target_actor_id: str
-    command: CommandPayload
+    message: Message[MessagePayload]
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,7 +172,7 @@ def _message_type(
 RESET = _message_type("reset", Reset, ("command",))
 SET_CONTROL = _message_type("set_control", SetControl, ("command",))
 INVOKE_ACTION = _message_type("invoke_action", InvokeAction, ("command",))
-ROUTED_COMMAND = _message_type("routed_command", RoutedCommand, ("command",))
+ROUTED_MESSAGE = _message_type("routed_message", RoutedMessage, ("command", "update"))
 KEY_PRESSED = _message_type("key_pressed", KeyPressed, ("command",))
 ENTITY_CLICKED = _message_type("entity_clicked", EntityClicked, ("command",))
 STOP_BACKEND = _message_type("stop_backend", StopBackend, ("command",))
@@ -190,7 +190,7 @@ MESSAGE_TYPES: tuple[MessageType[Any], ...] = (
     RESET,
     SET_CONTROL,
     INVOKE_ACTION,
-    ROUTED_COMMAND,
+    ROUTED_MESSAGE,
     KEY_PRESSED,
     ENTITY_CLICKED,
     STOP_BACKEND,

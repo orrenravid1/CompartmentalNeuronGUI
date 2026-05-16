@@ -5,7 +5,8 @@ from __future__ import annotations
 from importlib import import_module
 
 from compneurovis.backends import BackendBase, HistoryCaptureMode
-from compneurovis.inline import coordinator, remote_actor, show, source
+from compneurovis.relays import BackendRelayBase, RelayMixin
+from compneurovis.inline import compose, remote, remote_actor, show, source
 from compneurovis.core import (
     ActionSpec,
     ActorBase,
@@ -33,6 +34,7 @@ from compneurovis.core import (
     MorphologyViewSpec,
     OperatorSpec,
     PanelSpec,
+    RelaySpec,
     RoutingSpec,
     RunSpec,
     ScalarValueSpec,
@@ -68,6 +70,8 @@ __all__ = [
     "AttributeRef",
     "AppSpec",
     "BackendBase",
+    "BackendRelayBase",
+    "RelayMixin",
     "BoolValueSpec",
     "ChoiceValueSpec",
     "CommandMessage",
@@ -82,7 +86,8 @@ __all__ = [
     "GridSliceOperatorSpec",
     "HistoryCaptureMode",
     "InteractionCatalog",
-    "coordinator",
+    "compose",
+    "remote",
     "remote_actor",
     "show",
     "source",
@@ -101,6 +106,7 @@ __all__ = [
     "PipeEndpoint",
     "RoutedEndpoint",
     "inprocess_transport",
+    "RelaySpec",
     "RoutingSpec",
     "RunSpec",
     "ScalarValueSpec",

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Self
+from typing import Any, Callable
 
 import numpy as np
 
@@ -35,6 +35,7 @@ class TraceBinding:
     _view_id: str = field(init=False, default="")
     _buf_x: list = field(init=False, default_factory=list)
     _buf_vals: list = field(init=False, default_factory=list)
+    _sampled_this_frame: bool = field(init=False, default=False)
 
     def _register(self, index: int) -> None:
         self._field_id = f"field_{index}_{self.name}"
@@ -45,10 +46,14 @@ class TraceBinding:
             return {self.name: self.read}
         return self.read
 
+    def _begin_frame(self) -> None:
+        self._sampled_this_frame = False
+
     def _sample(self) -> None:
         series = self._series()
         self._buf_x.append(self.x())
         self._buf_vals.append([fn() for fn in series.values()])
+        self._sampled_this_frame = True
 
     def _drain_message(self):
         if not self._buf_x:
@@ -165,6 +170,49 @@ class ActionBinding:
         return ActionSpec(id=self._action_id, label=self.label)
 
 
+class TraceHandle:
+    """User-facing reference to a registered trace."""
+
+    __slots__ = ("_binding",)
+
+    def __init__(self, binding: TraceBinding) -> None:
+        self._binding = binding
+
+    @property
+    def name(self) -> str:
+        return self._binding.name
+
+    def sample(self) -> None:
+        """Sample this trace now, skipping the auto-sample at end of tick."""
+        self._binding._sample()
+
+
+class ControlHandle:
+    """User-facing reference to a registered control."""
+
+    __slots__ = ("_binding",)
+
+    def __init__(self, binding: ControlBinding) -> None:
+        self._binding = binding
+
+    @property
+    def name(self) -> str:
+        return self._binding.name
+
+
+class ActionHandle:
+    """User-facing reference to a registered action."""
+
+    __slots__ = ("_binding",)
+
+    def __init__(self, binding: ActionBinding) -> None:
+        self._binding = binding
+
+    @property
+    def name(self) -> str:
+        return self._binding.name
+
+
 def append_bindings_to_app_spec(
     app_spec: AppSpec,
     *,
@@ -225,14 +273,16 @@ def append_bindings_to_app_spec(
     return app_spec
 
 
-def emit_trace_updates(backend: BackendBase, traces: list[TraceBinding]) -> None:
+def emit_trace_updates(backend: BackendBase, traces: list[TraceBinding], *, auto_sample: bool = True) -> None:
     for trace in traces:
+        if auto_sample and not trace._sampled_this_frame:
+            trace._sample()
         msg = trace._drain_message()
         if msg is not None:
             backend.emit_update(msg.payload)
 
 
-class InlineAdapterBase:
+class InlineSourceBase:
     """Base for anything that can participate in the inline authoring mode."""
 
     def __init__(self, *, title: str = "CompNeuroVis") -> None:
@@ -242,9 +292,10 @@ class InlineAdapterBase:
         self._actions: list[ActionBinding] = []
         self._handle = None
 
-    def trace(self, name: str, *, read: SeriesReaders, x: Callable[[], float], **kwargs) -> Self:
-        self._add_trace(TraceBinding(name=name, read=read, x=x, **kwargs))
-        return self
+    def trace(self, name: str, *, read: SeriesReaders, x: Callable[[], float], **kwargs) -> TraceHandle:
+        binding = TraceBinding(name=name, read=read, x=x, **kwargs)
+        self._add_trace(binding)
+        return TraceHandle(binding)
 
     def control(
         self,
@@ -255,18 +306,10 @@ class InlineAdapterBase:
         set: Callable[[Any], None],
         min: float = 0.0,
         max: float = 1.0,
-    ) -> Self:
-        self._add_control(
-            ControlBinding(
-                name=name,
-                label=label,
-                get=get,
-                set=set,
-                min=min,
-                max=max,
-            )
-        )
-        return self
+    ) -> ControlHandle:
+        binding = ControlBinding(name=name, label=label, get=get, set=set, min=min, max=max)
+        self._add_control(binding)
+        return ControlHandle(binding)
 
     def action(
         self,
@@ -275,9 +318,10 @@ class InlineAdapterBase:
         label: str,
         fn: Callable[[], None],
         resets_fields: bool = False,
-    ) -> Self:
-        self._add_action(ActionBinding(name=name, label=label, fn=fn, resets_fields=resets_fields))
-        return self
+    ) -> ActionHandle:
+        binding = ActionBinding(name=name, label=label, fn=fn, resets_fields=resets_fields)
+        self._add_action(binding)
+        return ActionHandle(binding)
 
     def show(self):
         return self.launch()

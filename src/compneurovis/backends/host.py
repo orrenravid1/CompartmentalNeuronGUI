@@ -15,7 +15,7 @@ class BackendHost(ActorHost):
     def start(self, actor_source: ActorSource, app_spec: AppSpec) -> BackendBase:
         actor = super().start(actor_source, app_spec)
         if not isinstance(actor, BackendBase):
-            raise TypeError(f"BackendHost expected BackendBase, got {type(actor)!r}")
+            raise TypeError(f"BackendHost expected an BackendBase actor, got {type(actor)!r}")
         return actor
 
     def receive(self) -> None:
@@ -32,21 +32,21 @@ class BackendHost(ActorHost):
         self.receive()
         if self.should_stop():
             return
-        backend = self._backend()
-        if backend.is_live():
-            backend.advance()
+        actor = self._advanceable()
+        if actor.is_live():
+            actor.update()
         self.flush()
 
     def idle_sleep(self) -> float:
-        return self._backend().idle_sleep()
+        return self._advanceable().idle_sleep()
 
     def should_stop(self) -> bool:
         return self._stop_requested
 
-    def _backend(self) -> BackendBase:
+    def _advanceable(self) -> BackendBase:
         actor = self._actor()
         if not isinstance(actor, BackendBase):
-            raise TypeError(f"BackendHost expected BackendBase, got {type(actor)!r}")
+            raise TypeError(f"BackendHost expected an BackendBase actor, got {type(actor)!r}")
         return actor
 
 

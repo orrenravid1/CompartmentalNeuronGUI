@@ -15,12 +15,13 @@ from typing import Any, Callable
 from compneurovis.adapters.base import (
     ActionBinding,
     ControlBinding,
-    InlineAdapterBase,
+    InlineSourceBase,
     TraceBinding,
     append_bindings_to_app_spec,
     emit_trace_updates,
 )
 from compneurovis.backends.base import BackendBase
+from compneurovis.relays.base import BackendRelayBase
 from compneurovis.core.app import (
     AppSpec,
     DataCatalog,
@@ -32,33 +33,28 @@ from compneurovis.core.app import (
 )
 from compneurovis.core.messages import InvokeAction, Message, MessagePayload, SetControl
 from compneurovis.core.actor import ActorRole
-from compneurovis.core.messages import CommandPayload, Reset, RoutedCommand, command_message
+from compneurovis.core.messages import CommandPayload, Reset, command_message
 
 
-_current_coordinator_backend: contextvars.ContextVar["CoordinatorBackend | None"] = contextvars.ContextVar(
-    "current_coordinator_backend",
+_current_relay_actor: contextvars.ContextVar["ComposedBackend | None"] = contextvars.ContextVar(
+    "current_relay_actor",
     default=None,
 )
 
 
 class SourceStepContext:
-    """Per-advance context for sources that produce multiple samples per tick."""
+    """Per-update context for sources that produce multiple samples per tick."""
 
     def __init__(self, traces: list[TraceBinding]) -> None:
         self._traces = traces
-        self._sampled = False
 
     def sample(self) -> None:
         for trace in self._traces:
             trace._sample()
-        self._sampled = True
 
-    def _begin_advance(self) -> None:
-        self._sampled = False
-
-    @property
-    def sampled(self) -> bool:
-        return self._sampled
+    def _begin_update(self) -> None:
+        for trace in self._traces:
+            trace._begin_frame()
 
 
 class InlineBackend(BackendBase):
@@ -98,23 +94,20 @@ class InlineBackend(BackendBase):
                             self.emit_update(trace._replace_message().payload)
                     break
 
-    def advance(self) -> None:
+    def update(self) -> None:
         if self._step_fn is not None and not self._done:
-            self._step_context._begin_advance()
+            self._step_context._begin_update()
             try:
                 self._step_fn(self._step_context)
             except StopIteration:
                 self._done = True
-            else:
-                if not self._step_context.sampled:
-                    self._step_context.sample()
         emit_trace_updates(self, self._traces)
 
     def idle_sleep(self) -> float:
         return self._FRAME_MS / 1000.0
 
 
-class PythonSourceAdapter(InlineAdapterBase):
+class InlineSource(InlineSourceBase):
     """Adapter for a callable or iterator-driven pure-Python source."""
 
     def __init__(self, source_like: Callable[..., None] | Iterator, *, title: str = "CompNeuroVis") -> None:
@@ -175,13 +168,13 @@ class RemoteActorRef:
         if self._send is not None:
             self._send(command)
             return
-        backend = _current_coordinator_backend.get()
-        if backend is None:
+        relay = _current_relay_actor.get()
+        if relay is None:
             raise RuntimeError(
-                "RemoteActorRef without a send callback can only be used while a coordinator "
+                "RemoteActorRef without a send callback can only be used while a relay "
                 "control/action is being applied."
             )
-        backend.emit_routed_command(self.actor_id, command)
+        relay.emit_command_routed(self.actor_id, command)
 
     def set_control(self, control_id: str, value: Any) -> None:
         self.command(SetControl(control_id, value))
@@ -193,8 +186,12 @@ class RemoteActorRef:
         self.command(Reset())
 
 
-class CoordinatorBackend(BackendBase):
-    """Backend wrapper for controls/actions that coordinate a primary source."""
+class ComposedBackend(BackendRelayBase):
+    """Relay actor for controls/actions that coordinate a primary source.
+
+    Routes messages between the frontend and one or more backend sources.
+    Owns no simulation state — it forwards, dispatches, and aggregates.
+    """
 
     def __init__(
         self,
@@ -219,37 +216,34 @@ class CoordinatorBackend(BackendBase):
         if isinstance(payload, SetControl):
             for control in self._controls:
                 if control._control_id == payload.control_id:
-                    token = _current_coordinator_backend.set(self)
+                    token = _current_relay_actor.set(self)
                     try:
                         control.apply(self, payload.value)
                     finally:
-                        _current_coordinator_backend.reset(token)
+                        _current_relay_actor.reset(token)
                     return
         elif isinstance(payload, InvokeAction):
             for action in self._actions:
                 if action._action_id == payload.action_id:
-                    token = _current_coordinator_backend.set(self)
+                    token = _current_relay_actor.set(self)
                     try:
                         action.fn()
                         if action.resets_fields:
                             for trace in self._traces:
                                 self.emit_update(trace._replace_message().payload)
                     finally:
-                        _current_coordinator_backend.reset(token)
+                        _current_relay_actor.reset(token)
                     return
 
         self.primary.handle(message)
         self._forward_primary_messages()
 
-    def emit_routed_command(self, target_actor_id: str, command: CommandPayload) -> None:
-        self.emit(command_message(RoutedCommand(target_actor_id, command)))
-
-    def advance(self) -> None:
-        if self.primary.is_live():
-            self.primary.advance()
-        self._forward_primary_messages()
+    def update(self) -> None:
         for trace in self._traces:
-            trace._sample()
+            trace._begin_frame()
+        if self.primary.is_live():
+            self.primary.update()
+        self._forward_primary_messages()
         emit_trace_updates(self, self._traces)
 
     def is_live(self) -> bool:
@@ -266,12 +260,17 @@ class CoordinatorBackend(BackendBase):
             self.emit(message)
 
 
-class CoordinatorSourceAdapter(InlineAdapterBase):
-    """Source owner for controls/actions that coordinate more than one system."""
+class ComposedSource(InlineSourceBase):
+    """Source adapter for controls/actions that coordinate more than one source.
+
+    Compiles to a ComposedBackend at runtime. At the authoring layer it is still
+    a source — it supports trace/control/action accumulation just like any
+    other source adapter.
+    """
 
     def __init__(
         self,
-        primary: InlineAdapterBase,
+        primary: InlineSourceBase,
         *,
         title: str | None = None,
         participants: tuple[Any, ...] = (),
@@ -280,8 +279,8 @@ class CoordinatorSourceAdapter(InlineAdapterBase):
         self.primary = primary
         self.participants = participants
 
-    def _make_backend(self) -> CoordinatorBackend:
-        return CoordinatorBackend(
+    def _make_backend(self) -> ComposedBackend:
+        return ComposedBackend(
             primary=self.primary._make_backend(),
             traces=self._traces,
             controls=self._controls,
@@ -289,8 +288,8 @@ class CoordinatorSourceAdapter(InlineAdapterBase):
         )
 
     def _build_app_spec_for_backend(self, backend: BackendBase) -> AppSpec:
-        if not isinstance(backend, CoordinatorBackend):
-            raise TypeError(f"CoordinatorSourceAdapter expected CoordinatorBackend, got {type(backend)!r}")
+        if not isinstance(backend, ComposedBackend):
+            raise TypeError(f"ComposedSource expected ComposedBackend, got {type(backend)!r}")
         app_spec = self.primary._build_app_spec_for_backend(backend.primary)
         return append_bindings_to_app_spec(
             app_spec,
@@ -303,18 +302,41 @@ class CoordinatorSourceAdapter(InlineAdapterBase):
         return self.primary._notebook_dt()
 
 
+class RemoteSource(InlineSourceBase):
+    """Source adapter for an actor hosted outside the current Python process.
+
+    At the authoring layer this is still a source — controls and actions route
+    commands to the remote actor; traces declare field subscriptions rather than
+    local read lambdas. Compilation to a RunSpec connection slot is not yet
+    implemented.
+    """
+
+    def __init__(self, actor_ref: RemoteActorRef, *, title: str = "CompNeuroVis") -> None:
+        super().__init__(title=title)
+        self._actor_ref = actor_ref
+
+    def _make_backend(self) -> BackendBase:
+        raise NotImplementedError(
+            "RemoteSource does not create a local backend. "
+            "Remote source compilation to RunSpec is not yet implemented."
+        )
+
+    def _build_app_spec_for_backend(self, backend: BackendBase) -> AppSpec:
+        raise NotImplementedError("RemoteSource AppSpec comes from the remote actor.")
+
+
 class InlineApp:
     """Internal accumulator for one module-level inline authoring session."""
 
     def __init__(self) -> None:
-        self._sources: list[InlineAdapterBase] = []
+        self._sources: list[InlineSourceBase] = []
 
-    def source(self, source_like: Any) -> InlineAdapterBase:
+    def source(self, source_like: Any) -> InlineSourceBase:
         adapter = _coerce_source(source_like)
         self._sources.append(adapter)
         return adapter
 
-    def coordinator(self, primary: Any, *participants: Any) -> CoordinatorSourceAdapter:
+    def compose(self, primary: Any, *participants: Any) -> ComposedSource:
         primary_adapter = _coerce_source(primary)
         participant_refs = tuple(
             participant if isinstance(participant, RemoteActorRef) else _coerce_source(participant)
@@ -322,13 +344,18 @@ class InlineApp:
         )
         wrapped = {
             id(primary_adapter),
-            *(id(participant) for participant in participant_refs if isinstance(participant, InlineAdapterBase)),
+            *(id(participant) for participant in participant_refs if isinstance(participant, InlineSourceBase)),
         }
         self._sources = [source for source in self._sources if id(source) not in wrapped]
-        adapter = CoordinatorSourceAdapter(
+        adapter = ComposedSource(
             primary_adapter,
             participants=participant_refs,
         )
+        self._sources.append(adapter)
+        return adapter
+
+    def remote(self, actor_ref: RemoteActorRef) -> RemoteSource:
+        adapter = RemoteSource(actor_ref)
         self._sources.append(adapter)
         return adapter
 
@@ -391,18 +418,18 @@ def _build_inline_app_spec(
     return append_bindings_to_app_spec(app_spec, traces=[], controls=[], actions=[])
 
 
-def _coerce_source(source_like: Any) -> InlineAdapterBase:
-    if isinstance(source_like, InlineAdapterBase):
+def _coerce_source(source_like: Any) -> InlineSourceBase:
+    if isinstance(source_like, InlineSourceBase):
         return source_like
     if callable(source_like):
-        return PythonSourceAdapter(source_like)
+        return InlineSource(source_like)
     try:
         iterator = iter(source_like)
     except TypeError as exc:
         raise TypeError(
             "cnv.source(...) expects a callable, an iterator/generator, or a CompNeuroVis adapter."
         ) from exc
-    return PythonSourceAdapter(iterator)
+    return InlineSource(iterator)
 
 
 def _callable_accepts_step_context(fn: Callable[..., Any]) -> bool:
@@ -446,12 +473,16 @@ def _reset_inline_session() -> None:
     _app = InlineApp()
 
 
-def source(source_like: Any) -> InlineAdapterBase:
+def source(source_like: Any) -> InlineSourceBase:
     return _app.source(source_like)
 
 
-def coordinator(primary: Any, *participants: Any) -> CoordinatorSourceAdapter:
-    return _app.coordinator(primary, *participants)
+def compose(primary: Any, *participants: Any) -> ComposedSource:
+    return _app.compose(primary, *participants)
+
+
+def remote(actor_ref: RemoteActorRef) -> RemoteSource:
+    return _app.remote(actor_ref)
 
 
 def remote_actor(
@@ -470,11 +501,13 @@ def show():
 __all__ = [
     "InlineBackend",
     "SourceStepContext",
-    "CoordinatorBackend",
-    "CoordinatorSourceAdapter",
-    "PythonSourceAdapter",
+    "ComposedBackend",
+    "ComposedSource",
+    "RemoteSource",
+    "InlineSource",
     "RemoteActorRef",
-    "coordinator",
+    "compose",
+    "remote",
     "remote_actor",
     "source",
     "show",

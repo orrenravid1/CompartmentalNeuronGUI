@@ -309,7 +309,7 @@ class ThreadBackendHost(ActorHost):
 
     def idle_sleep(self) -> float:
         actor = self._actor()
-        from compneurovis.backends.base import BackendBase
+        from compneurovis.core.actor import BackendBase
         if isinstance(actor, BackendBase):
             return actor.idle_sleep()
         return 1.0 / 60.0
@@ -319,9 +319,9 @@ class ThreadBackendHost(ActorHost):
         if self.should_stop():
             return
         actor = self._actor()
-        from compneurovis.backends.base import BackendBase
+        from compneurovis.core.actor import BackendBase
         if isinstance(actor, BackendBase) and actor.is_live():
-            actor.advance()
+            actor.update()
         self.flush()
 
 

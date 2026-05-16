@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Callable, ClassVar, Deque, TypeAlias
 
 if TYPE_CHECKING:
     from compneurovis.core.app import AppSpec
-    from compneurovis.core.messages import Message, MessagePayload
+    from compneurovis.core.messages import CommandPayload, Message, MessagePayload, UpdatePayload
 
 
 class ActorRole(str, Enum):
@@ -32,6 +32,14 @@ class ActorBase:
 
     def emit(self, message: Message[MessagePayload]) -> None:
         self._outbound_messages.append(message)
+
+    def emit_update(self, update: UpdatePayload) -> None:
+        from compneurovis.core.messages import update_message
+        self.emit(update_message(update))
+
+    def emit_command(self, command: CommandPayload) -> None:
+        from compneurovis.core.messages import command_message
+        self.emit(command_message(command))
 
     def take_outbound_messages(self) -> list[Message[MessagePayload]]:
         messages = list(self._outbound_messages)

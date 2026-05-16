@@ -58,9 +58,9 @@ def test_replay_session_reset_emits_first_frame():
     backend = app.backend()
 
     backend.initialize(app.app_spec)
-    backend.advance()
+    backend.update()
     [message.payload for message in backend.take_outbound_messages()]
-    backend.advance()
+    backend.update()
     [message.payload for message in backend.take_outbound_messages()]
 
     backend.handle(command_message(Reset()))

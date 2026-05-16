@@ -10,12 +10,12 @@ from typing import Any, Protocol
 
 from compneurovis.backends.base import BackendBase
 from compneurovis.backends.host import BackendHost
-from compneurovis.core.app import ActorRole, ActorSpec, AppSpec, RoutingSpec, RunSpec
+from compneurovis.core.app import ActorRole, ActorSpec, AppSpec, RelaySpec, RunSpec
 from compneurovis.core.hosts import ScriptBackendProcess, ThreadBackendHost, get_script_backend_endpoint
 
 
-class SourceRuntimeAdapter(Protocol):
-    """Minimal adapter contract needed to lower a source into a RunSpec."""
+class InlineSourceProtocol(Protocol):
+    """Minimal source contract needed to lower a source into a RunSpec."""
 
     def _make_backend(self) -> BackendBase: ...
 
@@ -30,11 +30,11 @@ class SourceRunPlan:
 
     backend: BackendBase
     app_spec: AppSpec
-    routing: RoutingSpec
+    routing: RelaySpec
     notebook_dt: float
 
 
-def build_source_run_plan(source: SourceRuntimeAdapter) -> SourceRunPlan:
+def build_source_run_plan(source: InlineSourceProtocol) -> SourceRunPlan:
     """Lower any source adapter to the backend actor plus startup AppSpec."""
 
     backend = source._make_backend()
@@ -52,11 +52,11 @@ def build_source_routing(
     *,
     backend_actor_id: str,
     frontend_actor_ids: tuple[str, ...],
-) -> RoutingSpec:
+) -> RelaySpec:
     """Compile source-owned interactions to runtime actor routes."""
 
     backend_targets = (backend_actor_id,)
-    return RoutingSpec(
+    return RelaySpec(
         control_routes={
             control_id: backend_targets
             for control_id, control in app_spec.interactions.controls.items()
@@ -71,7 +71,7 @@ def build_source_routing(
     )
 
 
-def launch_source(source: SourceRuntimeAdapter) -> Any:
+def launch_source(source: InlineSourceProtocol) -> Any:
     """Launch a source using the active environment's default runtime profile."""
 
     endpoint = get_script_backend_endpoint()
@@ -92,7 +92,7 @@ def launch_source(source: SourceRuntimeAdapter) -> Any:
     return None
 
 
-def run_source_backend(source: SourceRuntimeAdapter, endpoint: Any) -> None:
+def run_source_backend(source: InlineSourceProtocol, endpoint: Any) -> None:
     """Run the backend half of a source-launched app inside a script worker."""
 
     plan = build_source_run_plan(source)
@@ -138,7 +138,7 @@ def build_desktop_run_spec(plan: SourceRunPlan, script_path: str) -> RunSpec:
     )
 
 
-def launch_notebook_source(source: SourceRuntimeAdapter) -> Any:
+def launch_notebook_source(source: InlineSourceProtocol) -> Any:
     """Build and start the in-process notebook RunSpec for a lowered source."""
 
     from compneurovis.core.run import start_app
@@ -184,7 +184,7 @@ def _in_notebook() -> bool:
 
 __all__ = [
     "SourceRunPlan",
-    "SourceRuntimeAdapter",
+    "InlineSourceProtocol",
     "build_desktop_run_spec",
     "build_notebook_run_spec",
     "build_source_routing",

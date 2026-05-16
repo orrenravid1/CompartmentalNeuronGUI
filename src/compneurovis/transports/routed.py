@@ -6,14 +6,13 @@ from multiprocessing import Pipe
 from multiprocessing.connection import Connection
 
 from compneurovis.core.actor import ActorRole
-from compneurovis.core.app import ActorSpec, RoutingSpec
+from compneurovis.core.app import ActorSpec, RelaySpec
 from compneurovis.core.messages import (
     InvokeAction,
     Message,
     MessagePayload,
-    RoutedCommand,
+    RoutedMessage,
     SetControl,
-    command_message,
 )
 from compneurovis.transports.pipe import DEFAULT_MAX_PAYLOADS_PER_POLL, DEFAULT_MAX_POLL_DURATION_S
 
@@ -21,12 +20,12 @@ from compneurovis.transports.pipe import DEFAULT_MAX_PAYLOADS_PER_POLL, DEFAULT_
 class _RoutingMixin:
     actor_id: str
     _actor_roles: dict[str, ActorRole]
-    _routing: RoutingSpec
+    _routing: RelaySpec
 
     def _route(self, message: Message[MessagePayload]) -> tuple[tuple[str, Message[MessagePayload]], ...]:
         payload = message.payload
-        if isinstance(payload, RoutedCommand):
-            return ((payload.target_actor_id, command_message(payload.command)),)
+        if isinstance(payload, RoutedMessage):
+            return ((payload.target_actor_id, payload.message),)
 
         if message.intent == "update":
             targets = self._routing.default_update_targets or self._actors_with_role(ActorRole.FRONTEND)
@@ -60,7 +59,7 @@ class RoutedEndpoint(_RoutingMixin):
 
     Hosts still see the same endpoint protocol: ``send()``, ``poll()``, and
     ``close()``. Routing is transport-owned and uses actor ids, roles, and a
-    generic ``RoutingSpec``.
+    generic ``RelaySpec``.
     """
 
     def __init__(
@@ -70,7 +69,7 @@ class RoutedEndpoint(_RoutingMixin):
         inbound: dict[str, Connection],
         outbound: dict[str, Connection],
         actor_roles: dict[str, ActorRole],
-        routing: RoutingSpec,
+        routing: RelaySpec,
     ) -> None:
         self.actor_id = actor_id
         self._inbound = inbound
@@ -129,7 +128,7 @@ class InProcessRoutedEndpoint(_RoutingMixin):
         inbound: queue.Queue,
         mailboxes: dict[str, queue.Queue],
         actor_roles: dict[str, ActorRole],
-        routing: RoutingSpec,
+        routing: RelaySpec,
     ) -> None:
         self.actor_id = actor_id
         self._inbound = inbound
@@ -170,7 +169,7 @@ class InProcessRoutedEndpoint(_RoutingMixin):
         self.dead = True
 
 
-def routed_transport(routing: RoutingSpec | None = None, *, mode: str = "pipe"):
+def routed_transport(routing: RelaySpec | None = None, *, mode: str = "pipe"):
     """TransportFactory for local routed topologies.
 
     ``mode="pipe"`` uses one one-way local pipe per actor pair for subprocess
@@ -221,8 +220,8 @@ def routed_transport(routing: RoutingSpec | None = None, *, mode: str = "pipe"):
     return factory
 
 
-def _default_routing(actor_roles: dict[str, ActorRole]) -> RoutingSpec:
-    return RoutingSpec(
+def _default_routing(actor_roles: dict[str, ActorRole]) -> RelaySpec:
+    return RelaySpec(
         default_command_targets=tuple(
             actor_id
             for actor_id, role in actor_roles.items()

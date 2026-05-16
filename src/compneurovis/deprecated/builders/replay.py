@@ -24,7 +24,7 @@ class ReplayBackend(BackendBase):
     def is_live(self) -> bool:
         return self.interval_live
 
-    def advance(self) -> None:
+    def update(self) -> None:
         if not self.frames:
             return
         values, coords = self.frames[self.index]

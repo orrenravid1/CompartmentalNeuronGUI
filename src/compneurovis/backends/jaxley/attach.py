@@ -8,7 +8,8 @@ from typing import Any, Callable, Iterable, Sequence
 from compneurovis.adapters.base import (
     ActionBinding,
     ControlBinding,
-    InlineAdapterBase,
+    ControlHandle,
+    InlineSourceBase,
     TraceBinding,
     emit_trace_updates,
 )
@@ -85,11 +86,12 @@ class _AttachBackend(JaxleyBackend):
     def _emit_batch(self, times_array, steps: list[Any]) -> None:
         super()._emit_batch(times_array, steps)
         for trace in self._provided_traces:
+            trace._begin_frame()
             trace._sample()
-        emit_trace_updates(self, self._provided_traces)
+        emit_trace_updates(self, self._provided_traces, auto_sample=False)
 
 
-class JaxleyAttachAdapter(InlineAdapterBase):
+class JaxleyAttachSource(InlineSourceBase):
     def __init__(
         self,
         *,
@@ -118,20 +120,19 @@ class JaxleyAttachAdapter(InlineAdapterBase):
         max: float = 1.0,
         refresh_externals: bool = False,
         refresh_params: bool = False,
-    ) -> "JaxleyAttachAdapter":
-        self._add_control(
-            JaxleyControlBinding(
-                name=name,
-                label=label,
-                get=get,
-                set=set,
-                min=min,
-                max=max,
-                refresh_externals=refresh_externals,
-                refresh_params=refresh_params,
-            )
+    ) -> ControlHandle:
+        binding = JaxleyControlBinding(
+            name=name,
+            label=label,
+            get=get,
+            set=set,
+            min=min,
+            max=max,
+            refresh_externals=refresh_externals,
+            refresh_params=refresh_params,
         )
-        return self
+        self._add_control(binding)
+        return ControlHandle(binding)
 
     def _make_backend(self) -> _AttachBackend:
         return _AttachBackend(
@@ -155,10 +156,10 @@ def attach(
     v_init: float = -70.0,
     title: str = "CompNeuroVis",
     **kwargs,
-) -> JaxleyAttachAdapter:
+) -> JaxleyAttachSource:
     """Attach CompNeuroVis to an existing Jaxley model."""
 
-    return JaxleyAttachAdapter(
+    return JaxleyAttachSource(
         cells=list(cells),
         setup=setup,
         dt=dt,
@@ -168,4 +169,4 @@ def attach(
     )
 
 
-__all__ = ["JaxleyAttachAdapter", "JaxleyControlBinding", "attach"]
+__all__ = ["JaxleyAttachSource", "JaxleyControlBinding", "attach"]

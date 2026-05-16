@@ -246,7 +246,7 @@ def test_jaxley_multicell_reset_restores_closed_synapses():
         app_spec = backend.build_startup_app_spec()
         backend.initialize(app_spec)
         for _ in range(50):
-            backend.advance()
+            backend.update()
         backend.handle(command_message(Reset()))
 
         print(json.dumps({{
@@ -294,7 +294,7 @@ def test_jaxley_reset_rebuilds_from_updated_network_parameters():
             idx = soma_indices(backend)
             max_v = np.full(len(idx), -np.inf, dtype=np.float32)
             for _ in range(steps):
-                backend.advance()
+                backend.update()
                 max_v = np.maximum(max_v, backend._last_voltage_values[idx])
             return max_v
 

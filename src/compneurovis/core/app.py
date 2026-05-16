@@ -411,12 +411,11 @@ class ActorSpec:
 
 
 @dataclass(slots=True)
-class RoutingSpec:
-    """Interaction/update routing compiled from source ownership.
+class RelaySpec:
+    """Dispatch table read by a relay actor to route interactions to target actors.
 
-    The routing table is generic: it maps public interaction ids to runtime
-    actor ids. It does not encode simulator, frontend, or transport-specific
-    semantics.
+    Maps public interaction ids to runtime actor ids. Lives in the relay actor,
+    not in the transport.
     """
 
     control_routes: dict[str, tuple[str, ...]] = field(default_factory=dict)
@@ -437,12 +436,16 @@ class RoutingSpec:
         self.default_update_targets = tuple(self.default_update_targets)
 
 
+# Backward-compatible alias — remove after all call sites are updated.
+RoutingSpec = RelaySpec
+
+
 @dataclass(slots=True)
 class RunSpec:
     app_spec: AppSpec | None = None
     actors: list[ActorSpec] = field(default_factory=list)
     transport: Any | None = None  # TransportFactory: Callable[[list[ActorSpec]], dict[str, TransportEndpoint]]
-    routing: RoutingSpec | None = None
+    routing: RelaySpec | None = None
     diagnostics: DiagnosticsSpec | None = None
 
 

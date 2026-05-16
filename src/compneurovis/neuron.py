@@ -1,5 +1,5 @@
 """Public NEURON attach namespace."""
 
-from compneurovis.backends.neuron import NeuronAppSpecBuilder, NeuronAttachAdapter, NeuronBackend, attach
+from compneurovis.backends.neuron import NeuronAppSpecBuilder, NeuronAttachSource, NeuronBackend, attach
 
-__all__ = ["NeuronAppSpecBuilder", "NeuronAttachAdapter", "NeuronBackend", "attach"]
+__all__ = ["NeuronAppSpecBuilder", "NeuronAttachSource", "NeuronBackend", "attach"]

@@ -1069,7 +1069,7 @@ def test_frontend_uses_session_startup_scene_before_worker_ready(monkeypatch):
         def initialize(self, app_spec):
             pass
 
-        def advance(self) -> None:
+        def update(self) -> None:
             return None
 
         def handle(self, message) -> None:
@@ -1172,7 +1172,7 @@ def test_build_neuron_app_accepts_session_class():
         def initialize(self, app_spec):
             raise AssertionError("should not initialize during app construction")
 
-        def advance(self) -> None:
+        def update(self) -> None:
             return None
 
         def handle(self, message) -> None:
@@ -1197,7 +1197,7 @@ def test_build_neuron_app_requires_lazy_session_source():
         def initialize(self, app_spec):
             raise AssertionError("should not initialize during app construction")
 
-        def advance(self) -> None:
+        def update(self) -> None:
             return None
 
         def handle(self, message) -> None:
@@ -1219,7 +1219,7 @@ def test_build_neuron_app_supports_explicit_interaction_target_factory():
         def initialize(self, app_spec):
             raise AssertionError("should not initialize during app construction")
 
-        def advance(self) -> None:
+        def update(self) -> None:
             return None
 
         def handle(self, message) -> None:
