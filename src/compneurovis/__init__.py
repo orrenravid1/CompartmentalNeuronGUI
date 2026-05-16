@@ -47,7 +47,8 @@ from compneurovis.core import (
 )
 from compneurovis.frontends import FrontendBase
 from compneurovis.core.run import run_app, run_orchestrator, run_as_backend, run_as_frontend, start_app
-from compneurovis.core.hosts import AppHandle, ScriptBackendProcess, ThreadBackendHost, get_script_backend_endpoint
+from compneurovis.backends.host import ThreadBackendHost
+from compneurovis.core.hosts import AppHandle, ScriptBackendProcess, get_script_backend_endpoint
 from compneurovis.core.messages import (
     CommandMessage,
     Message,

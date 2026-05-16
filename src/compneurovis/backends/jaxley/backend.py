@@ -243,8 +243,8 @@ class JaxleyBackend(BackendBase, ABC):
             app_spec.replace_view("trace", trace_updates)
         return app_spec
 
-    def build_startup_app_spec(self) -> AppSpec:
-        """Build the Jaxley model, sample it once, and return the initial AppSpec."""
+    def _initialize_model(self) -> np.ndarray:
+        """Build Jaxley model, compile step function, return initial display_values."""
 
         print(f"[{self.title}] Importing JAX and Jaxley...")
         from jax import config as _jax_config
@@ -296,6 +296,30 @@ class JaxleyBackend(BackendBase, ABC):
         self._entity_index_by_id = {entity_id: index for index, entity_id in enumerate(self.geometry.entity_ids)}
         self._initialize_trace_history(self._time, display_values)
         print(f"[{self.title}] Ready.")
+        return display_values
+
+    def build_startup_data(self) -> AppSpec:
+        """Build Jaxley model and return a data-only AppSpec (no views or panels)."""
+
+        display_values = self._initialize_model()
+        trace_segment_ids, trace_times, trace_values = self._trace_field_snapshot()
+        return JaxleyAppSpecBuilder.build_data_app_spec(
+            geometry=self.geometry,
+            display_values=display_values,
+            trace_values=trace_values,
+            trace_segment_ids=trace_segment_ids,
+            trace_times=trace_times,
+            display_field_id=self.display_field_id(),
+            history_field_id=self.history_field_id(),
+            display_unit=self.display_unit(),
+            history_unit=self.history_unit(),
+            title=self.title,
+        )
+
+    def build_startup_app_spec(self) -> AppSpec:
+        """Build the Jaxley model, sample it once, and return the initial AppSpec."""
+
+        display_values = self._initialize_model()
         return self.build_app_spec(
             geometry=self.geometry,
             display_values=display_values,

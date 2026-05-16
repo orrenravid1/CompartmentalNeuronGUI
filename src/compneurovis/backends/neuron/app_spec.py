@@ -127,6 +127,52 @@ class NeuronAppSpecBuilder:
         )
 
     @staticmethod
+    def build_data_app_spec(
+        *,
+        geometry: MorphologyGeometry,
+        display_values: np.ndarray,
+        trace_values: np.ndarray,
+        trace_segment_ids: np.ndarray,
+        trace_times: np.ndarray,
+        display_field_id: str | None = None,
+        history_field_id: str | None = None,
+        display_unit: str | None = None,
+        history_unit: str | None = None,
+        title: str = "CompNeuroVis",
+    ) -> AppSpec:
+        """Build a data-only AppSpec (fields + geometry, no views or panels)."""
+
+        display_field_id = display_field_id or NeuronAppSpecBuilder.DISPLAY_FIELD_ID
+        history_field_id = history_field_id or NeuronAppSpecBuilder.HISTORY_FIELD_ID
+        history_unit = display_unit if history_unit is None else history_unit
+        display_field = Field(
+            id=display_field_id,
+            values=np.asarray(display_values, dtype=np.float32),
+            dims=("segment",),
+            coords={"segment": np.asarray(geometry.entity_ids)},
+            unit=display_unit,
+        )
+        trace_field = Field(
+            id=history_field_id,
+            values=np.asarray(trace_values, dtype=np.float32),
+            dims=("segment", "time"),
+            coords={
+                "segment": np.asarray(trace_segment_ids),
+                "time": np.asarray(trace_times, dtype=np.float32),
+            },
+            unit=history_unit,
+        )
+        return AppSpec(
+            data=DataCatalog(
+                fields={display_field.id: display_field, trace_field.id: trace_field},
+                geometries={geometry.id: geometry},
+            ),
+            view_catalog=ViewCatalog(views={}),
+            interactions=InteractionCatalog(controls={}, actions={}),
+            layout_catalog=LayoutCatalog.single(LayoutSpec(title=title, panels=(), panel_grid=())),
+        )
+
+    @staticmethod
     def build_app_spec(
         *,
         geometry: MorphologyGeometry,

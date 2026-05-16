@@ -25,6 +25,8 @@ h.celsius = 6.3
 h.finitialize(-65.0)
 
 sim = cnv.source(cnv.neuron.attach(sections=[soma]))
+sim.morphology()
+sim.history()
 sim.control(
     "clamp_amp",
     label="IClamp amplitude (nA)",

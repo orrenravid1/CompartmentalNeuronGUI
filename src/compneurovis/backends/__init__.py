@@ -1,9 +1,10 @@
 from compneurovis.backends.base import BackendBase
-from compneurovis.backends.host import BackendHost
+from compneurovis.backends.host import BackendHost, ThreadBackendHost
 from compneurovis.backends.history import HistoryCaptureMode
 
 __all__ = [
     "BackendBase",
     "BackendHost",
     "HistoryCaptureMode",
+    "ThreadBackendHost",
 ]

@@ -11,7 +11,8 @@ from typing import Any, Protocol
 from compneurovis.backends.base import BackendBase
 from compneurovis.backends.host import BackendHost
 from compneurovis.core.app import ActorRole, ActorSpec, AppSpec, RelaySpec, RunSpec
-from compneurovis.core.hosts import ScriptBackendProcess, ThreadBackendHost, get_script_backend_endpoint
+from compneurovis.backends.host import ThreadBackendHost
+from compneurovis.core.hosts import ScriptBackendProcess, get_script_backend_endpoint
 
 
 class InlineSourceProtocol(Protocol):

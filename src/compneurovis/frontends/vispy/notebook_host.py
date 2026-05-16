@@ -119,6 +119,7 @@ class NotebookFrontend(FrontendBase):
         import matplotlib.pyplot as plt
 
         self._plt = plt
+        plt.ioff()
         fig, ax = plt.subplots(figsize=trace_figsize)
         fig.patch.set_facecolor("#111111")
         ax.set_facecolor("#111111")
@@ -193,8 +194,14 @@ class NotebookFrontend(FrontendBase):
     def flush_renders(self, now: float) -> None:
         """Render morph+trace if timing is due; render morph if camera dirty."""
         if self._render_due and now - self._last_render >= 1.0 / RENDER_HZ:
+            _PERF_LOG = r"c:\Users\orren\Documents\PythonProjects\CompNeuroVis\scratch\perf_stats.txt"
+            t0 = time.monotonic()
             self._render_morph()
+            t1 = time.monotonic()
             self._render_trace()
+            t2 = time.monotonic()
+            with open(_PERF_LOG, "a") as _f:
+                _f.write(f"[flush_renders] morph_ms={(t1-t0)*1000:.1f} trace_ms={(t2-t1)*1000:.1f} buf={len(self._buf)}\n")
             self._last_render = now
             self._render_due = False
         if self._morph_dirty:
@@ -225,16 +232,33 @@ class NotebookFrontend(FrontendBase):
             self._morph_dirty = True
 
     def _render_morph(self) -> None:
+        _PERF_LOG = r"c:\Users\orren\Documents\PythonProjects\CompNeuroVis\scratch\perf_stats.txt"
+        import time as _t
+        ta = _t.monotonic()
+        n_v = len(self._voltages) if self._voltages is not None else -1
         if self._voltages is not None:
             self._morph_renderer.update_colors(
                 self._voltages, self._color_map,
                 color_limits=self._color_limits, color_norm=self._color_norm,
             )
+        tb = _t.monotonic()
         rgba = self._morph_canvas.render()
+        tc = _t.monotonic()
         buf = io.BytesIO()
         from PIL import Image
         Image.fromarray(rgba).save(buf, format="png")
+        td = _t.monotonic()
         self._morph_widget.value = buf.getvalue()
+        te = _t.monotonic()
+        with open(_PERF_LOG, "a") as _f:
+            _f.write(
+                f"[render_morph] n_voltages={n_v} "
+                f"update_colors_ms={(tb-ta)*1000:.1f} "
+                f"canvas_render_ms={(tc-tb)*1000:.1f} "
+                f"pil_ms={(td-tc)*1000:.1f} "
+                f"widget_ms={(te-td)*1000:.1f} "
+                f"rgba_shape={rgba.shape}\n"
+            )
 
     def _render_trace(self) -> None:
         y = np.asarray(self._buf[-MAX_SAMPLES:], dtype=np.float32)
@@ -313,6 +337,11 @@ class NotebookFrontendHost(FrontendHost):
         super().stop()
 
     async def _poll_loop(self) -> None:
+        import time as _t
+        _PERF_LOG = r"c:\Users\orren\Documents\PythonProjects\CompNeuroVis\scratch\perf_stats.txt"
+        with open(_PERF_LOG, "w") as _f:
+            _f.write("=== poll_loop start (new/stashed version) ===\n")
+        _poll_count = 0
         interval = 1.0 / POLL_HZ
         frontend = self._notebook_frontend()
         while self._running:
@@ -320,9 +349,15 @@ class NotebookFrontendHost(FrontendHost):
                 self.stop()
                 break
             try:
+                t0 = _t.monotonic()
                 self.receive()
                 frontend.flush_renders(time.monotonic())
                 self.flush()
+                _poll_count += 1
+                if _poll_count % 30 == 0:
+                    poll_ms = (_t.monotonic() - t0) * 1000
+                    with open(_PERF_LOG, "a") as _f:
+                        _f.write(f"t={_t.monotonic():.3f} [poll_tick] n={_poll_count} poll_ms={poll_ms:.1f}\n")
             except (BrokenPipeError, OSError):
                 self._running = False
                 break
@@ -356,7 +391,7 @@ def _launch_notebook(
     app_spec        : AppSpec built from the backend before calling this
     dt              : simulation timestep in ms (for the trace time axis)
     """
-    from compneurovis.core.hosts import ThreadBackendHost
+    from compneurovis.backends.host import ThreadBackendHost
     from compneurovis.core.run import start_app
     from compneurovis.core.app import RoutingSpec
     from compneurovis.transports import routed_transport

@@ -2,21 +2,28 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Sequence
 
 import numpy as np
 
+from compneurovis.backends.base import BackendBase
+from compneurovis.backends.neuron.app_spec import NeuronAppSpecBuilder
+from compneurovis.backends.neuron.backend import NeuronBackend
+from compneurovis.core.app import AppSpec
+from compneurovis.core.app import PANEL_KIND_LINE_PLOT, PANEL_KIND_VIEW_3D
+from compneurovis.core.controls import ActionSpec, ControlSpec
+from compneurovis.core.state import StateBinding
+from compneurovis.core.views import LinePlotViewSpec, MorphologyViewSpec
 from compneurovis.inline.bindings import (
     ActionBinding,
     ControlBinding,
     ControlHandle,
     TraceBinding,
+    append_bindings_to_app_spec,
     emit_trace_updates,
 )
 from compneurovis.inline.sources import InlineSourceBase
-from compneurovis.backends.neuron.backend import NeuronBackend
-from compneurovis.core.controls import ActionSpec, ControlSpec
 
 
 @dataclass
@@ -25,6 +32,90 @@ class NeuronControlBinding(ControlBinding):
         del backend
         self.set(float(value))
         return True
+
+
+@dataclass
+class MorphologyBinding:
+    color_field_id: str
+    color_map: str = "scalar"
+    color_limits: tuple[float, float] | None = (-80.0, 50.0)
+    color_norm: str = "auto"
+    _view_id: str = field(init=False, default="")
+    _panel_id: str = field(init=False, default="")
+
+    def _register(self, index: int) -> None:
+        self._view_id = f"morphology_{index}"
+        self._panel_id = f"morphology-panel-{index}"
+
+    def _view_spec(self, geometry_id: str) -> MorphologyViewSpec:
+        from compneurovis.core.app import PanelSpec
+        return MorphologyViewSpec(
+            id=self._view_id,
+            title="Morphology",
+            geometry_id=geometry_id,
+            color_field_id=self.color_field_id,
+            entity_dim="segment",
+            sample_dim=None,
+            color_map=self.color_map,
+            color_limits=self.color_limits,
+            color_norm=self.color_norm,
+        )
+
+    def _panel_spec(self):
+        from compneurovis.core.app import PanelSpec
+        return PanelSpec(id=self._panel_id, kind=PANEL_KIND_VIEW_3D, view_ids=(self._view_id,))
+
+
+@dataclass
+class SegmentHistoryBinding:
+    field_id: str = field(default_factory=lambda: NeuronAppSpecBuilder.HISTORY_FIELD_ID)
+    title: str = "Trace"
+    y_unit: str = "mV"
+    rolling_window: float = 500.0
+    _view_id: str = field(init=False, default="")
+    _panel_id: str = field(init=False, default="")
+
+    def _register(self, index: int) -> None:
+        self._view_id = f"segment_history_{index}"
+        self._panel_id = f"segment-history-panel-{index}"
+
+    def _view_spec(self) -> LinePlotViewSpec:
+        return LinePlotViewSpec(
+            id=self._view_id,
+            title=self.title,
+            field_id=self.field_id,
+            x_dim="time",
+            selectors={"segment": StateBinding("selected_entity_id")},
+            x_unit="ms",
+            y_unit=self.y_unit,
+            rolling_window=self.rolling_window,
+        )
+
+    def _panel_spec(self):
+        from compneurovis.core.app import PanelSpec
+        return PanelSpec(id=self._panel_id, kind=PANEL_KIND_LINE_PLOT, view_ids=(self._view_id,))
+
+
+class MorphologyHandle:
+    __slots__ = ("_binding",)
+
+    def __init__(self, binding: MorphologyBinding) -> None:
+        self._binding = binding
+
+    @property
+    def color_field_id(self) -> str:
+        return self._binding.color_field_id
+
+
+class SegmentHistoryHandle:
+    __slots__ = ("_binding",)
+
+    def __init__(self, binding: SegmentHistoryBinding) -> None:
+        self._binding = binding
+
+    @property
+    def field_id(self) -> str:
+        return self._binding.field_id
 
 
 class _AttachBackend(NeuronBackend):
@@ -40,7 +131,7 @@ class _AttachBackend(NeuronBackend):
         v_init: float,
         title: str,
     ) -> None:
-        super().__init__(dt=dt, v_init=v_init, title=title)
+        super().__init__(dt=dt, v_init=v_init, title=title, display_dt=0.1)
         self._provided_sections = sections
         self._provided_controls = controls
         self._provided_actions = actions
@@ -102,6 +193,9 @@ class _AttachBackend(NeuronBackend):
 
 
 class NeuronAttachSource(InlineSourceBase):
+    DISPLAY_FIELD_ID = NeuronAppSpecBuilder.DISPLAY_FIELD_ID
+    HISTORY_FIELD_ID = NeuronAppSpecBuilder.HISTORY_FIELD_ID
+
     def __init__(
         self,
         *,
@@ -116,6 +210,44 @@ class NeuronAttachSource(InlineSourceBase):
         self._step_fn = step
         self._dt = dt
         self._v_init = v_init
+        self._morphology_bindings: list[MorphologyBinding] = []
+        self._history_bindings: list[SegmentHistoryBinding] = []
+
+    def morphology(
+        self,
+        *,
+        color_field_id: str | None = None,
+        color_map: str = "scalar",
+        color_limits: tuple[float, float] | None = (-80.0, 50.0),
+        color_norm: str = "auto",
+    ) -> MorphologyHandle:
+        binding = MorphologyBinding(
+            color_field_id=color_field_id or self.DISPLAY_FIELD_ID,
+            color_map=color_map,
+            color_limits=color_limits,
+            color_norm=color_norm,
+        )
+        binding._register(len(self._morphology_bindings))
+        self._morphology_bindings.append(binding)
+        return MorphologyHandle(binding)
+
+    def history(
+        self,
+        *,
+        field_id: str | None = None,
+        title: str = "Trace",
+        y_unit: str = "mV",
+        rolling_window: float = 500.0,
+    ) -> SegmentHistoryHandle:
+        binding = SegmentHistoryBinding(
+            field_id=field_id or self.HISTORY_FIELD_ID,
+            title=title,
+            y_unit=y_unit,
+            rolling_window=rolling_window,
+        )
+        binding._register(len(self._history_bindings))
+        self._history_bindings.append(binding)
+        return SegmentHistoryHandle(binding)
 
     def control(
         self,
@@ -143,6 +275,52 @@ class NeuronAttachSource(InlineSourceBase):
             title=self.title,
         )
 
+    def _build_app_spec_for_backend(self, backend: BackendBase) -> AppSpec:
+        if not isinstance(backend, _AttachBackend):
+            raise TypeError(f"NeuronAttachSource expected _AttachBackend, got {type(backend)!r}")
+        app_spec = backend.build_startup_data()
+        _append_morphology_and_history_views(
+            app_spec,
+            morphology_bindings=self._morphology_bindings,
+            history_bindings=self._history_bindings,
+            geometry=backend.geometry,
+        )
+        return append_bindings_to_app_spec(
+            app_spec,
+            traces=self._traces,
+            controls=self._controls,
+            actions=self._actions,
+        )
+
+
+def _append_morphology_and_history_views(
+    app_spec: AppSpec,
+    *,
+    morphology_bindings: list[MorphologyBinding],
+    history_bindings: list[SegmentHistoryBinding],
+    geometry,
+) -> None:
+    if not morphology_bindings and not history_bindings:
+        return
+    layout = app_spec.active_layout()
+    panels = list(layout.panels)
+    panel_grid = list(layout.panel_grid)
+    first_row: list[str] = []
+    for binding in morphology_bindings:
+        view_spec = binding._view_spec(geometry.id)
+        app_spec.view_catalog.views[view_spec.id] = view_spec
+        panel = binding._panel_spec()
+        panels.append(panel)
+        first_row.append(panel.id)
+    for binding in history_bindings:
+        view_spec = binding._view_spec()
+        app_spec.view_catalog.views[view_spec.id] = view_spec
+        panel = binding._panel_spec()
+        panels.append(panel)
+        first_row.append(panel.id)
+    panel_grid.insert(0, tuple(first_row))
+    layout.replace_panels(tuple(panels), tuple(panel_grid))
+
 
 def attach(
     *,
@@ -166,4 +344,12 @@ def attach(
     )
 
 
-__all__ = ["NeuronAttachSource", "NeuronControlBinding", "attach"]
+__all__ = [
+    "MorphologyBinding",
+    "MorphologyHandle",
+    "NeuronAttachSource",
+    "NeuronControlBinding",
+    "SegmentHistoryBinding",
+    "SegmentHistoryHandle",
+    "attach",
+]

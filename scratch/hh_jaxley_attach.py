@@ -46,6 +46,8 @@ def set_i_amp(v):
         ))
 
 sim = cnv.source(cnv.jaxley.attach(cells=[cell], setup=setup, dt=DT, v_init=-70.0))
+sim.morphology()
+sim.history()
 
 sim.control("i_amp", label="Stimulus (nA)", get=lambda: _i_amp[0], set=set_i_amp, min=0.0, max=1.0, refresh_externals=True)
 sim.control("gNa", label="gNa (S/cm^2)", get=lambda: 0.12, set=lambda v: _net[0].set("HH_gNa", v), min=0.01, max=0.5, refresh_params=True)

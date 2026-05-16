@@ -3,7 +3,6 @@ from __future__ import annotations
 import multiprocessing as mp
 import runpy
 import sys
-import threading
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -259,73 +258,6 @@ class ScriptBackendProcess:
 
 
 # --------------------------------------------------------------------------- #
-# Thread-backend — for notebook contexts where subprocess is not available     #
-# --------------------------------------------------------------------------- #
-
-class ThreadBackendHost(ActorHost):
-    """BackendHost whose step loop runs in a daemon thread.
-
-    Use when the backend must share the same process as the frontend (e.g.
-    .ipynb notebooks where no script file is available for ScriptBackendProcess).
-    NEURON and JAX release the GIL during simulation, so real parallelism
-    is achieved despite the thread model.
-    """
-
-    def __init__(
-        self,
-        actor_source: ActorSource,
-        runtime: "AppRuntime",  # type: ignore[name-defined]  # avoid circular import
-        endpoint: TransportEndpoint,
-    ) -> None:
-        super().__init__(endpoint=endpoint)
-        self._actor_source = actor_source
-        self._runtime = runtime
-        self._thread: threading.Thread | None = None
-        self._stop_requested = False
-
-    def start(self) -> None:
-        self.actor = resolve_actor_source(self._actor_source)
-        self.actor.initialize(self._runtime.app_spec)
-
-    def run(self) -> None:
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
-
-    def should_stop(self) -> bool:
-        return self._stop_requested
-
-    def _loop(self) -> None:
-        try:
-            while not self.should_stop():
-                started = time.monotonic()
-                self.step()
-                remaining = self.idle_sleep() - (time.monotonic() - started)
-                if remaining > 0:
-                    time.sleep(remaining)
-        except (BrokenPipeError, OSError):
-            pass
-        finally:
-            self.stop()
-
-    def idle_sleep(self) -> float:
-        actor = self._actor()
-        from compneurovis.core.actor import BackendBase
-        if isinstance(actor, BackendBase):
-            return actor.idle_sleep()
-        return 1.0 / 60.0
-
-    def step(self) -> None:
-        self.receive()
-        if self.should_stop():
-            return
-        actor = self._actor()
-        from compneurovis.core.actor import BackendBase
-        if isinstance(actor, BackendBase) and actor.is_live():
-            actor.update()
-        self.flush()
-
-
-# --------------------------------------------------------------------------- #
 # AppHandle — returned by start_app() for non-blocking runs                   #
 # --------------------------------------------------------------------------- #
 
@@ -378,7 +310,6 @@ __all__ = [
     "ConnectionSlotHost",
     "ScriptBackendProcess",
     "Startable",
-    "ThreadBackendHost",
     "TransportFactory",
     "configure_diagnostics",
     "configure_multiprocessing",

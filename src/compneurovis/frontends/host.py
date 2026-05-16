@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from compneurovis.core.actor import ActorSource
 from compneurovis.core.app import AppSpec
-from compneurovis.frontends.base import FrontendBase
 from compneurovis.core.hosts import ActorHost
+from compneurovis.frontends.base import FrontendBase
 
 
 class FrontendHost(ActorHost):
+    """ActorHost for frontend actors. Validates the actor is a FrontendBase."""
+
     def start(self, actor_source: ActorSource, app_spec: AppSpec) -> FrontendBase:
         actor = super().start(actor_source, app_spec)
         if not isinstance(actor, FrontendBase):
