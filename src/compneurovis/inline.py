@@ -60,11 +60,11 @@ def _cnv_script_worker(script_path: str, endpoint: PipeEndpoint) -> None:
     pickle it by qualified name (compneurovis.inline._cnv_script_worker).
     Do not move or rename without updating multiprocessing pickle target.
     """
-    import compneurovis.inline as _inline
-    _inline._backend_endpoint = endpoint
+    global _backend_endpoint, _app
+    _backend_endpoint = endpoint
     # The bootstrap phase re-ran __main__ (spawn._fixup_main_from_path) and
     # polluted _app with duplicate bindings.  Reset before the real run.
-    _inline._app = _inline.InlineApp()
+    _app = InlineApp()
     runpy.run_path(script_path, run_name="__main__")
 
 

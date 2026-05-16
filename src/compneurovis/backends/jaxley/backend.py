@@ -247,6 +247,8 @@ class JaxleyBackend(BackendBase, ABC):
         """Build the Jaxley model, sample it once, and return the initial AppSpec."""
 
         print(f"[{self.title}] Importing JAX and Jaxley...")
+        from jax import config as _jax_config
+        _jax_config.update("jax_enable_x64", True)
         import jax  # noqa: F401
         import jaxley as jx
         from jaxley.integrate import build_init_and_step_fn
@@ -260,6 +262,10 @@ class JaxleyBackend(BackendBase, ABC):
 
         print(f"[{self.title}] Setting up model...")
         self._runtime_handles = self.setup_model(self.network, self.cells)
+
+        print(f"[{self.title}] Initializing gating variables at v_init={self.v_init} mV...")
+        self.network.set("v", self.v_init)
+        self.network.init_states()
 
         print(f"[{self.title}] Converting to JAX format...")
         self.network.delete_recordings()
@@ -410,12 +416,12 @@ class JaxleyBackend(BackendBase, ABC):
         if max_length is not None:
             self._trim_selected_trace_history(int(max_length))
 
-    def steps_per_update(self) -> int:
+    def sim_ms_per_frame(self) -> float:
         if self.display_dt is None:
-            return 1
+            return float(self.dt)
         if self.display_dt <= 0:
             raise ValueError("JaxleyBackend display_dt must be positive or None")
-        return max(1, int(math.ceil(float(self.display_dt) / float(self.dt))))
+        return float(self.display_dt)
 
     def idle_sleep(self) -> float:
         return 0.0
@@ -453,6 +459,9 @@ class JaxleyBackend(BackendBase, ABC):
         # Jaxley stores authoritative mutable parameters/states in DataFrames and copies
         # them into jaxnodes/jaxedges via to_jax(). Reset and live parameter updates must
         # resync from the DataFrame-backed model before rebuilding all_params/all_states.
+        if not preserve_state:
+            self.network.set("v", self.v_init)
+            self.network.init_states()
         self.network.to_jax()
         params = self.network.get_parameters()
         current_state = self._state if preserve_state else None
@@ -530,9 +539,10 @@ class JaxleyBackend(BackendBase, ABC):
     def advance(self) -> None:
         """Advance the simulation and emit incremental frontend updates."""
 
+        t_target = self._time + self.sim_ms_per_frame()
         steps: list[Any] = []
         times: list[float] = []
-        for _ in range(self.steps_per_update()):
+        while True:
             externals = self._externals_for_step(self._step_index)
             self._state = self._step_fn(
                 self._state,
@@ -545,9 +555,8 @@ class JaxleyBackend(BackendBase, ABC):
             self._time += float(self.dt)
             times.append(self._time)
             steps.append(self._sample_step())
-
-        if not steps:
-            return
+            if self._time >= t_target:
+                break
 
         times_array = np.asarray(times, dtype=np.float32)
         self._emit_batch(times_array, steps)

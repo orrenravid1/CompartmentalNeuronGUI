@@ -2784,7 +2784,7 @@ def test_neuron_session_build_app_spec_applies_orders_and_trace_updates():
 def test_neuron_session_defaults_to_batched_display_updates():
     backend = DummyNeuronBackend()
 
-    assert backend.steps_per_update() == 1
+    assert backend.sim_ms_per_frame() == pytest.approx(0.1)
 
 
 class WindowBudgetNeuronBackend(NeuronBackend):

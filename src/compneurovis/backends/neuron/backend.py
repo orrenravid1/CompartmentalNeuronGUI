@@ -440,12 +440,12 @@ class NeuronBackend(BackendBase, ABC):
         if max_length is not None:
             self._trim_selected_trace_history(int(max_length))
 
-    def steps_per_update(self) -> int:
+    def sim_ms_per_frame(self) -> float:
         if self.display_dt is None:
-            return 1
+            return float(self.dt)
         if self.display_dt <= 0:
             raise ValueError("NeuronBackend display_dt must be positive or None")
-        return max(1, int(math.ceil(float(self.display_dt) / float(self.dt))))
+        return float(self.display_dt)
 
     def idle_sleep(self) -> float:
         return 0.0
@@ -518,19 +518,19 @@ class NeuronBackend(BackendBase, ABC):
 
         from neuron import h
 
+        t_target = float(h.t) + self.sim_ms_per_frame()
         steps: list[Any] = []
         recorded_frames: list[np.ndarray] = []
         times: list[float] = []
-        for _ in range(self.steps_per_update()):
+        while True:
             h.fadvance()
             times.append(float(h.t))
             steps.append(self._sample_step())
             recorded = self._read_recorded_values()
             if recorded is not None:
                 recorded_frames.append(recorded)
-
-        if not steps:
-            return
+            if float(h.t) >= t_target:
+                break
 
         times_array = np.asarray(times, dtype=np.float32)
         self._emit_batch(times_array, steps)
