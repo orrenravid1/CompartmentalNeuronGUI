@@ -976,6 +976,119 @@ Symptom pattern for refresh-rate-induced freeze:
 - Eventually gaps plateau at a high value and window freezes entirely
 - Backend logs may continue (it is blocked on pipe send, not crashed)
 
+### 2026-05-15: Notebook Frontend
+
+#### Goal
+
+Provide a `show_notebook()` API on `NeuronAttachAdapter` and `JaxleyAttachAdapter`
+that renders inline in any notebook environment — VS Code, JupyterLab, and classic
+Jupyter Notebook — without requiring the user to know anything about vispy or widget
+backends.
+
+#### Architecture
+
+```
+User notebook cell
+  └── app.show_notebook()
+        ├── make_inprocess_pair()        in-process queue transport
+        ├── backend = _make_backend()    build backend (Jaxley or NEURON)
+        ├── app_spec = backend.build_startup_app_spec()
+        ├── BackendHost(backend_endpoint)
+        │     └── daemon thread          JAX/NEURON release GIL → real parallelism
+        └── NotebookHost(frontend_endpoint)
+              ├── vispy SceneCanvas(show=False)   offscreen OpenGL, hidden Qt window
+              │     └── MorphologyRenderer        existing visual code reused as-is
+              │     └── canvas.render() → PNG → ipywidgets.Image
+              ├── ipympl matplotlib figure        interactive zoom/pan
+              │     └── line.set_data() + draw_idle() for live trace
+              ├── ipyevents mouse handler         drag-to-rotate morphology
+              └── VBox([morph_widget, fig.canvas, stop_btn])
+```
+
+**Why threading and not subprocess**: The subprocess path (`show()`) re-runs the
+entire script file as the subprocess entry point. Notebook cells have no file to
+re-run — the model lives in cell state that cannot be pickled and re-executed in a
+child process. Threading works because JAX releases the GIL during XLA dispatch and
+NEURON releases it during `h.fadvance()`, so simulation runs in parallel with the
+asyncio poll loop.
+
+**Known limitation**: `canvas.render()` does synchronous Qt GL work on the main
+thread. This briefly blocks the asyncio loop during morphology re-renders, causing
+occasional matplotlib `draw_idle()` delays during morphology rotation. Acceptable
+for the current use case.
+
+#### Vispy Backend Selection
+
+`vispy.use()` can only be called once per process. The notebook host calls it via
+`_ensure_vispy_backend()`:
+
+```python
+def _ensure_vispy_backend() -> None:
+    from vispy.app import _default_app as _da
+    if _da.default_app is None:
+        from vispy import use
+        use(app="pyqt6", gl="gl+")
+```
+
+`_da.default_app` is `None` before any `use()` call and an `Application` object
+after. This guard means the host selects pyqt6 on a fresh kernel, but leaves an
+already-configured backend (e.g. `jupyter_rfb` in JupyterLab) untouched.
+
+The `VispyFrontendWindow` / `VispyFrontendHost` eager import chain that previously
+fired `use(app="pyqt6", gl="gl+")` at import time was made lazy:
+
+- `compneurovis/frontends/vispy/__init__.py` — `__getattr__` defers the import
+  of `VispyFrontendWindow` and `VispyFrontendHost` until they are accessed by name
+- `compneurovis/frontends/__init__.py` — same lazy `__getattr__` pattern
+- `compneurovis/__init__.py` — `VispyFrontendHost`/`VispyFrontendWindow` moved to
+  the lazy `_OPTIONAL_EXPORTS` dict
+
+Result: importing any `compneurovis` submodule in a notebook no longer triggers
+vispy backend selection.
+
+#### Rendering Stack
+
+| Panel | Library | Why |
+|---|---|---|
+| Morphology | vispy offscreen `canvas.render()` → `ipywidgets.Image` | Reuses `MorphologyRenderer` exactly; OpenGL-accelerated coloring; fast for hundreds of segments |
+| Voltage trace | `ipympl` matplotlib figure | Interactive zoom/pan out of the box; live update via `line.set_data()` + `draw_idle()`; works everywhere ipywidgets works |
+| Interactivity | `ipyevents` on morphology image | Drag-to-rotate (azimuth/elevation), scroll-to-zoom; `prevent_default_action=True` stops browser image drag |
+
+Mouse events set a `_morph_dirty` flag rather than calling `_render_morph()`
+directly. The asyncio poll loop checks and clears the flag each tick (~33ms).
+This keeps the mouse handler instant and prevents it from blocking matplotlib
+updates.
+
+#### Stop Mechanism
+
+The Stop button in the VBox sends `StopBackend` through the frontend endpoint:
+
+```python
+self._endpoint.send(command_message(StopBackend()))
+```
+
+`BackendHost.receive()` checks for `StopBackend`, sets `_stop_requested = True`,
+and the backend thread's `should_stop()` check exits the loop cleanly on the next
+tick. The asyncio poll task is also cancelled.
+
+#### Files
+
+| File | Change |
+|---|---|
+| `frontends/vispy/notebook_host.py` | New — universal notebook host (vispy + ipympl + ipyevents) |
+| `frontends/vispy/notebook_host_jupyterlab.py` | Renamed from `notebook_host.py` — JupyterLab-only rfb version preserved |
+| `backends/neuron/attach.py` | Added `show_notebook()` to `NeuronAttachAdapter` |
+| `backends/jaxley/attach.py` | Updated `show_notebook()` to use universal host |
+| `scratch/hh_neuron_notebook.ipynb` | New — NEURON HH notebook test |
+| `scratch/hh_jaxley_notebook.ipynb` | Updated — no vispy imports needed |
+| `scratch/hh_neuron_inline.py` | Renamed from `hh_inline.py` |
+| `scratch/hh_neuron_attach.py` | Renamed from `hh_attach.py` |
+
+#### Dependencies Added
+
+- `ipympl` — interactive matplotlib in notebooks
+- `ipyevents` — DOM event listener on ipywidgets
+
 ## Current Open Work
 
 Immediate cleanup:
@@ -1032,10 +1145,10 @@ Transport follow-up:
   endpoint flag) stays identical for WebSocket. The only change is what
   endpoint type is passed to the backend worker and what the frontend host
   connects over.
-- Notebook support is a frontend + transport addition, not a special backend
-  case. A notebook kernel spawns the backend subprocess the same way the
-  desktop path does; the frontend renders in the notebook cell over a WebSocket
-  or notebook comm transport.
+- Notebook support has been implemented via in-process threading + vispy offscreen
+  rendering. The in-process transport (`make_inprocess_pair`) is used because
+  notebook state cannot be pickled into a subprocess. A WebSocket transport path
+  remains possible for remote kernels but is not yet needed.
 
 Authoring follow-up:
 
@@ -1043,6 +1156,80 @@ Authoring follow-up:
   `Capability` abstraction
 - keep backend subclassing as an advanced escape hatch, not the primary public
   authoring path
+
+### Next: Authoring API Unification Implementation
+
+This section lists every source file that needs changing and every piece that
+needs building to make the new `cnv.monitor / cnv.show` API work. The scratch
+files listed above are the acceptance targets — the implementation is done when
+those files run correctly with the new API.
+
+#### New things to build
+
+**`cnv.monitor(simulation)` function** — does not exist yet. Lives in
+`src/compneurovis/inline.py` (module-level) or a new `src/compneurovis/api.py`.
+Accepts:
+- callable → wraps as generic step-driven backend (replaces `step=` on `show()`)
+- generator → wraps as generator-driven backend
+- `NeuronAttachAdapter` / `JaxleyAttachAdapter` instance → registers as a
+  domain backend
+- future: any object with a recognised adapter protocol
+
+Multiple `cnv.monitor()` calls accumulate adapters onto the implicit session.
+`cnv.show()` compiles all of them into a `RunSpec`.
+
+**Shared adapter base class** — does not exist yet. All of
+`NeuronAttachAdapter`, `JaxleyAttachAdapter`, and the generic Python adapter
+should share:
+- `trace()`, `control()`, `action()` accumulator methods
+- `_ControlBinding`, `_ActionBinding` dataclasses (currently copy-pasted in
+  three files)
+- `show()` — compiles to `RunSpec` + `run_app` or `start_app` based on
+  environment detection
+- `_make_backend(title) -> BackendBase` — the single customisation point
+
+Lives in a new `src/compneurovis/adapters/base.py` or
+`src/compneurovis/backends/attach.py`.
+
+**Environment auto-detection in `show()`** — does not exist yet. Single `show()`
+method on the adapter base (and on the module-level implicit session) that:
+1. Checks `get_script_backend_endpoint()` — subprocess backend role path
+2. Checks `IPython.get_ipython()` — notebook path → `start_app` +
+   `ThreadBackendHost`
+3. Checks `mp.current_process().name == "MainProcess"` — desktop path →
+   `run_app` + `ScriptBackendProcess`
+
+**`cnv.neuron` and `cnv.jaxley` public namespaces** — do not exist yet.
+Currently users import `from compneurovis.backends.neuron.attach import attach`
+which is an internal path. The public surface should be:
+- `import compneurovis.neuron as cnv_neuron; cnv_neuron.attach(...)`
+- or `cnv.neuron.attach(...)` via a `neuron` attribute on the `compneurovis`
+  package
+
+Thin module files `src/compneurovis/neuron.py` and
+`src/compneurovis/jaxley.py` that re-export from the backend packages.
+
+#### Files to change
+
+| File | What changes |
+|---|---|
+| `src/compneurovis/inline.py` | Remove `step`, `dt_ms`, `speed`, `title` from `show()`. Add `cnv.monitor()`. Move step/callable wrapping into the monitor registration path. |
+| `src/compneurovis/backends/neuron/attach.py` | Inherit from shared adapter base. Delete duplicated `_ControlBinding`, `_ActionBinding`, `control()`, `action()`. Delete `show_notebook()` — auto-detection in `show()` replaces it. Remove `title` arg from `show()`. |
+| `src/compneurovis/backends/jaxley/attach.py` | Same as neuron attach. |
+| `src/compneurovis/frontends/vispy/notebook_host.py` | `launch_notebook()` stays but becomes an internal helper called by the auto-detection path in `show()`, not a public API. |
+| `src/compneurovis/__init__.py` | Add `cnv.monitor` to public exports. Add `neuron` and `jaxley` namespace re-exports. |
+
+#### What does NOT need changing
+
+- `src/compneurovis/core/run.py` — `run_app`, `start_app`, `run_orchestrator`
+  are already correct. No changes needed.
+- `src/compneurovis/core/hosts.py` — `AppHandle`, `ScriptBackendProcess`,
+  `ThreadBackendHost`, `get_script_backend_endpoint` are already correct.
+- `scratch/sine_wave.py` — keep as-is. Raw `RunSpec` bespoke path, no sugar
+  involved.
+- `scratch/jaxley_hh_validate.py`, `jaxley_hh_sweep.py`,
+  `jaxley_param_sweep.py`, `jaxley_multicell_param_sweep.py` — no UI sugar,
+  not affected.
 
 ### Next: Simulator Attach APIs (`cnv.neuron.attach`, `cnv.jaxley.attach`)
 
@@ -1112,6 +1299,170 @@ implementation detail, never a public authoring surface.
 
 Same shape will apply to `cnv.jaxley.attach()` once the NEURON version is
 proven.
+
+### 2026-05-15: Authoring API Unification — `cnv.monitor` And Empty `show()`
+
+#### Decisions
+
+**`show()` takes no arguments.** All configuration is declared before `show()`.
+`show()` is always an empty fire — it compiles whatever has been declared into a
+`RunSpec` and calls `run_app` or `start_app`. No topology, step function, dt,
+speed, or title belongs on `show()`.
+
+**`step` is not a public concept.** The previous `cnv.show(step=_step, dt_ms=DT_MS)`
+API leaks backend execution concerns into the authoring surface. Each backend owns
+its own execution model internally — NEURON calls `h.fadvance()`, Jaxley runs its
+JAX integrator, a custom Python model calls its own advance function. The user
+declares what to observe; CompNeuroVis mediates between simulation and frontend.
+
+**`cnv.monitor(simulation)` is the universal attach point.** A single function
+accepts anything that can be wrapped as a backend:
+
+```python
+cnv.monitor(lambda: model.step(DT_MS))   # callable — generic Python model
+cnv.monitor(run_lif())                    # generator — yields each step
+cnv.monitor(cnv.neuron.attach(sections=[soma]))   # NEURON adapter
+cnv.monitor(cnv.jaxley.attach(cells=[cell]))      # Jaxley adapter
+cnv.monitor(remote_sim)                   # future: remote/WebSocket adapter
+```
+
+CompNeuroVis resolves the wrapper from the type. Observation declarations
+(`cnv.trace`, `cnv.control`, `cnv.action`) are independent of execution source
+and attach to whatever `cnv.monitor` declared.
+
+**Multi-backend is the same pattern:**
+
+```python
+cnv.monitor(neural)
+cnv.monitor(body)
+cnv.show()
+```
+
+Multiple `cnv.monitor` calls declare multiple backends. `cnv.show()` wires them
+all to the frontend. The orchestrator handles routing.
+
+**"Inline" is a mode, not an object.** `InlineApp` and `InlineBackend` remain
+as internal implementation. The public vocabulary is the module-level API:
+`cnv.trace / cnv.control / cnv.action / cnv.monitor / cnv.show`. There is no
+public `InlineApp` class.
+
+**Single adapter base.** `NeuronAttachAdapter`, `JaxleyAttachAdapter`, and any
+future domain adapter share a common base. The only customization point is
+`_make_backend()`. `trace()`, `control()`, `action()`, `show()`,
+`show_notebook()` are shared. `TraceBinding` uses callables throughout — the
+same mechanism works for pure Python, NEURON, and Jaxley because all expose
+plain Python accessors.
+
+**`show_notebook()` removed.** `show()` auto-detects environment — subprocess
+for desktop, thread for notebook. Single entry point, no caller needs to choose.
+
+**`run_app = start_app().wait()`.**  `start_app` is the canonical execution
+path. `run_app` is three lines: MainProcess guard + `start_app(run_spec).wait()`.
+`AppHandle.wait()` calls `run()` on the foreground actor (Qt event loop, main
+thread) and then stops everything. Non-foreground actors have `run()` called
+immediately in `start_app`; foreground actors are deferred to `wait()`.
+
+#### Design Rationale
+
+**Why `show_notebook()` was wrong.**
+Having both `show()` and `show_notebook()` on the same adapter object mixed two
+concerns: *what to visualize* (the adapter's job) and *how to launch it* (an
+environment concern). The user was forced to know which environment they were in
+before calling show. This is friction that belongs to the library, not the user.
+The reference is `plt.show()` — matplotlib does not expose `plt.show_notebook()`.
+Single `show()` that auto-detects is the right contract.
+
+**Why auto-detection and not explicit import paths.**
+An alternative is separate import paths: `from compneurovis.notebook import attach`
+vs `from compneurovis import attach`. This makes the environment explicit but adds
+ceremony and creates a foot-gun — users pick the wrong path and get a confusing
+error rather than correct behavior. Auto-detection via `IPython.get_ipython()` is
+reliable and is the modern library trend (Plotly, PyVista). For power users who
+want explicit control, the underlying `start_app(RunSpec(...))` is always
+accessible.
+
+**Why `start_app` is canonical and `run_app` is sugar.**
+`run_app` and `start_app` previously had separate, largely duplicated
+implementations. The key behavioral difference: `run_app` blocks on the Qt event
+loop; `start_app` returns an `AppHandle` immediately. But this is not a
+fundamental difference in execution model — it is just whether the caller wants
+to block. `start_app` is the canonical path. `run_app` is three lines:
+MainProcess guard + `start_app(run_spec).wait()`.
+
+**Why `AppHandle.wait()` defers the foreground actor's `run()`.**
+Qt requires its event loop to run on the main thread. `vispy_app.run()` (the
+blocking Qt call) must be called from the main thread, after all other actors are
+already running. If `start_app` called `run()` on all actors including the
+foreground one, Qt would block inside `start_app` and the function would never
+return an `AppHandle`. The split is: `start_app` calls `run()` on all
+non-foreground actors (subprocess no-ops, thread starts, asyncio tasks) and
+returns. `AppHandle.wait()` then calls `run()` on the foreground actor from the
+main thread, blocking until Qt exits, then stops everything.
+
+**Why notebooks use `ThreadBackendHost` and not `ScriptBackendProcess`.**
+The subprocess path (`ScriptBackendProcess`) works by re-running the user's
+script file via `runpy.run_path`. Notebook cells have no script file — the model
+lives in kernel memory that cannot be pickled or re-executed in a child process.
+Threading is the only option. The GIL is not a concern: NEURON releases it during
+`h.fadvance()` and JAX releases it during XLA dispatch, so the simulation thread
+runs in genuine parallel with the asyncio frontend poll loop.
+
+**Why the orchestrator does not own clock synchronization.**
+The orchestrator is generic — it must serve static apps, document apps, NeuroML
+editors, replay apps, and multi-backend simulations equally. Baking in clock
+synchronization logic would make it simulator-specific. For multi-backend
+simulations (e.g. NEURON + MuJoCo), the backends are independent actors. If they
+need to synchronize, that is the user's problem — they wire it themselves in their
+own code (shared queue, shared event, whatever suits them). CompNeuroVis observes
+what each backend emits and mediates display. The orchestrator owns lifecycle,
+`AppSpec` distribution, and message routing — nothing more.
+
+
+
+| Topology | Pattern | Status |
+|---|---|---|
+| T1 single-process | `cnv.monitor(sim); cnv.show()` → in-process transport | ✅ |
+| T2 subprocess | `cnv.monitor(sim); cnv.show()` → `ScriptBackendProcess` + pipe | ✅ |
+| T2 NEURON/Jaxley | `cnv.monitor(cnv.neuron.attach(...)); cnv.show()` | ✅ |
+| T3 notebook thread | same pattern → `ThreadBackendHost` + in-process transport | ✅ |
+| T4 remote | `cnv.monitor(remote_adapter)` → WebSocket transport | 🔜 when WebSocket lands |
+| T6 N backends | `cnv.monitor(a); cnv.monitor(b); cnv.show()` | 🔜 fan-in routing not yet built |
+| T5/T7 | existing gaps, pattern is consistent | ❌ no change |
+
+The `cnv.monitor(simulation)` vocabulary is consistent with the full matrix.
+No topology requires breaking this API surface. Gaps T5/T6/T7 are transport and
+routing gaps, not authoring API gaps.
+
+#### Reference Examples
+
+These scratch files remain the canonical authoring targets for the new API:
+
+| File | Mode | What it covers |
+|---|---|---|
+| `scratch/sine_wave_inline.py` | inline, pure Python | simplest possible case |
+| `scratch/lif_inline.py` | inline, pure Python | controls, actions, multi-trace |
+| `scratch/hh_neuron_inline.py` | inline, NEURON via callables | domain sim, no morphology |
+| `scratch/hh_neuron_attach.py` | attach, NEURON | morphology view, domain backend |
+| `scratch/hh_jaxley_attach.py` | attach, Jaxley | same for JAX |
+
+#### Scratch Files To Refactor
+
+Files that need updating to match the new API. `sine_wave.py` is the only one
+that should stay as raw `RunSpec` — it is the canonical "bespoke" authoring
+reference and proves the low-level API still works.
+
+| File | Current pattern | Target pattern |
+|---|---|---|
+| `scratch/lif_inline.py` | `cnv.show(step=_step, dt_ms=DT_MS, speed=..., title=...)` | `cnv.monitor(...)` declares execution; `cnv.show()` empty |
+| `scratch/sine_wave_inline.py` | `cnv.show(step=_step, dt_ms=DT_MS, title=...)` | same |
+| `scratch/hh_neuron_inline.py` | `cnv.show(step=lambda: h.fadvance(), dt_ms=0.025, speed=100, title=...)` | same |
+| `scratch/hh_neuron_attach.py` | `from backends.neuron.attach import attach` + `app.show(title=...)` | `cnv.neuron.attach(...)` + `cnv.monitor(app)` + `cnv.show()` |
+| `scratch/hh_jaxley_attach.py` | `from backends.jaxley.attach import attach` + `app.show(title=...)` | `cnv.jaxley.attach(...)` + `cnv.monitor(app)` + `cnv.show()` |
+
+`sine_wave.py` — keep as-is. Raw `RunSpec` + `BackendBase` subclass. This is the
+"bespoke" authoring path — it already compiles down to `RunSpec` + `run_app` and
+requires no changes. Its verbosity is intentional: it shows the full machinery
+that the sugar API hides.
 
 ## Validation Questions
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+import runpy
+import sys
+import threading
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -187,15 +190,199 @@ class ActorProcess:
                 self._process.join()
 
 
+# --------------------------------------------------------------------------- #
+# Script-backend — subprocess launched by re-running the user's script        #
+# --------------------------------------------------------------------------- #
+
+_g_script_backend_endpoint: TransportEndpoint | None = None
+
+
+def get_script_backend_endpoint() -> TransportEndpoint | None:
+    """Return the endpoint if this process was spawned as a script backend."""
+    return _g_script_backend_endpoint
+
+
+def _set_script_backend_endpoint(ep: TransportEndpoint) -> None:
+    global _g_script_backend_endpoint
+    _g_script_backend_endpoint = ep
+
+
+def _script_backend_worker(script_path: str, endpoint: TransportEndpoint) -> None:
+    """Subprocess entry point for script-based backends.
+
+    Sets the process-level endpoint flag then re-runs the user's script as
+    __main__. The script detects get_script_backend_endpoint() is set and
+    runs as a backend actor.
+
+    Must be top-level in this module so multiprocessing can resolve it by
+    qualified name. Do not move or rename.
+    """
+    _set_script_backend_endpoint(endpoint)
+    inline_module = sys.modules.get("compneurovis.inline")
+    reset_inline = getattr(inline_module, "_reset_inline_session", None)
+    if callable(reset_inline):
+        reset_inline()
+    runpy.run_path(script_path, run_name="__main__")
+
+
+class ScriptBackendProcess:
+    """Startable that spawns a backend subprocess by re-running a script.
+
+    The script is the backend. Pickling the backend state is not required —
+    it is reconstructed fresh when the script re-runs. This is the right
+    strategy for NEURON, JAX, and any model that builds non-picklable state.
+    """
+
+    def __init__(self, script_path: str, endpoint: TransportEndpoint) -> None:
+        self._script_path = script_path
+        self._endpoint = endpoint
+        self._process: mp.Process | None = None
+
+    def start(self) -> None:
+        self._process = mp.Process(
+            target=_script_backend_worker,
+            args=(self._script_path, self._endpoint),
+        )
+        self._process.start()
+        self._endpoint.close()
+
+    def run(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        if self._process is None:
+            return
+        self._process.join(timeout=2)
+        if self._process.is_alive():
+            self._process.terminate()
+            self._process.join()
+
+
+# --------------------------------------------------------------------------- #
+# Thread-backend — for notebook contexts where subprocess is not available     #
+# --------------------------------------------------------------------------- #
+
+class ThreadBackendHost(ActorHost):
+    """BackendHost whose step loop runs in a daemon thread.
+
+    Use when the backend must share the same process as the frontend (e.g.
+    .ipynb notebooks where no script file is available for ScriptBackendProcess).
+    NEURON and JAX release the GIL during simulation, so real parallelism
+    is achieved despite the thread model.
+    """
+
+    def __init__(
+        self,
+        actor_source: ActorSource,
+        runtime: "AppRuntime",  # type: ignore[name-defined]  # avoid circular import
+        endpoint: TransportEndpoint,
+    ) -> None:
+        super().__init__(endpoint=endpoint)
+        self._actor_source = actor_source
+        self._runtime = runtime
+        self._thread: threading.Thread | None = None
+        self._stop_requested = False
+
+    def start(self) -> None:
+        self.actor = resolve_actor_source(self._actor_source)
+        self.actor.initialize(self._runtime.app_spec)
+
+    def run(self) -> None:
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def should_stop(self) -> bool:
+        return self._stop_requested
+
+    def _loop(self) -> None:
+        try:
+            while not self.should_stop():
+                started = time.monotonic()
+                self.step()
+                remaining = self.idle_sleep() - (time.monotonic() - started)
+                if remaining > 0:
+                    time.sleep(remaining)
+        except (BrokenPipeError, OSError):
+            pass
+        finally:
+            self.stop()
+
+    def idle_sleep(self) -> float:
+        actor = self._actor()
+        from compneurovis.backends.base import BackendBase
+        if isinstance(actor, BackendBase):
+            return actor.idle_sleep()
+        return 1.0 / 60.0
+
+    def step(self) -> None:
+        self.receive()
+        if self.should_stop():
+            return
+        actor = self._actor()
+        from compneurovis.backends.base import BackendBase
+        if isinstance(actor, BackendBase) and actor.is_live():
+            actor.advance()
+        self.flush()
+
+
+# --------------------------------------------------------------------------- #
+# AppHandle — returned by start_app() for non-blocking runs                   #
+# --------------------------------------------------------------------------- #
+
+class AppHandle:
+    """Handle for a non-blocking app run (notebook / headless).
+
+    Returned by start_app(). Call stop() to shut everything down.
+    results maps actor_id → return value of host.run() (e.g. notebook widget).
+    """
+
+    def __init__(
+        self,
+        runtime: "AppRuntime",  # type: ignore[name-defined]
+        items: list,
+        results: dict,
+    ) -> None:
+        self._runtime = runtime
+        self._items = items
+        self.results = results
+
+    def widget(self, actor_id: str = "frontend") -> Any:
+        """Return the widget produced by the named actor's run()."""
+        return self.results.get(actor_id)
+
+    def wait(self) -> None:
+        """Block until the foreground actor (e.g. Qt event loop) exits, then stop all actors.
+
+        Call from the main thread. No-op if no foreground actor is present (notebook path).
+        """
+        fg = [(spec, host) for spec, host in self._items if spec.runs_in_foreground]
+        if not fg:
+            return
+        _, fg_host = fg[0]
+        try:
+            fg_host.run()
+        finally:
+            self.stop()
+
+    def stop(self) -> None:
+        self._runtime.stop()
+        for _, host in reversed(self._items):
+            host.stop()
+
+
 __all__ = [
     "ActorHost",
     "ActorHostSource",
     "ActorProcess",
+    "AppHandle",
     "ConnectionSlotHost",
+    "ScriptBackendProcess",
     "Startable",
+    "ThreadBackendHost",
     "TransportFactory",
     "configure_diagnostics",
     "configure_multiprocessing",
+    "get_script_backend_endpoint",
     "resolve_actor_source",
     "resolve_interaction_target_source",
 ]

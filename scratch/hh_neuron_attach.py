@@ -1,4 +1,4 @@
-"""scratch/hh_attach.py — single-compartment HH model via attach() API.
+"""scratch/hh_neuron_attach.py — single-compartment HH model via attach() API.
 
 attach() wraps an existing NEURON model without subclassing NeuronBackend.
 Morphology view + voltage trace + IClamp control.
@@ -7,7 +7,7 @@ Requires: NEURON
 Run: python scratch/hh_attach.py
 """
 from neuron import h
-from compneurovis.backends.neuron.attach import attach
+import compneurovis as cnv
 
 soma = h.Section(name="soma")
 soma.L = 12.6157
@@ -24,8 +24,8 @@ h.dt = 0.025
 h.celsius = 6.3
 h.finitialize(-65.0)
 
-app = attach(sections=[soma])
-app.control(
+sim = cnv.source(cnv.neuron.attach(sections=[soma]))
+sim.control(
     "clamp_amp",
     label="IClamp amplitude (nA)",
     get=lambda: float(stim.amp),
@@ -33,4 +33,4 @@ app.control(
     min=-0.2,
     max=0.5,
 )
-app.show(title="HH attach")
+cnv.show()

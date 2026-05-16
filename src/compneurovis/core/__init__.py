@@ -10,6 +10,7 @@ from compneurovis.core.app import (
     LayoutCatalog,
     LayoutSpec,
     PanelSpec,
+    RoutingSpec,
     RunSpec,
     ViewCatalog,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "MorphologyViewSpec",
     "OperatorSpec",
     "PanelSpec",
+    "RoutingSpec",
     "RunSpec",
     "SeriesSpec",
     "ScalarValueSpec",

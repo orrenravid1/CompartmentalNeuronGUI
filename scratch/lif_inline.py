@@ -6,7 +6,7 @@ No if __name__ == '__main__' required.
 
 Run: python scratch/lif_inline.py
 """
-from compneurovis import inline as cnv
+import compneurovis as cnv
 
 
 class LIFModel:
@@ -72,57 +72,62 @@ def _step():
         t_ms[0] += DT_MS
 
 
+def _advance():
+    for _ in range(max(1, int(display_dt_ms[0] / DT_MS))):
+        _step()
+
+
 def _reset():
     model.reset()
     t_ms[0] = 0.0
 
 
-cnv.trace("Membrane voltage",
+sim = cnv.source(_advance)
+
+sim.trace("Membrane voltage",
           read={"Membrane": lambda: model.v_mv,
                 "Threshold": lambda: model.threshold_voltage_mv,
                 "Reset V":   lambda: model.reset_voltage_mv},
           x=lambda: t_ms[0], y_min=-80, y_max=-40, y_unit="mV")
 
-cnv.trace("Drive currents",
+sim.trace("Drive currents",
           read={"Tonic": lambda: model.tonic_current_na,
                 "Pulse":  lambda: model.pulse_current_na,
                 "Total":  lambda: model.total_current_na},
           x=lambda: t_ms[0], y_min=0, y_max=12.5, y_unit="nA")
 
-cnv.trace("Spike events",
+sim.trace("Spike events",
           read={"Spike":      lambda: model.spike_flag,
                 "Refractory": lambda: model.refractory_fraction},
           x=lambda: t_ms[0], y_min=-0.05, y_max=1.05)
 
-cnv.control("membrane_tau",  label="Membrane tau (ms)",
+sim.control("membrane_tau",  label="Membrane tau (ms)",
             get=lambda: model.membrane_tau_ms,
             set=lambda v: setattr(model, "membrane_tau_ms", v),          min=2.0,   max=80.0)
-cnv.control("resistance",    label="Resistance (MOhm)",
+sim.control("resistance",    label="Resistance (MOhm)",
             get=lambda: model.membrane_resistance_mohm,
             set=lambda v: setattr(model, "membrane_resistance_mohm", v), min=1.0,   max=25.0)
-cnv.control("tonic_current", label="Tonic drive (nA)",
+sim.control("tonic_current", label="Tonic drive (nA)",
             get=lambda: model.tonic_current_na,
             set=lambda v: setattr(model, "tonic_current_na", v),         min=0.0,   max=4.0)
-cnv.control("pulse_amp",     label="Pulse amplitude (nA)",
+sim.control("pulse_amp",     label="Pulse amplitude (nA)",
             get=lambda: model.pulse_amplitude_na,
             set=lambda v: setattr(model, "pulse_amplitude_na", v),       min=0.0,   max=8.0)
-cnv.control("pulse_decay",   label="Pulse decay (ms)",
+sim.control("pulse_decay",   label="Pulse decay (ms)",
             get=lambda: model.pulse_decay_ms,
             set=lambda v: setattr(model, "pulse_decay_ms", v),           min=2.0,   max=60.0)
-cnv.control("threshold",     label="Threshold (mV)",
+sim.control("threshold",     label="Threshold (mV)",
             get=lambda: model.threshold_voltage_mv,
             set=lambda v: setattr(model, "threshold_voltage_mv", v),     min=-62.0, max=-42.0)
-cnv.control("refractory",    label="Refractory (ms)",
+sim.control("refractory",    label="Refractory (ms)",
             get=lambda: model.refractory_ms,
             set=lambda v: setattr(model, "refractory_ms", v),            min=0.0,   max=10.0)
-cnv.control("display_dt",    label="Simulation speed (ms/update)",
+sim.control("display_dt",    label="Simulation speed (ms/update)",
             get=lambda: display_dt_ms[0],
             set=lambda v: display_dt_ms.__setitem__(0, v),               min=DT_MS, max=20.0)
 
-cnv.action("pause", label="Pause / Resume", fn=lambda: paused.__setitem__(0, not paused[0]))
-cnv.action("pulse", label="Inject pulse",   fn=lambda: model.deliver_pulse())
-cnv.action("reset", label="Reset state",    fn=_reset, resets_fields=True)
+sim.action("pause", label="Pause / Resume", fn=lambda: paused.__setitem__(0, not paused[0]))
+sim.action("pulse", label="Inject pulse",   fn=lambda: model.deliver_pulse())
+sim.action("reset", label="Reset state",    fn=_reset, resets_fields=True)
 
-cnv.show(step=_step, dt_ms=DT_MS,
-         speed=lambda: max(1, int(display_dt_ms[0] / DT_MS)),
-         title="LIF Model")
+cnv.show()

@@ -58,6 +58,7 @@ from compneurovis.core.messages import (
     MessagePayload,
     PanelPatch,
     Reset,
+    RoutedCommand,
     AppSpecPatch,
     SetControl,
     StatePatch,
@@ -938,6 +939,8 @@ class VispyFrontendWindow(QtWidgets.QMainWindow, FrontendBase):
                         pending_status = update.message
                 else:
                     self.statusBar().clearMessage()
+            elif isinstance(update, RoutedCommand):
+                continue
             else:
                 msg = getattr(update, "message", str(update))
                 pending_status = msg

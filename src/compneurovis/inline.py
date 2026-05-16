@@ -1,226 +1,68 @@
-"""Sugar API for inline simulation visualization.
+"""Inline-mode public authoring API.
 
-Matplotlib-style module-level API backed by a subprocess backend.
-The simulation runs in a child process; Qt event loop stays in the main process.
-No `if __name__ == '__main__':` guard required — role is determined via a
-module-level flag set by _cnv_script_worker before the user script re-runs.
+``source`` wraps the execution source and returns the object that owns
+trace/control/action bindings. ``show`` has no arguments; it lowers the declared
+source into the same RunSpec/start_app path used by the rest of CompNeuroVis.
 """
+
 from __future__ import annotations
 
+import contextvars
 import inspect
-import multiprocessing as mp
-import runpy
-import threading
-import time
-from dataclasses import dataclass, field
+from collections.abc import Iterator
 from typing import Any, Callable
 
-import numpy as np
-
+from compneurovis.adapters.base import (
+    ActionBinding,
+    ControlBinding,
+    InlineAdapterBase,
+    TraceBinding,
+    append_bindings_to_app_spec,
+    emit_trace_updates,
+)
 from compneurovis.backends.base import BackendBase
-from compneurovis.backends.host import BackendHost
 from compneurovis.core.app import (
     AppSpec,
     DataCatalog,
-    Field,
     InteractionCatalog,
     LayoutCatalog,
     LayoutSpec,
-    LinePlotViewSpec,
     PanelSpec,
     ViewCatalog,
 )
-from compneurovis.core.controls import ActionSpec, ControlSpec, ScalarValueSpec
-from compneurovis.core.hosts import configure_multiprocessing
-from compneurovis.core.messages import (
-    FieldAppend,
-    FieldReplace,
-    InvokeAction,
-    Message,
-    MessagePayload,
-    SetControl,
-    update_message,
+from compneurovis.core.messages import InvokeAction, Message, MessagePayload, SetControl
+from compneurovis.core.actor import ActorRole
+from compneurovis.core.messages import CommandPayload, Reset, RoutedCommand, command_message
+
+
+_current_coordinator_backend: contextvars.ContextVar["CoordinatorBackend | None"] = contextvars.ContextVar(
+    "current_coordinator_backend",
+    default=None,
 )
-from compneurovis.core.runtime import AppRuntime
-from compneurovis.transports.pipe import PipeEndpoint, make_pipe_pair
-
-# ---------------------------------------------------------------------------
-# Backend slot — set by _cnv_script_worker before running user script.
-# None  → main process (frontend mode)
-# set   → subprocess (backend mode)
-# ---------------------------------------------------------------------------
-
-_backend_endpoint: PipeEndpoint | None = None
 
 
-def _cnv_script_worker(script_path: str, endpoint: PipeEndpoint) -> None:
-    """Entry point for the backend subprocess.
+class SourceStepContext:
+    """Per-advance context for sources that produce multiple samples per tick."""
 
-    Must be a top-level function in this module so multiprocessing can
-    pickle it by qualified name (compneurovis.inline._cnv_script_worker).
-    Do not move or rename without updating multiprocessing pickle target.
-    """
-    global _backend_endpoint, _app
-    _backend_endpoint = endpoint
-    # The bootstrap phase re-ran __main__ (spawn._fixup_main_from_path) and
-    # polluted _app with duplicate bindings.  Reset before the real run.
-    _app = InlineApp()
-    runpy.run_path(script_path, run_name="__main__")
+    def __init__(self, traces: list[TraceBinding]) -> None:
+        self._traces = traces
+        self._sampled = False
 
+    def sample(self) -> None:
+        for trace in self._traces:
+            trace._sample()
+        self._sampled = True
 
-# ---------------------------------------------------------------------------
-# Binding descriptors
-# ---------------------------------------------------------------------------
+    def _begin_advance(self) -> None:
+        self._sampled = False
 
-SeriesReaders = Callable[[], float] | dict[str, Callable[[], float]]
+    @property
+    def sampled(self) -> bool:
+        return self._sampled
 
-
-@dataclass
-class TraceBinding:
-    name: str
-    read: SeriesReaders
-    x: Callable[[], float]
-    rolling_window: float = 500.0
-    y_min: float | None = None
-    y_max: float | None = None
-    y_unit: str = "a.u."
-    x_unit: str = "ms"
-    max_samples: int = 2400
-    _field_id: str = field(init=False, default="")
-    _view_id: str = field(init=False, default="")
-    _buf_x: list = field(init=False, default_factory=list)
-    _buf_vals: list = field(init=False, default_factory=list)
-    _lock: threading.Lock = field(init=False, default_factory=threading.Lock)
-
-    def _register(self, index: int) -> None:
-        self._field_id = f"field_{index}_{self.name}"
-        self._view_id = f"view_{index}_{self.name}"
-
-    def _series(self) -> dict[str, Callable[[], float]]:
-        if callable(self.read):
-            return {self.name: self.read}
-        return self.read
-
-    def _sample(self) -> None:
-        series = self._series()
-        x = self.x()
-        vals = [fn() for fn in series.values()]
-        with self._lock:
-            self._buf_x.append(x)
-            self._buf_vals.append(vals)
-
-    def _drain_message(self):
-        with self._lock:
-            if not self._buf_x:
-                return None
-            xs = self._buf_x[:]
-            vals = self._buf_vals[:]
-            self._buf_x.clear()
-            self._buf_vals.clear()
-        n_series = len(self._series())
-        values = np.array(vals, dtype=np.float32).reshape(len(xs), n_series).T
-        return update_message(FieldAppend(
-            field_id=self._field_id,
-            append_dim="time",
-            values=values,
-            coord_values=np.array(xs, dtype=np.float32),
-            max_length=self.max_samples,
-        ))
-
-    def _initial_field(self) -> Field:
-        series = self._series()
-        return Field(
-            id=self._field_id,
-            values=np.array([[fn()] for fn in series.values()], dtype=np.float32),
-            dims=("series", "time"),
-            coords={
-                "series": np.array(list(series.keys())),
-                "time": np.array([self.x()], dtype=np.float32),
-            },
-            unit=self.y_unit,
-        )
-
-    def _view_spec(self) -> LinePlotViewSpec:
-        series = self._series()
-        return LinePlotViewSpec(
-            id=self._view_id,
-            title=self.name,
-            field_id=self._field_id,
-            x_dim="time",
-            series_dim="series",
-            x_unit=self.x_unit,
-            y_unit=self.y_unit,
-            rolling_window=self.rolling_window,
-            trim_to_rolling_window=True,
-            y_min=self.y_min,
-            y_max=self.y_max,
-            show_legend=len(series) > 1,
-        )
-
-    def _panel_spec(self) -> PanelSpec:
-        return PanelSpec(id=f"panel_{self._view_id}", kind="line_plot", view_ids=(self._view_id,))
-
-    def _replace_message(self):
-        series = self._series()
-        values = np.array([[fn()] for fn in series.values()], dtype=np.float32)
-        return update_message(FieldReplace(
-            field_id=self._field_id,
-            values=values,
-            coords={
-                "series": np.array(list(series.keys())),
-                "time": np.array([self.x()], dtype=np.float32),
-            },
-        ))
-
-
-@dataclass
-class ControlBinding:
-    name: str
-    label: str
-    get: Callable[[], float]
-    set: Callable[[Any], None]
-    min: float = 0.0
-    max: float = 1.0
-    _control_id: str = field(init=False, default="")
-
-    def _register(self, index: int) -> None:
-        self._control_id = f"ctrl_{index}_{self.name}"
-
-    def _control_spec(self) -> ControlSpec:
-        return ControlSpec(
-            id=self._control_id,
-            label=self.label,
-            value_spec=ScalarValueSpec(default=self.get(), min=self.min, max=self.max),
-            send_to_backend=True,
-        )
-
-
-@dataclass
-class ActionBinding:
-    name: str
-    label: str
-    fn: Callable[[], None]
-    resets_fields: bool = False
-    _action_id: str = field(init=False, default="")
-
-    def _register(self, index: int) -> None:
-        self._action_id = f"action_{index}_{self.name}"
-
-    def _action_spec(self) -> ActionSpec:
-        return ActionSpec(id=self._action_id, label=self.label)
-
-
-# ---------------------------------------------------------------------------
-# InlineBackend — BackendBase wrapping user step function and bindings
-# ---------------------------------------------------------------------------
 
 class InlineBackend(BackendBase):
-    """Backend actor for inline sugar sessions.
-
-    Wraps the user's step function and trace/control/action bindings.
-    Driven by BackendHost: handle() dispatches inbound commands;
-    advance() runs simulation steps and emits FieldAppend updates.
-    """
+    """Backend actor for pure-Python inline sources."""
 
     _FRAME_MS = 1000.0 / 60.0
 
@@ -230,226 +72,410 @@ class InlineBackend(BackendBase):
         traces: list[TraceBinding],
         controls: list[ControlBinding],
         actions: list[ActionBinding],
-        step: Callable[[], None] | None,
-        dt_ms: float | None,
-        speed: int | Callable[[], int] | None,
+        step: Callable[[SourceStepContext], None] | None,
     ) -> None:
         super().__init__()
         self._traces = traces
         self._controls = controls
         self._actions = actions
         self._step_fn = step
-        self._dt_ms = dt_ms
-        self._speed = speed
+        self._step_context = SourceStepContext(traces)
+        self._done = False
 
     def handle(self, message: Message[MessagePayload]) -> None:
         payload = message.payload
         if isinstance(payload, SetControl):
-            for c in self._controls:
-                if c._control_id == payload.control_id:
-                    c.set(payload.value)
+            for control in self._controls:
+                if control._control_id == payload.control_id:
+                    control.apply(self, payload.value)
                     break
         elif isinstance(payload, InvokeAction):
-            for a in self._actions:
-                if a._action_id == payload.action_id:
-                    a.fn()
-                    if a.resets_fields:
-                        for t in self._traces:
-                            self.emit_update(t._replace_message().payload)
+            for action in self._actions:
+                if action._action_id == payload.action_id:
+                    action.fn()
+                    if action.resets_fields:
+                        for trace in self._traces:
+                            self.emit_update(trace._replace_message().payload)
                     break
 
     def advance(self) -> None:
-        n = (
-            self._speed() if callable(self._speed) else
-            int(self._speed) if self._speed is not None else
-            max(1, int(self._FRAME_MS / self._dt_ms)) if self._dt_ms else 1
-        )
-        if self._step_fn is not None:
-            for _ in range(n):
-                self._step_fn()
-                for t in self._traces:
-                    t._sample()
-        for t in self._traces:
-            msg = t._drain_message()
-            if msg is not None:
-                self.emit_update(msg.payload)
+        if self._step_fn is not None and not self._done:
+            self._step_context._begin_advance()
+            try:
+                self._step_fn(self._step_context)
+            except StopIteration:
+                self._done = True
+            else:
+                if not self._step_context.sampled:
+                    self._step_context.sample()
+        emit_trace_updates(self, self._traces)
 
     def idle_sleep(self) -> float:
         return self._FRAME_MS / 1000.0
 
 
-# ---------------------------------------------------------------------------
-# InlineApp — accumulates bindings, builds AppSpec, orchestrates the run
-# ---------------------------------------------------------------------------
+class PythonSourceAdapter(InlineAdapterBase):
+    """Adapter for a callable or iterator-driven pure-Python source."""
 
-class InlineApp:
-    def __init__(self) -> None:
-        self._title = "CompNeuroVis"
-        self._traces: list[TraceBinding] = []
-        self._controls: list[ControlBinding] = []
-        self._actions: list[ActionBinding] = []
+    def __init__(self, source_like: Callable[..., None] | Iterator, *, title: str = "CompNeuroVis") -> None:
+        super().__init__(title=title)
+        self._source_like = source_like
 
-    def _add_trace(self, b: TraceBinding) -> None:
-        b._register(len(self._traces))
-        self._traces.append(b)
-
-    def _add_control(self, b: ControlBinding) -> None:
-        b._register(len(self._controls))
-        self._controls.append(b)
-
-    def _add_action(self, b: ActionBinding) -> None:
-        b._register(len(self._actions))
-        self._actions.append(b)
-
-    def _build_app_spec(self) -> AppSpec:
-        trace_panels = [t._panel_spec() for t in self._traces]
-        ctrl_panel = PanelSpec(
-            id="panel_controls",
-            kind="controls",
-            control_ids=tuple(c._control_id for c in self._controls),
-            action_ids=tuple(a._action_id for a in self._actions),
-        ) if self._controls or self._actions else None
-        panels = tuple(trace_panels) + ((ctrl_panel,) if ctrl_panel else ())
-
-        n = len(trace_panels)
-        if ctrl_panel and n > 0:
-            grid = tuple(
-                (p.id, ctrl_panel.id) if i == 0 else (p.id,)
-                for i, p in enumerate(trace_panels)
-            )
-        else:
-            grid = None
-
-        layout = LayoutSpec(title=self._title, panels=panels, panel_grid=grid)
-        return AppSpec(
-            data=DataCatalog(fields={t._field_id: t._initial_field() for t in self._traces}),
-            view_catalog=ViewCatalog(views={t._view_id: t._view_spec() for t in self._traces}),
-            interactions=InteractionCatalog(
-                controls={c._control_id: c._control_spec() for c in self._controls},
-                actions={a._action_id: a._action_spec() for a in self._actions},
-            ),
-            layout_catalog=LayoutCatalog.single(layout),
+    def _make_backend(self) -> InlineBackend:
+        return InlineBackend(
+            traces=self._traces,
+            controls=self._controls,
+            actions=self._actions,
+            step=self._step_function(),
         )
 
-    def show(
+    def _build_app_spec_for_backend(self, backend: BackendBase) -> AppSpec:
+        del backend
+        return _build_inline_app_spec(
+            title=self.title,
+            traces=self._traces,
+            controls=self._controls,
+            actions=self._actions,
+        )
+
+    def _step_function(self) -> Callable[[SourceStepContext], None] | None:
+        if self._source_like is None:
+            return None
+        if callable(self._source_like):
+            if _callable_accepts_step_context(self._source_like):
+                return self._source_like
+
+            def step_without_context(_context: SourceStepContext) -> None:
+                self._source_like()
+
+            return step_without_context
+        iterator = iter(self._source_like)
+
+        def step(_context: SourceStepContext) -> None:
+            next(iterator)
+
+        return step
+
+
+class RemoteActorRef:
+    """Reference to an actor hosted outside the current Python source."""
+
+    def __init__(
+        self,
+        actor_id: str,
+        *,
+        role: ActorRole = ActorRole.BACKEND,
+        send: Callable[[CommandPayload], None] | None = None,
+    ) -> None:
+        self.actor_id = actor_id
+        self.role = role
+        self._send = send
+
+    def command(self, command: CommandPayload) -> None:
+        if self._send is not None:
+            self._send(command)
+            return
+        backend = _current_coordinator_backend.get()
+        if backend is None:
+            raise RuntimeError(
+                "RemoteActorRef without a send callback can only be used while a coordinator "
+                "control/action is being applied."
+            )
+        backend.emit_routed_command(self.actor_id, command)
+
+    def set_control(self, control_id: str, value: Any) -> None:
+        self.command(SetControl(control_id, value))
+
+    def invoke_action(self, action_id: str, payload: dict[str, Any] | None = None) -> None:
+        self.command(InvokeAction(action_id, payload or {}))
+
+    def reset(self) -> None:
+        self.command(Reset())
+
+
+class CoordinatorBackend(BackendBase):
+    """Backend wrapper for controls/actions that coordinate a primary source."""
+
+    def __init__(
         self,
         *,
-        step: Callable[[], None] | None = None,
-        dt_ms: float | None = None,
-        speed: int | Callable[[], int] | None = None,
-        title: str = "CompNeuroVis",
+        primary: BackendBase,
+        traces: list[TraceBinding],
+        controls: list[ControlBinding],
+        actions: list[ActionBinding],
     ) -> None:
-        self._title = title
-        if _backend_endpoint is not None:
-            # Subprocess: run as backend actor via BackendHost.
-            backend = InlineBackend(
-                traces=self._traces,
-                controls=self._controls,
-                actions=self._actions,
-                step=step,
-                dt_ms=dt_ms,
-                speed=speed,
+        super().__init__()
+        self.primary = primary
+        self._traces = traces
+        self._controls = controls
+        self._actions = actions
+
+    def initialize(self, app_spec: AppSpec) -> None:
+        self.primary.initialize(app_spec)
+        self._forward_primary_messages()
+
+    def handle(self, message: Message[MessagePayload]) -> None:
+        payload = message.payload
+        if isinstance(payload, SetControl):
+            for control in self._controls:
+                if control._control_id == payload.control_id:
+                    token = _current_coordinator_backend.set(self)
+                    try:
+                        control.apply(self, payload.value)
+                    finally:
+                        _current_coordinator_backend.reset(token)
+                    return
+        elif isinstance(payload, InvokeAction):
+            for action in self._actions:
+                if action._action_id == payload.action_id:
+                    token = _current_coordinator_backend.set(self)
+                    try:
+                        action.fn()
+                        if action.resets_fields:
+                            for trace in self._traces:
+                                self.emit_update(trace._replace_message().payload)
+                    finally:
+                        _current_coordinator_backend.reset(token)
+                    return
+
+        self.primary.handle(message)
+        self._forward_primary_messages()
+
+    def emit_routed_command(self, target_actor_id: str, command: CommandPayload) -> None:
+        self.emit(command_message(RoutedCommand(target_actor_id, command)))
+
+    def advance(self) -> None:
+        if self.primary.is_live():
+            self.primary.advance()
+        self._forward_primary_messages()
+        for trace in self._traces:
+            trace._sample()
+        emit_trace_updates(self, self._traces)
+
+    def is_live(self) -> bool:
+        return self.primary.is_live()
+
+    def idle_sleep(self) -> float:
+        return self.primary.idle_sleep()
+
+    def shutdown(self) -> None:
+        self.primary.shutdown()
+
+    def _forward_primary_messages(self) -> None:
+        for message in self.primary.take_outbound_messages():
+            self.emit(message)
+
+
+class CoordinatorSourceAdapter(InlineAdapterBase):
+    """Source owner for controls/actions that coordinate more than one system."""
+
+    def __init__(
+        self,
+        primary: InlineAdapterBase,
+        *,
+        title: str | None = None,
+        participants: tuple[Any, ...] = (),
+    ) -> None:
+        super().__init__(title=title or primary.title)
+        self.primary = primary
+        self.participants = participants
+
+    def _make_backend(self) -> CoordinatorBackend:
+        return CoordinatorBackend(
+            primary=self.primary._make_backend(),
+            traces=self._traces,
+            controls=self._controls,
+            actions=self._actions,
+        )
+
+    def _build_app_spec_for_backend(self, backend: BackendBase) -> AppSpec:
+        if not isinstance(backend, CoordinatorBackend):
+            raise TypeError(f"CoordinatorSourceAdapter expected CoordinatorBackend, got {type(backend)!r}")
+        app_spec = self.primary._build_app_spec_for_backend(backend.primary)
+        return append_bindings_to_app_spec(
+            app_spec,
+            traces=self._traces,
+            controls=self._controls,
+            actions=self._actions,
+        )
+
+    def _notebook_dt(self) -> float:
+        return self.primary._notebook_dt()
+
+
+class InlineApp:
+    """Internal accumulator for one module-level inline authoring session."""
+
+    def __init__(self) -> None:
+        self._sources: list[InlineAdapterBase] = []
+
+    def source(self, source_like: Any) -> InlineAdapterBase:
+        adapter = _coerce_source(source_like)
+        self._sources.append(adapter)
+        return adapter
+
+    def coordinator(self, primary: Any, *participants: Any) -> CoordinatorSourceAdapter:
+        primary_adapter = _coerce_source(primary)
+        participant_refs = tuple(
+            participant if isinstance(participant, RemoteActorRef) else _coerce_source(participant)
+            for participant in participants
+        )
+        wrapped = {
+            id(primary_adapter),
+            *(id(participant) for participant in participant_refs if isinstance(participant, InlineAdapterBase)),
+        }
+        self._sources = [source for source in self._sources if id(source) not in wrapped]
+        adapter = CoordinatorSourceAdapter(
+            primary_adapter,
+            participants=participant_refs,
+        )
+        self._sources.append(adapter)
+        return adapter
+
+    def show(self):
+        if not self._sources:
+            raise RuntimeError("cnv.show() requires at least one cnv.source(...) call.")
+        if len(self._sources) > 1:
+            raise NotImplementedError(
+                "Multiple cnv.source(...) calls are accepted by the authoring API, "
+                "but multi-backend routing is not implemented yet."
             )
-            host = BackendHost(endpoint=_backend_endpoint)
-            host.start(lambda: backend, self._build_app_spec())
-            try:
-                while not host.should_stop():
-                    started = time.monotonic()
-                    host.step()
-                    remaining = host.idle_sleep() - (time.monotonic() - started)
-                    if remaining > 0:
-                        time.sleep(remaining)
-            except (BrokenPipeError, OSError):
-                pass
-            finally:
-                host.stop()
+        return self._sources[0].launch()
 
-        elif mp.current_process().name == "MainProcess":
-            # Main process: orchestrate — spawn backend subprocess, run Qt frontend.
-            # VispyFrontendWindow/Host imported here to avoid vispy Qt init in subprocess.
-            from compneurovis.frontends.vispy.frontend import VispyFrontendWindow
-            from compneurovis.frontends.vispy.host import VispyFrontendHost
 
-            script_path = inspect.stack()[-1].filename
-            app_spec = self._build_app_spec()
-            pair = make_pipe_pair(left_name="frontend", right_name="backend")
-            configure_multiprocessing()
+def _build_inline_app_spec(
+    *,
+    title: str,
+    traces: list[TraceBinding],
+    controls: list[ControlBinding],
+    actions: list[ActionBinding],
+) -> AppSpec:
+    trace_panels = [trace._panel_spec() for trace in traces]
+    controls_panel = (
+        PanelSpec(
+            id="controls-panel",
+            kind="controls",
+            control_ids=tuple(control._control_id for control in controls),
+            action_ids=tuple(action._action_id for action in actions),
+        )
+        if controls or actions
+        else None
+    )
+    panels = tuple(trace_panels) + ((controls_panel,) if controls_panel else ())
 
-            backend_process = mp.Process(
-                target=_cnv_script_worker,
-                args=(script_path, pair.right),
+    if controls_panel and trace_panels:
+        panel_grid = tuple(
+            (panel.id, controls_panel.id) if index == 0 else (panel.id,)
+            for index, panel in enumerate(trace_panels)
+        )
+    elif controls_panel:
+        panel_grid = ((controls_panel.id,),)
+    else:
+        panel_grid = tuple((panel.id,) for panel in trace_panels)
+
+    app_spec = AppSpec(
+        data=DataCatalog(fields={trace._field_id: trace._initial_field() for trace in traces}),
+        view_catalog=ViewCatalog(views={trace._view_id: trace._view_spec() for trace in traces}),
+        interactions=InteractionCatalog(
+            controls={control._control_id: control._control_spec() for control in controls},
+            actions={action._action_id: action._action_spec() for action in actions},
+        ),
+        layout_catalog=LayoutCatalog.single(
+            LayoutSpec(
+                title=title,
+                panels=panels,
+                panel_grid=panel_grid,
             )
-            backend_process.start()
-            pair.right.close()
-
-            runtime = AppRuntime(app_spec=app_spec)
-            frontend_host = VispyFrontendHost(
-                actor_source=VispyFrontendWindow,
-                runtime=runtime,
-                endpoint=pair.left,
-            )
-            frontend_host.start()
-            frontend_host.run()
-            frontend_host.stop()
-
-            backend_process.join(timeout=2)
-            if backend_process.is_alive():
-                backend_process.terminate()
-                backend_process.join()
-        # else: subprocess bootstrap re-import (spawn fixup_main) — do nothing.
+        ),
+    )
+    return append_bindings_to_app_spec(app_spec, traces=[], controls=[], actions=[])
 
 
-# ---------------------------------------------------------------------------
-# Module-level API
-# ---------------------------------------------------------------------------
+def _coerce_source(source_like: Any) -> InlineAdapterBase:
+    if isinstance(source_like, InlineAdapterBase):
+        return source_like
+    if callable(source_like):
+        return PythonSourceAdapter(source_like)
+    try:
+        iterator = iter(source_like)
+    except TypeError as exc:
+        raise TypeError(
+            "cnv.source(...) expects a callable, an iterator/generator, or a CompNeuroVis adapter."
+        ) from exc
+    return PythonSourceAdapter(iterator)
+
+
+def _callable_accepts_step_context(fn: Callable[..., Any]) -> bool:
+    try:
+        signature = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return False
+
+    positional_params = [
+        parameter
+        for parameter in signature.parameters.values()
+        if parameter.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    ]
+    required_positional = [
+        parameter
+        for parameter in positional_params
+        if parameter.default is inspect.Parameter.empty
+    ]
+    required_keyword_only = [
+        parameter
+        for parameter in signature.parameters.values()
+        if parameter.kind == inspect.Parameter.KEYWORD_ONLY and parameter.default is inspect.Parameter.empty
+    ]
+    accepts_varargs = any(
+        parameter.kind == inspect.Parameter.VAR_POSITIONAL
+        for parameter in signature.parameters.values()
+    )
+
+    if accepts_varargs:
+        return True
+    if required_keyword_only or len(required_positional) > 1:
+        raise TypeError("cnv.source(...) callables must accept either zero arguments or one step context.")
+    return len(required_positional) == 1
+
 
 _app = InlineApp()
 
 
-def trace(name: str, *, read: SeriesReaders, x: Callable[[], float], **kwargs) -> None:
-    _app._add_trace(TraceBinding(name=name, read=read, x=x, **kwargs))
+def _reset_inline_session() -> None:
+    global _app
+    _app = InlineApp()
 
 
-def control(
-    name: str,
+def source(source_like: Any) -> InlineAdapterBase:
+    return _app.source(source_like)
+
+
+def coordinator(primary: Any, *participants: Any) -> CoordinatorSourceAdapter:
+    return _app.coordinator(primary, *participants)
+
+
+def remote_actor(
+    actor_id: str,
     *,
-    label: str,
-    get: Callable[[], float],
-    set: Callable[[Any], None],
-    min: float = 0.0,
-    max: float = 1.0,
-) -> None:
-    _app._add_control(ControlBinding(name=name, label=label, get=get, set=set, min=min, max=max))
+    role: ActorRole = ActorRole.BACKEND,
+    send: Callable[[CommandPayload], None] | None = None,
+) -> RemoteActorRef:
+    return RemoteActorRef(actor_id, role=role, send=send)
 
 
-def action(
-    name: str,
-    *,
-    label: str,
-    fn: Callable[[], None],
-    resets_fields: bool = False,
-) -> None:
-    _app._add_action(ActionBinding(name=name, label=label, fn=fn, resets_fields=resets_fields))
-
-
-def show(
-    step: Callable[[], None] | None = None,
-    dt_ms: float | None = None,
-    speed: int | Callable[[], int] | None = None,
-    title: str = "CompNeuroVis",
-) -> None:
-    _app.show(step=step, dt_ms=dt_ms, speed=speed, title=title)
+def show():
+    return _app.show()
 
 
 __all__ = [
-    "TraceBinding",
-    "ControlBinding",
-    "ActionBinding",
     "InlineBackend",
-    "InlineApp",
-    "trace",
-    "control",
-    "action",
+    "SourceStepContext",
+    "CoordinatorBackend",
+    "CoordinatorSourceAdapter",
+    "PythonSourceAdapter",
+    "RemoteActorRef",
+    "coordinator",
+    "remote_actor",
+    "source",
     "show",
-    "_cnv_script_worker",
 ]

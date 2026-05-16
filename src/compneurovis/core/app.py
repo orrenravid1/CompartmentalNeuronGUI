@@ -411,10 +411,38 @@ class ActorSpec:
 
 
 @dataclass(slots=True)
+class RoutingSpec:
+    """Interaction/update routing compiled from source ownership.
+
+    The routing table is generic: it maps public interaction ids to runtime
+    actor ids. It does not encode simulator, frontend, or transport-specific
+    semantics.
+    """
+
+    control_routes: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    action_routes: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    default_command_targets: tuple[str, ...] = ()
+    default_update_targets: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        self.control_routes = {
+            control_id: tuple(targets)
+            for control_id, targets in self.control_routes.items()
+        }
+        self.action_routes = {
+            action_id: tuple(targets)
+            for action_id, targets in self.action_routes.items()
+        }
+        self.default_command_targets = tuple(self.default_command_targets)
+        self.default_update_targets = tuple(self.default_update_targets)
+
+
+@dataclass(slots=True)
 class RunSpec:
     app_spec: AppSpec | None = None
     actors: list[ActorSpec] = field(default_factory=list)
     transport: Any | None = None  # TransportFactory: Callable[[list[ActorSpec]], dict[str, TransportEndpoint]]
+    routing: RoutingSpec | None = None
     diagnostics: DiagnosticsSpec | None = None
 
 

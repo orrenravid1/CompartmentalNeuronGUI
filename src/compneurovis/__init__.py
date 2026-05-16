@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 
 from compneurovis.backends import BackendBase, HistoryCaptureMode
-from compneurovis.builders import ReplayBackend, build_replay_app, build_surface_app, grid_field
+from compneurovis.inline import coordinator, remote_actor, show, source
 from compneurovis.core import (
     ActionSpec,
     ActorBase,
@@ -33,6 +33,7 @@ from compneurovis.core import (
     MorphologyViewSpec,
     OperatorSpec,
     PanelSpec,
+    RoutingSpec,
     RunSpec,
     ScalarValueSpec,
     SeriesSpec,
@@ -42,8 +43,9 @@ from compneurovis.core import (
     ViewCatalog,
     XYValueSpec,
 )
-from compneurovis.frontends import FrontendBase, VispyFrontendHost, VispyFrontendWindow
-from compneurovis.core.run import run_app, run_orchestrator, run_as_backend, run_as_frontend
+from compneurovis.frontends import FrontendBase
+from compneurovis.core.run import run_app, run_orchestrator, run_as_backend, run_as_frontend, start_app
+from compneurovis.core.hosts import AppHandle, ScriptBackendProcess, ThreadBackendHost, get_script_backend_endpoint
 from compneurovis.core.messages import (
     CommandMessage,
     Message,
@@ -55,7 +57,7 @@ from compneurovis.core.messages import (
     message_type_for_payload,
     update_message,
 )
-from compneurovis.transports import PipeEndpoint, Transport, inprocess_transport, pipe_transport
+from compneurovis.transports import PipeEndpoint, RoutedEndpoint, Transport, inprocess_transport, pipe_transport, routed_transport
 
 __all__ = [
     "ActionSpec",
@@ -80,6 +82,12 @@ __all__ = [
     "GridSliceOperatorSpec",
     "HistoryCaptureMode",
     "InteractionCatalog",
+    "coordinator",
+    "remote_actor",
+    "show",
+    "source",
+    "jaxley",
+    "neuron",
     "LayoutCatalog",
     "LayoutSpec",
     "LinePlotViewSpec",
@@ -91,8 +99,9 @@ __all__ = [
     "OperatorSpec",
     "PanelSpec",
     "PipeEndpoint",
+    "RoutedEndpoint",
     "inprocess_transport",
-    "ReplayBackend",
+    "RoutingSpec",
     "RunSpec",
     "ScalarValueSpec",
     "SeriesSpec",
@@ -106,37 +115,49 @@ __all__ = [
     "VispyFrontendHost",
     "VispyFrontendWindow",
     "XYValueSpec",
-    "build_replay_app",
-    "build_surface_app",
     "command_message",
-    "grid_field",
     "make_message",
     "message_type_for_payload",
     "pipe_transport",
+    "routed_transport",
+    "AppHandle",
+    "ScriptBackendProcess",
+    "ThreadBackendHost",
+    "get_script_backend_endpoint",
     "run_app",
     "run_orchestrator",
     "run_as_backend",
     "run_as_frontend",
+    "start_app",
     "update_message",
     "NeuronAppSpecBuilder",
     "NeuronBackend",
-    "build_neuron_app",
     "JaxleyAppSpecBuilder",
     "JaxleyBackend",
-    "build_jaxley_app",
 ]
 
 _OPTIONAL_EXPORTS = {
     "NeuronAppSpecBuilder": ("compneurovis.backends.neuron", "NeuronAppSpecBuilder", "neuron"),
     "NeuronBackend": ("compneurovis.backends.neuron", "NeuronBackend", "neuron"),
-    "build_neuron_app": ("compneurovis.builders.neuron", "build_neuron_app", "neuron"),
     "JaxleyAppSpecBuilder": ("compneurovis.backends.jaxley", "JaxleyAppSpecBuilder", "jaxley"),
     "JaxleyBackend": ("compneurovis.backends.jaxley", "JaxleyBackend", "jaxley"),
-    "build_jaxley_app": ("compneurovis.builders.jaxley", "build_jaxley_app", "jaxley"),
+    "VispyFrontendHost": ("compneurovis.frontends.vispy", "VispyFrontendHost", "pyqt6"),
+    "VispyFrontendWindow": ("compneurovis.frontends.vispy", "VispyFrontendWindow", "pyqt6"),
+}
+
+_OPTIONAL_MODULES = {
+    "neuron": "compneurovis.neuron",
+    "jaxley": "compneurovis.jaxley",
 }
 
 
 def __getattr__(name: str):
+    module_name = _OPTIONAL_MODULES.get(name)
+    if module_name is not None:
+        module = import_module(module_name)
+        globals()[name] = module
+        return module
+
     target = _OPTIONAL_EXPORTS.get(name)
     if target is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

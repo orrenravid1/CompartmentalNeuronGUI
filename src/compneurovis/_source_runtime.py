@@ -1,0 +1,195 @@
+"""Lower generic source authoring objects into concrete runtime launches."""
+
+from __future__ import annotations
+
+import inspect
+import multiprocessing as mp
+import time
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+from compneurovis.backends.base import BackendBase
+from compneurovis.backends.host import BackendHost
+from compneurovis.core.app import ActorRole, ActorSpec, AppSpec, RoutingSpec, RunSpec
+from compneurovis.core.hosts import ScriptBackendProcess, ThreadBackendHost, get_script_backend_endpoint
+
+
+class SourceRuntimeAdapter(Protocol):
+    """Minimal adapter contract needed to lower a source into a RunSpec."""
+
+    def _make_backend(self) -> BackendBase: ...
+
+    def _build_app_spec_for_backend(self, backend: BackendBase) -> AppSpec: ...
+
+    def _notebook_dt(self) -> float: ...
+
+
+@dataclass(slots=True)
+class SourceRunPlan:
+    """Source lowered to the runtime-neutral pieces shared by all launch modes."""
+
+    backend: BackendBase
+    app_spec: AppSpec
+    routing: RoutingSpec
+    notebook_dt: float
+
+
+def build_source_run_plan(source: SourceRuntimeAdapter) -> SourceRunPlan:
+    """Lower any source adapter to the backend actor plus startup AppSpec."""
+
+    backend = source._make_backend()
+    app_spec = source._build_app_spec_for_backend(backend)
+    return SourceRunPlan(
+        backend=backend,
+        app_spec=app_spec,
+        routing=build_source_routing(app_spec, backend_actor_id="backend", frontend_actor_ids=("frontend",)),
+        notebook_dt=source._notebook_dt(),
+    )
+
+
+def build_source_routing(
+    app_spec: AppSpec,
+    *,
+    backend_actor_id: str,
+    frontend_actor_ids: tuple[str, ...],
+) -> RoutingSpec:
+    """Compile source-owned interactions to runtime actor routes."""
+
+    backend_targets = (backend_actor_id,)
+    return RoutingSpec(
+        control_routes={
+            control_id: backend_targets
+            for control_id, control in app_spec.interactions.controls.items()
+            if control.send_to_backend
+        },
+        action_routes={
+            action_id: backend_targets
+            for action_id in app_spec.interactions.actions
+        },
+        default_command_targets=backend_targets,
+        default_update_targets=frontend_actor_ids,
+    )
+
+
+def launch_source(source: SourceRuntimeAdapter) -> Any:
+    """Launch a source using the active environment's default runtime profile."""
+
+    endpoint = get_script_backend_endpoint()
+    if endpoint is not None:
+        run_source_backend(source, endpoint)
+        return None
+
+    if mp.current_process().name != "MainProcess":
+        return None
+
+    if _in_notebook():
+        return launch_notebook_source(source)
+
+    from compneurovis.core.run import run_app
+
+    script_path = inspect.stack()[-1].filename
+    run_app(build_desktop_run_spec(build_source_run_plan(source), script_path))
+    return None
+
+
+def run_source_backend(source: SourceRuntimeAdapter, endpoint: Any) -> None:
+    """Run the backend half of a source-launched app inside a script worker."""
+
+    plan = build_source_run_plan(source)
+    host = BackendHost(endpoint=endpoint)
+    host.start(lambda: plan.backend, plan.app_spec)
+    try:
+        while not host.should_stop():
+            started = time.monotonic()
+            host.step()
+            remaining = host.idle_sleep() - (time.monotonic() - started)
+            if remaining > 0:
+                time.sleep(remaining)
+    except (BrokenPipeError, OSError):
+        pass
+    finally:
+        host.stop()
+
+
+def build_desktop_run_spec(plan: SourceRunPlan, script_path: str) -> RunSpec:
+    """Build the bundled desktop RunSpec for a lowered source."""
+
+    from compneurovis.frontends.vispy.frontend import VispyFrontendWindow
+    from compneurovis.frontends.vispy.host import VispyFrontendHost
+    from compneurovis.transports import routed_transport
+
+    return RunSpec(
+        app_spec=plan.app_spec,
+        actors=[
+            ActorSpec(
+                id="backend",
+                role=ActorRole.BACKEND,
+                host_source=lambda r, ep, _sp=script_path: ScriptBackendProcess(_sp, ep),
+            ),
+            ActorSpec(
+                id="frontend",
+                role=ActorRole.FRONTEND,
+                host_source=lambda r, ep: VispyFrontendHost(VispyFrontendWindow, r, ep),
+                runs_in_foreground=True,
+            ),
+        ],
+        transport=routed_transport(plan.routing),
+        routing=plan.routing,
+    )
+
+
+def launch_notebook_source(source: SourceRuntimeAdapter) -> Any:
+    """Build and start the in-process notebook RunSpec for a lowered source."""
+
+    from compneurovis.core.run import start_app
+
+    handle = start_app(build_notebook_run_spec(build_source_run_plan(source)))
+    setattr(source, "_handle", handle)
+    return handle.widget("frontend")
+
+
+def build_notebook_run_spec(plan: SourceRunPlan) -> RunSpec:
+    """Build the notebook RunSpec for a lowered source."""
+
+    from compneurovis.frontends.vispy.notebook_host import NotebookFrontendHost
+    from compneurovis.transports import routed_transport
+
+    return RunSpec(
+        app_spec=plan.app_spec,
+        actors=[
+            ActorSpec(
+                id="backend",
+                role=ActorRole.BACKEND,
+                host_source=lambda r, ep, _backend=plan.backend: ThreadBackendHost(lambda: _backend, r, ep),
+            ),
+            ActorSpec(
+                id="frontend",
+                role=ActorRole.FRONTEND,
+                host_source=lambda r, ep, _dt=plan.notebook_dt: NotebookFrontendHost(r, ep, dt=_dt),
+            ),
+        ],
+        transport=routed_transport(plan.routing, mode="inprocess"),
+        routing=plan.routing,
+    )
+
+
+def _in_notebook() -> bool:
+    try:
+        from IPython import get_ipython
+    except ModuleNotFoundError:
+        return False
+    shell = get_ipython()
+    return shell is not None and getattr(shell, "kernel", None) is not None
+
+
+__all__ = [
+    "SourceRunPlan",
+    "SourceRuntimeAdapter",
+    "build_desktop_run_spec",
+    "build_notebook_run_spec",
+    "build_source_routing",
+    "build_source_run_plan",
+    "launch_notebook_source",
+    "launch_source",
+    "run_source_backend",
+]

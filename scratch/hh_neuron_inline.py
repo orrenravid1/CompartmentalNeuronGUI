@@ -1,13 +1,13 @@
-"""scratch/hh_inline.py — single-compartment HH model using compneurovis.inline sugar API.
+"""scratch/hh_neuron_inline.py — single-compartment HH model using compneurovis.inline sugar API.
 
 NEURON runs in the backend subprocess; Qt frontend stays in the main process.
 No if __name__ == '__main__' required.
 
 Requires: NEURON
-Run: python scratch/hh_inline.py
+Run: python scratch/hh_neuron_inline.py
 """
 from neuron import h
-from compneurovis import inline as cnv
+import compneurovis as cnv
 
 # Single HH point compartment
 soma = h.Section(name="soma")
@@ -27,13 +27,21 @@ h.celsius = 6.3
 h.finitialize(-65.0)
 
 
-cnv.trace("Voltage",
+def _advance(ctx):
+    for _ in range(100):
+        h.fadvance()
+        ctx.sample()
+
+
+sim = cnv.source(_advance)
+
+sim.trace("Voltage",
           read=lambda: float(seg.v),
           x=lambda: float(h.t),
           y_min=-90.0, y_max=60.0, y_unit="mV",
           rolling_window=80.0, max_samples=4000)
 
-cnv.trace("HH gates",
+sim.trace("HH gates",
           read={"m": lambda: float(seg.m_hh),
                 "h": lambda: float(seg.h_hh),
                 "n": lambda: float(seg.n_hh)},
@@ -41,12 +49,12 @@ cnv.trace("HH gates",
           y_min=-0.05, y_max=1.05,
           rolling_window=80.0, max_samples=4000)
 
-cnv.control("clamp_amp", label="IClamp amplitude (nA)",
+sim.control("clamp_amp", label="IClamp amplitude (nA)",
             get=lambda: float(clamp.amp),
             set=lambda v: setattr(clamp, "amp", float(v)),
             min=-0.2, max=0.5)
 
-cnv.action("reset", label="Reset",
+sim.action("reset", label="Reset",
            fn=lambda: h.finitialize(-65.0), resets_fields=True)
 
-cnv.show(step=lambda: h.fadvance(), dt_ms=0.025, speed=100, title="HH inline")
+cnv.show()

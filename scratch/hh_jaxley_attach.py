@@ -1,4 +1,4 @@
-"""scratch/hh_jaxley_attach.py — single-compartment HH via attach() with parameter controls.
+"""scratch/hh_jaxley_attach.py - single-compartment HH via attach() with parameter controls.
 
 Controls: stimulus amplitude, gNa, gK, gLeak.
 Run: python scratch/hh_jaxley_attach.py
@@ -10,7 +10,7 @@ import numpy as np
 import jaxley as jx
 from jaxley.channels import HH
 
-from compneurovis.backends.jaxley.attach import attach
+import compneurovis as cnv
 
 DT = 0.025
 STIM_DURATION = 500.0
@@ -45,12 +45,11 @@ def set_i_amp(v):
             delta_t=DT, t_max=STIM_DURATION,
         ))
 
+sim = cnv.source(cnv.jaxley.attach(cells=[cell], setup=setup, dt=DT, v_init=-70.0))
 
-app = attach(cells=[cell], setup=setup, dt=DT, v_init=-70.0)
+sim.control("i_amp", label="Stimulus (nA)", get=lambda: _i_amp[0], set=set_i_amp, min=0.0, max=1.0, refresh_externals=True)
+sim.control("gNa", label="gNa (S/cm^2)", get=lambda: 0.12, set=lambda v: _net[0].set("HH_gNa", v), min=0.01, max=0.5, refresh_params=True)
+sim.control("gK", label="gK (S/cm^2)", get=lambda: 0.036, set=lambda v: _net[0].set("HH_gK", v), min=0.005, max=0.2, refresh_params=True)
+sim.control("gLeak", label="gLeak (S/cm^2)", get=lambda: 0.0003, set=lambda v: _net[0].set("HH_gLeak", v), min=1e-5, max=0.01, refresh_params=True)
 
-app.control("i_amp",  label="Stimulus (nA)",    get=lambda: _i_amp[0],                set=set_i_amp,                            min=0.0, max=1.0, refresh_externals=True)
-app.control("gNa",    label="gNa (S/cm²)",      get=lambda: 0.12,                     set=lambda v: _net[0].set("HH_gNa", v),   min=0.01, max=0.5,  refresh_params=True)
-app.control("gK",     label="gK (S/cm²)",        get=lambda: 0.036,                    set=lambda v: _net[0].set("HH_gK", v),    min=0.005, max=0.2, refresh_params=True)
-app.control("gLeak",  label="gLeak (S/cm²)",    get=lambda: 0.0003,                   set=lambda v: _net[0].set("HH_gLeak", v), min=1e-5, max=0.01, refresh_params=True)
-
-app.show(title="HH Jaxley — parameter controls")
+cnv.show()

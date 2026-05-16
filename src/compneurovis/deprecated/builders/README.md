@@ -1,9 +1,9 @@
 ---
-title: Builders Package
-summary: High-level app builders for common surface, neuron, and replay workflows.
+title: Deprecated Builders Package
+summary: Deprecated high-level app builders retained for possible future adaptation.
 ---
 
-# Builders Package
+# Deprecated Builders Package
 
 The builder layer keeps common user workflows short:
 
