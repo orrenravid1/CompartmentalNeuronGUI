@@ -1,4 +1,4 @@
-"""Shared implementation for inline-mode and source attach adapters."""
+"""Binding and handle objects for inline-mode trace, control, and action registration."""
 
 from __future__ import annotations
 
@@ -282,81 +282,14 @@ def emit_trace_updates(backend: BackendBase, traces: list[TraceBinding], *, auto
             backend.emit_update(msg.payload)
 
 
-class InlineSourceBase:
-    """Base for anything that can participate in the inline authoring mode."""
-
-    def __init__(self, *, title: str = "CompNeuroVis") -> None:
-        self.title = title
-        self._traces: list[TraceBinding] = []
-        self._controls: list[ControlBinding] = []
-        self._actions: list[ActionBinding] = []
-        self._handle = None
-
-    def trace(self, name: str, *, read: SeriesReaders, x: Callable[[], float], **kwargs) -> TraceHandle:
-        binding = TraceBinding(name=name, read=read, x=x, **kwargs)
-        self._add_trace(binding)
-        return TraceHandle(binding)
-
-    def control(
-        self,
-        name: str,
-        *,
-        label: str,
-        get: Callable[[], float],
-        set: Callable[[Any], None],
-        min: float = 0.0,
-        max: float = 1.0,
-    ) -> ControlHandle:
-        binding = ControlBinding(name=name, label=label, get=get, set=set, min=min, max=max)
-        self._add_control(binding)
-        return ControlHandle(binding)
-
-    def action(
-        self,
-        name: str,
-        *,
-        label: str,
-        fn: Callable[[], None],
-        resets_fields: bool = False,
-    ) -> ActionHandle:
-        binding = ActionBinding(name=name, label=label, fn=fn, resets_fields=resets_fields)
-        self._add_action(binding)
-        return ActionHandle(binding)
-
-    def show(self):
-        return self.launch()
-
-    def launch(self):
-        from compneurovis._source_runtime import launch_source
-
-        return launch_source(self)
-
-    def _make_backend(self) -> BackendBase:
-        raise NotImplementedError
-
-    def _notebook_dt(self) -> float:
-        backend_dt = getattr(self, "_dt", None)
-        return 0.025 if backend_dt is None else float(backend_dt)
-
-    def _build_app_spec_for_backend(self, backend: BackendBase) -> AppSpec:
-        build = getattr(backend, "build_startup_app_spec", None)
-        if not callable(build):
-            raise TypeError(f"{type(backend).__name__} does not provide build_startup_app_spec()")
-        return append_bindings_to_app_spec(
-            build(),
-            traces=self._traces,
-            controls=self._controls,
-            actions=self._actions,
-        )
-
-    def _add_trace(self, binding: TraceBinding) -> None:
-        binding._register(len(self._traces))
-        self._traces.append(binding)
-
-    def _add_control(self, binding: ControlBinding) -> None:
-        binding._register(len(self._controls))
-        self._controls.append(binding)
-
-    def _add_action(self, binding: ActionBinding) -> None:
-        binding._register(len(self._actions))
-        self._actions.append(binding)
+__all__ = [
+    "ActionBinding",
+    "ActionHandle",
+    "ControlBinding",
+    "ControlHandle",
+    "SeriesReaders",
+    "TraceBinding",
+    "TraceHandle",
+    "append_bindings_to_app_spec",
+    "emit_trace_updates",
+]

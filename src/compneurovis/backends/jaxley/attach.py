@@ -5,14 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Sequence
 
-from compneurovis.adapters.base import (
+from compneurovis.inline.bindings import (
     ActionBinding,
     ControlBinding,
     ControlHandle,
-    InlineSourceBase,
     TraceBinding,
     emit_trace_updates,
 )
+from compneurovis.inline.sources import InlineSourceBase
 from compneurovis.backends.jaxley.backend import JaxleyBackend
 from compneurovis.core.controls import ActionSpec, ControlSpec
 

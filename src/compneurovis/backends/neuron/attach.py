@@ -7,14 +7,14 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 
-from compneurovis.adapters.base import (
+from compneurovis.inline.bindings import (
     ActionBinding,
     ControlBinding,
     ControlHandle,
-    InlineSourceBase,
     TraceBinding,
     emit_trace_updates,
 )
+from compneurovis.inline.sources import InlineSourceBase
 from compneurovis.backends.neuron.backend import NeuronBackend
 from compneurovis.core.controls import ActionSpec, ControlSpec
 
