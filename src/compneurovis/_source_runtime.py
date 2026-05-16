@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import inspect
 import multiprocessing as mp
+import os
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from compneurovis.backends.base import BackendBase
-from compneurovis.backends.host import BackendHost
+from compneurovis.backends.host import BackendHost, ThreadBackendHost
 from compneurovis.core.app import ActorRole, ActorSpec, AppSpec, RelaySpec, RunSpec
-from compneurovis.backends.host import ThreadBackendHost
-from compneurovis.core.hosts import ScriptBackendProcess, get_script_backend_endpoint
+from compneurovis.core.geometry import MorphologyGeometry
+from compneurovis.core.hosts import ActorProcess, ScriptBackendProcess, get_script_backend_endpoint
 
 
 class InlineSourceProtocol(Protocol):
@@ -152,26 +153,65 @@ def launch_notebook_source(source: InlineSourceProtocol) -> Any:
 def build_notebook_run_spec(plan: SourceRunPlan) -> RunSpec:
     """Build the notebook RunSpec for a lowered source."""
 
-    from compneurovis.frontends.vispy.notebook_host import NotebookFrontendHost
+    from compneurovis.frontends.vispy.notebook_host import (
+        NotebookFrontendHost,
+        NotebookMorphologyRenderActor,
+        StoppableFrontendHost,
+    )
     from compneurovis.transports import routed_transport
+
+    use_render_process = _notebook_render_process_enabled(plan.app_spec)
+    frontend_actor_ids = ("frontend", "renderer") if use_render_process else ("frontend",)
+    routing = build_source_routing(
+        plan.app_spec,
+        backend_actor_id="backend",
+        frontend_actor_ids=frontend_actor_ids,
+    )
+    actors = [
+        ActorSpec(
+            id="backend",
+            role=ActorRole.BACKEND,
+            host_source=lambda r, ep, _backend=plan.backend: ThreadBackendHost(lambda: _backend, r, ep),
+        ),
+        ActorSpec(
+            id="frontend",
+            role=ActorRole.FRONTEND,
+            host_source=lambda r, ep, _dt=plan.notebook_dt, _external=use_render_process: NotebookFrontendHost(
+                r,
+                ep,
+                dt=_dt,
+                external_morphology_render=_external,
+            ),
+        ),
+    ]
+    if use_render_process:
+        actors.append(
+            ActorSpec(
+                id="renderer",
+                role=ActorRole.FRONTEND,
+                host_source=lambda r, ep: ActorProcess(
+                    actor_source=NotebookMorphologyRenderActor,
+                    app_spec=r.app_spec,
+                    endpoint=ep,
+                    host_class=StoppableFrontendHost,
+                    diagnostics=r.diagnostics,
+                ),
+            )
+        )
 
     return RunSpec(
         app_spec=plan.app_spec,
-        actors=[
-            ActorSpec(
-                id="backend",
-                role=ActorRole.BACKEND,
-                host_source=lambda r, ep, _backend=plan.backend: ThreadBackendHost(lambda: _backend, r, ep),
-            ),
-            ActorSpec(
-                id="frontend",
-                role=ActorRole.FRONTEND,
-                host_source=lambda r, ep, _dt=plan.notebook_dt: NotebookFrontendHost(r, ep, dt=_dt),
-            ),
-        ],
-        transport=routed_transport(plan.routing, mode="inprocess"),
-        routing=plan.routing,
+        actors=actors,
+        transport=routed_transport(routing, mode="pipe" if use_render_process else "inprocess"),
+        routing=routing,
     )
+
+
+def _notebook_render_process_enabled(app_spec: AppSpec) -> bool:
+    enabled = os.environ.get("CNV_NOTEBOOK_RENDER_PROCESS", "").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        return False
+    return any(isinstance(geometry, MorphologyGeometry) for geometry in app_spec.data.geometries.values())
 
 
 def _in_notebook() -> bool:

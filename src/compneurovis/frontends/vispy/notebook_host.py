@@ -21,7 +21,17 @@ import numpy as np
 
 from compneurovis.core.app import ActorRole, ActorSpec, AppSpec, RunSpec
 from compneurovis.core.geometry import MorphologyGeometry
-from compneurovis.core.messages import FieldReplace, Message, StopBackend, command_message
+from compneurovis.core.messages import (
+    CameraCommand,
+    FieldReplace,
+    Message,
+    RenderedFrame,
+    RoutedMessage,
+    StopBackend,
+    command_message,
+    make_message,
+    update_message,
+)
 from compneurovis.core.runtime import AppRuntime
 from compneurovis.frontends.base import FrontendBase
 from compneurovis.frontends.host import FrontendHost
@@ -30,6 +40,7 @@ from compneurovis.transports.pipe import PipeEndpoint
 POLL_HZ = 30
 MAX_SAMPLES = 4000
 RENDER_HZ = 15
+REMOTE_MORPHOLOGY_FRAME_HZ = 10
 
 
 def _ensure_vispy_backend() -> None:
@@ -59,6 +70,7 @@ class NotebookFrontend(FrontendBase):
         trace_figsize: tuple[float, float] = (8, 2.5),
         ylim: tuple[float, float] = (-90.0, 60.0),
         y_label: str = "V (mV)",
+        external_morphology_render: bool = False,
     ) -> None:
         super().__init__()
         self._dt = dt
@@ -71,6 +83,17 @@ class NotebookFrontend(FrontendBase):
         self._render_due = False
         self._morph_dirty = False
         self.stop_requested = False  # host checks this flag
+        self._external_morphology_render = external_morphology_render
+        self._last_camera_command = 0.0
+        self._camera_command_interval = 1.0 / RENDER_HZ
+        self._pending_orbit_dx = 0.0
+        self._pending_orbit_dy = 0.0
+        self._pending_zoom_scale = 1.0
+        self._last_remote_morphology_frame = 0.0
+        self._remote_morphology_frame_interval = 1.0 / REMOTE_MORPHOLOGY_FRAME_HZ
+        self._trace_interacting = False
+        self._trace_resume_at = 0.0
+        self._trace_user_view = False
 
         self._color_map = "scalar"
         self._color_limits: tuple[float, float] | None = (-80.0, 50.0)
@@ -79,25 +102,30 @@ class NotebookFrontend(FrontendBase):
         # ------------------------------------------------------------------ #
         # Morphology panel — vispy offscreen canvas                           #
         # ------------------------------------------------------------------ #
-        _ensure_vispy_backend()
-        from vispy import scene
-        from vispy.scene.cameras import TurntableCamera
+        if not self._external_morphology_render:
+            _ensure_vispy_backend()
+            from vispy import scene
+            from vispy.scene.cameras import TurntableCamera
 
-        canvas = scene.SceneCanvas(
-            keys="interactive", bgcolor="black", show=False, size=morph_size,
-        )
-        view = canvas.central_widget.add_view()
-        view.camera = TurntableCamera(
-            fov=60, distance=200, elevation=30, azimuth=30,
-            translate_speed=100, up="+z",
-        )
-        self._morph_canvas = canvas
-        from compneurovis.frontends.vispy.renderers.morphology import MorphologyRenderer
-        self._morph_renderer = MorphologyRenderer(view)
+            canvas = scene.SceneCanvas(
+                keys="interactive", bgcolor="black", show=False, size=morph_size,
+            )
+            view = canvas.central_widget.add_view()
+            view.camera = TurntableCamera(
+                fov=60, distance=200, elevation=30, azimuth=30,
+                translate_speed=100, up="+z",
+            )
+            self._morph_canvas = canvas
+            from compneurovis.frontends.vispy.renderers.morphology import MorphologyRenderer
+            self._morph_renderer = MorphologyRenderer(view)
+            self._camera = view.camera
+        else:
+            self._morph_canvas = None
+            self._morph_renderer = None
+            self._camera = None
 
         import ipywidgets as widgets
         self._morph_widget = widgets.Image(format="png", width=morph_size[0], height=morph_size[1])
-        self._camera = view.camera
 
         # Mouse state for drag-to-rotate
         self._mouse_down = False
@@ -134,6 +162,9 @@ class NotebookFrontend(FrontendBase):
         fig.tight_layout(pad=0.4)
         self._fig = fig
         self._ax = ax
+        fig.canvas.mpl_connect("button_press_event", self._on_trace_interaction_start)
+        fig.canvas.mpl_connect("button_release_event", self._on_trace_interaction_end)
+        fig.canvas.mpl_connect("scroll_event", self._on_trace_interaction_start)
 
         # Stop button; host wires up the actual stop() call after start()
         stop_btn = widgets.Button(
@@ -150,7 +181,8 @@ class NotebookFrontend(FrontendBase):
     def initialize(self, app_spec: AppSpec) -> None:
         for geo in app_spec.data.geometries.values():
             if isinstance(geo, MorphologyGeometry):
-                self._morph_renderer.set_geometry(geo)
+                if self._morph_renderer is not None:
+                    self._morph_renderer.set_geometry(geo)
                 n = len(geo.positions)
                 self._voltages = np.full(n, -65.0, dtype=np.float32)
                 break
@@ -173,16 +205,27 @@ class NotebookFrontend(FrontendBase):
                     self._color_limits = tuple(view_spec.color_limits)  # type: ignore[assignment]
                 break
 
-        self._render_morph()
+        if not self._external_morphology_render:
+            self._render_morph()
 
     def handle(self, message: Message) -> None:
         payload = message.payload
+        if isinstance(payload, RenderedFrame) and payload.frame_id == self._display_field_id:
+            now = time.monotonic()
+            if now - self._last_remote_morphology_frame < self._remote_morphology_frame_interval:
+                return
+            self._last_remote_morphology_frame = now
+            if self._morph_widget.format != payload.format:
+                self._morph_widget.format = payload.format
+            self._morph_widget.value = payload.data
+            return
         if not (isinstance(payload, FieldReplace) and payload.field_id == self._display_field_id):
             return
         vals = np.asarray(payload.values, dtype=np.float32)
         if vals.ndim > 1:
             vals = vals[:, -1]
-        self._voltages = vals
+        if not self._external_morphology_render:
+            self._voltages = vals
         self._buf.append(float(vals[min(self._segment_index, len(vals) - 1)]))
         self._step += 1
         self._render_due = True
@@ -193,18 +236,19 @@ class NotebookFrontend(FrontendBase):
 
     def flush_renders(self, now: float) -> None:
         """Render morph+trace if timing is due; render morph if camera dirty."""
+        if self._trace_interacting and self._trace_resume_at and now >= self._trace_resume_at:
+            self._trace_interacting = False
+            self._trace_resume_at = 0.0
         if self._render_due and now - self._last_render >= 1.0 / RENDER_HZ:
-            _PERF_LOG = r"c:\Users\orren\Documents\PythonProjects\CompNeuroVis\scratch\perf_stats.txt"
-            t0 = time.monotonic()
-            self._render_morph()
-            t1 = time.monotonic()
-            self._render_trace()
-            t2 = time.monotonic()
-            with open(_PERF_LOG, "a") as _f:
-                _f.write(f"[flush_renders] morph_ms={(t1-t0)*1000:.1f} trace_ms={(t2-t1)*1000:.1f} buf={len(self._buf)}\n")
-            self._last_render = now
-            self._render_due = False
-        if self._morph_dirty:
+            if not self._external_morphology_render:
+                self._render_morph()
+            if self._trace_interacting:
+                self._last_render = now
+            else:
+                self._render_trace()
+                self._last_render = now
+                self._render_due = False
+        if self._morph_dirty and not self._external_morphology_render:
             self._render_morph()
             self._morph_dirty = False
 
@@ -218,47 +262,93 @@ class NotebookFrontend(FrontendBase):
             self._mouse_down = True
             self._mouse_last = (x, y)
         elif etype in ("mouseup", "mouseleave"):
+            if self._external_morphology_render:
+                self._emit_pending_camera_command(force=True)
             self._mouse_down = False
         elif etype == "mousemove" and self._mouse_down:
             dx = x - self._mouse_last[0]
             dy = y - self._mouse_last[1]
             self._mouse_last = (x, y)
+            if self._external_morphology_render:
+                self._pending_orbit_dx += float(dx)
+                self._pending_orbit_dy += float(dy)
+                self._emit_pending_camera_command()
+                return
+            if self._camera is None:
+                return
             self._camera.azimuth -= dx * 0.5
             self._camera.elevation = float(np.clip(self._camera.elevation + dy * 0.5, -90, 90))
             self._morph_dirty = True
         elif etype == "wheel":
             delta = event.get("deltaY", 0)
+            if self._external_morphology_render:
+                self._pending_zoom_scale *= float(1.0 + delta * 0.001)
+                self._emit_pending_camera_command()
+                return
+            if self._camera is None:
+                return
             self._camera.distance *= 1.0 + delta * 0.001
             self._morph_dirty = True
 
+    def _emit_pending_camera_command(self, *, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and now - self._last_camera_command < self._camera_command_interval:
+            return
+        messages: list[CameraCommand] = []
+        if self._pending_orbit_dx or self._pending_orbit_dy:
+            messages.append(
+                CameraCommand(
+                    self._display_field_id,
+                    "orbit",
+                    dx=self._pending_orbit_dx,
+                    dy=self._pending_orbit_dy,
+                )
+            )
+            self._pending_orbit_dx = 0.0
+            self._pending_orbit_dy = 0.0
+        if self._pending_zoom_scale != 1.0:
+            messages.append(
+                CameraCommand(
+                    self._display_field_id,
+                    "zoom",
+                    scale=self._pending_zoom_scale,
+                )
+            )
+            self._pending_zoom_scale = 1.0
+        if not messages:
+            return
+        self._last_camera_command = now
+        for command in messages:
+            self.emit(
+                make_message(
+                    "command",
+                    RoutedMessage("renderer", command_message(command)),
+                )
+            )
+
+    def _on_trace_interaction_start(self, _event) -> None:
+        self._trace_interacting = True
+        self._trace_user_view = True
+        self._trace_resume_at = time.monotonic() + 0.4
+
+    def _on_trace_interaction_end(self, _event) -> None:
+        self._trace_interacting = False
+        self._trace_resume_at = 0.0
+        self._render_due = True
+
     def _render_morph(self) -> None:
-        _PERF_LOG = r"c:\Users\orren\Documents\PythonProjects\CompNeuroVis\scratch\perf_stats.txt"
-        import time as _t
-        ta = _t.monotonic()
-        n_v = len(self._voltages) if self._voltages is not None else -1
+        if self._morph_canvas is None or self._morph_renderer is None:
+            return
         if self._voltages is not None:
             self._morph_renderer.update_colors(
                 self._voltages, self._color_map,
                 color_limits=self._color_limits, color_norm=self._color_norm,
             )
-        tb = _t.monotonic()
         rgba = self._morph_canvas.render()
-        tc = _t.monotonic()
         buf = io.BytesIO()
         from PIL import Image
         Image.fromarray(rgba).save(buf, format="png")
-        td = _t.monotonic()
         self._morph_widget.value = buf.getvalue()
-        te = _t.monotonic()
-        with open(_PERF_LOG, "a") as _f:
-            _f.write(
-                f"[render_morph] n_voltages={n_v} "
-                f"update_colors_ms={(tb-ta)*1000:.1f} "
-                f"canvas_render_ms={(tc-tb)*1000:.1f} "
-                f"pil_ms={(td-tc)*1000:.1f} "
-                f"widget_ms={(te-td)*1000:.1f} "
-                f"rgba_shape={rgba.shape}\n"
-            )
 
     def _render_trace(self) -> None:
         y = np.asarray(self._buf[-MAX_SAMPLES:], dtype=np.float32)
@@ -269,8 +359,157 @@ class NotebookFrontend(FrontendBase):
         t_start = max(0.0, t_end - n * self._dt)
         x = np.linspace(t_start, t_end, n)
         self._trace_line.set_data(x, y)
-        self._ax.set_xlim(max(0.0, t_end - MAX_SAMPLES * self._dt), max(t_end, 10.0))
+        if not self._trace_user_view:
+            self._ax.set_xlim(max(0.0, t_end - MAX_SAMPLES * self._dt), max(t_end, 10.0))
         self._fig.canvas.draw_idle()
+
+
+class NotebookMorphologyRenderActor(FrontendBase):
+    """Subprocess-capable morphology renderer for notebook widgets."""
+
+    def __init__(self, *, morph_size: tuple[int, int] = (800, 320)) -> None:
+        super().__init__()
+        self._display_field_id = "segment_display"
+        self._morph_size = morph_size
+        self._morph_canvas = None
+        self._morph_renderer = None
+        self._camera = None
+        self._color_map = "scalar"
+        self._color_limits: tuple[float, float] | None = (-80.0, 50.0)
+        self._color_norm = "auto"
+        self._last_render = 0.0
+
+    def initialize(self, app_spec: AppSpec) -> None:
+        _ensure_vispy_backend()
+        from vispy import scene
+        from vispy.scene.cameras import TurntableCamera
+        from compneurovis.frontends.vispy.renderers.morphology import MorphologyRenderer
+        from compneurovis.core.views import MorphologyViewSpec
+
+        canvas = scene.SceneCanvas(keys="interactive", bgcolor="black", show=False, size=self._morph_size)
+        view = canvas.central_widget.add_view()
+        view.camera = TurntableCamera(
+            fov=60,
+            distance=200,
+            elevation=30,
+            azimuth=30,
+            translate_speed=100,
+            up="+z",
+        )
+        self._morph_canvas = canvas
+        self._morph_renderer = MorphologyRenderer(view)
+        self._camera = view.camera
+
+        for view_spec in app_spec.view_catalog.views.values():
+            if isinstance(view_spec, MorphologyViewSpec):
+                self._display_field_id = view_spec.color_field_id or self._display_field_id
+                self._color_map = view_spec.color_map or "scalar"
+                self._color_norm = view_spec.color_norm or "auto"
+                if view_spec.color_limits is not None and not isinstance(view_spec.color_limits, str):
+                    self._color_limits = tuple(view_spec.color_limits)  # type: ignore[assignment]
+                break
+
+        for geo in app_spec.data.geometries.values():
+            if isinstance(geo, MorphologyGeometry):
+                self._morph_renderer.set_geometry(geo)
+                break
+
+        field = app_spec.data.fields.get(self._display_field_id)
+        if field is not None and field.values is not None:
+            self._render_values(np.asarray(field.values, dtype=np.float32))
+
+    def handle(self, message: Message) -> None:
+        payload = message.payload
+        if isinstance(payload, CameraCommand) and payload.target_id == self._display_field_id:
+            self._handle_camera_command(payload)
+            return
+        if not (isinstance(payload, FieldReplace) and payload.field_id == self._display_field_id):
+            return
+        now = time.monotonic()
+        if now - self._last_render < 1.0 / RENDER_HZ:
+            return
+        self._render_values(np.asarray(payload.values, dtype=np.float32))
+        self._last_render = now
+
+    def _handle_camera_command(self, command: CameraCommand) -> None:
+        if self._camera is None:
+            return
+        if command.kind == "orbit":
+            self._camera.azimuth -= command.dx * 0.5
+            self._camera.elevation = float(np.clip(self._camera.elevation + command.dy * 0.5, -90, 90))
+        elif command.kind == "zoom":
+            self._camera.distance *= command.scale
+        elif command.kind == "reset":
+            self._camera.azimuth = 30
+            self._camera.elevation = 30
+            self._camera.distance = 200
+        now = time.monotonic()
+        if now - self._last_render < 1.0 / RENDER_HZ:
+            return
+        self._render_current()
+        self._last_render = now
+
+    def _render_current(self) -> None:
+        if self._morph_canvas is None:
+            return
+        rgba = self._morph_canvas.render()
+        self._emit_frame(rgba)
+
+    def _render_values(self, values: np.ndarray) -> None:
+        if self._morph_canvas is None or self._morph_renderer is None:
+            return
+        if values.ndim > 1:
+            values = values[:, -1]
+        self._morph_renderer.update_colors(
+            values,
+            self._color_map,
+            color_limits=self._color_limits,
+            color_norm=self._color_norm,
+        )
+        rgba = self._morph_canvas.render()
+        self._emit_frame(rgba)
+
+    def _emit_frame(self, rgba: np.ndarray) -> None:
+        buf = io.BytesIO()
+        from PIL import Image
+
+        Image.fromarray(rgba[:, :, :3]).save(buf, format="JPEG", quality=70, optimize=False)
+        self.emit_update(
+            RenderedFrame(
+                frame_id=self._display_field_id,
+                data=buf.getvalue(),
+                format="jpeg",
+                width=int(rgba.shape[1]),
+                height=int(rgba.shape[0]),
+            )
+        )
+
+    def emit_update(self, payload) -> None:
+        self.emit(update_message(payload))
+
+
+class StoppableFrontendHost(FrontendHost):
+    """FrontendHost variant that exits its process on StopBackend."""
+
+    def __init__(self, endpoint=None) -> None:
+        super().__init__(endpoint=endpoint)
+        self._stop_requested = False
+
+    def receive(self) -> None:
+        actor = self._actor()
+        if self.endpoint is None:
+            return
+        for message in self.endpoint.poll():
+            if isinstance(message.payload, StopBackend):
+                self._stop_requested = True
+                return
+            actor.handle(message)
+
+    def should_stop(self) -> bool:
+        return self._stop_requested
+
+    def idle_sleep(self) -> float:
+        return 1.0 / 60.0
 
 
 # --------------------------------------------------------------------------- #
@@ -296,6 +535,7 @@ class NotebookFrontendHost(FrontendHost):
         trace_figsize: tuple[float, float] = (8, 2.5),
         ylim: tuple[float, float] = (-90.0, 60.0),
         y_label: str = "V (mV)",
+        external_morphology_render: bool = False,
     ) -> None:
         super().__init__(endpoint=endpoint)
         self._runtime = runtime
@@ -306,6 +546,7 @@ class NotebookFrontendHost(FrontendHost):
             trace_figsize=trace_figsize,
             ylim=ylim,
             y_label=y_label,
+            external_morphology_render=external_morphology_render,
         )
         self._running = False
         self._task: asyncio.Task | None = None
@@ -328,6 +569,12 @@ class NotebookFrontendHost(FrontendHost):
         if self.endpoint is not None:
             try:
                 self.endpoint.send(command_message(StopBackend()))
+                self.endpoint.send(
+                    make_message(
+                        "command",
+                        RoutedMessage("renderer", command_message(StopBackend())),
+                    )
+                )
             except Exception:
                 pass
         if self._task is not None:
@@ -336,12 +583,39 @@ class NotebookFrontendHost(FrontendHost):
         self._runtime.stop()
         super().stop()
 
+    def receive(self) -> None:
+        actor = self._notebook_frontend()
+        if self.endpoint is None:
+            return
+        latest_rendered_frames: dict[str, Message] = {}
+        for message in self.endpoint.poll():
+            payload = message.payload
+            if isinstance(payload, RenderedFrame):
+                latest_rendered_frames[payload.frame_id] = message
+            else:
+                actor.handle(message)
+        for message in latest_rendered_frames.values():
+            actor.handle(message)
+
+    def flush(self) -> None:
+        actor = self._notebook_frontend()
+        if self.endpoint is None:
+            actor.take_outbound_messages()
+            return
+        latest_camera_messages: dict[str, Message] = {}
+        for message in actor.take_outbound_messages():
+            payload = message.payload
+            if (
+                isinstance(payload, RoutedMessage)
+                and isinstance(payload.message.payload, CameraCommand)
+            ):
+                latest_camera_messages[payload.message.payload.kind] = message
+            else:
+                self.endpoint.send(message)
+        for message in latest_camera_messages.values():
+            self.endpoint.send(message)
+
     async def _poll_loop(self) -> None:
-        import time as _t
-        _PERF_LOG = r"c:\Users\orren\Documents\PythonProjects\CompNeuroVis\scratch\perf_stats.txt"
-        with open(_PERF_LOG, "w") as _f:
-            _f.write("=== poll_loop start (new/stashed version) ===\n")
-        _poll_count = 0
         interval = 1.0 / POLL_HZ
         frontend = self._notebook_frontend()
         while self._running:
@@ -349,15 +623,9 @@ class NotebookFrontendHost(FrontendHost):
                 self.stop()
                 break
             try:
-                t0 = _t.monotonic()
                 self.receive()
                 frontend.flush_renders(time.monotonic())
                 self.flush()
-                _poll_count += 1
-                if _poll_count % 30 == 0:
-                    poll_ms = (_t.monotonic() - t0) * 1000
-                    with open(_PERF_LOG, "a") as _f:
-                        _f.write(f"t={_t.monotonic():.3f} [poll_tick] n={_poll_count} poll_ms={poll_ms:.1f}\n")
             except (BrokenPipeError, OSError):
                 self._running = False
                 break
@@ -431,4 +699,4 @@ def _launch_notebook(
     return handle.widget("frontend")
 
 
-__all__ = ["NotebookFrontend", "NotebookFrontendHost"]
+__all__ = ["NotebookFrontend", "NotebookFrontendHost", "NotebookMorphologyRenderActor", "StoppableFrontendHost"]

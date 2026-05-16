@@ -1883,15 +1883,18 @@ compneurovis/
     messages.py     Message, CommandPayload, UpdatePayload,
                     RoutedMessage (replaces RoutedCommand), all payload types
     hosts.py        ActorHost, ActorProcess, ScriptBackendProcess,
-                    ThreadBackendHost, AppHandle
+                    ConnectionSlotHost, AppHandle
+                    (core-layer only — no BackendHost/FrontendHost here)
     runtime.py      AppRuntime
   backends/
     base.py         BackendBase (update, is_live, idle_sleep)
-    host.py         BackendHost
+    host.py         BackendHost, ThreadBackendHost (ThreadBackendHost
+                    derives BackendHost — same package, no deferred imports)
     neuron/         NeuronBackend, NeuronAppSpecBuilder, NeuronAttachSource
     jaxley/         JaxleyBackend, JaxleyAppSpecBuilder, JaxleyAttachSource
   frontends/
     base.py         FrontendBase
+    host.py         FrontendHost
     vispy/          VispyFrontendWindow, VispyFrontendHost, NotebookFrontendHost
   relays/
     base.py         RelayMixin, BackendRelayBase
@@ -1925,6 +1928,265 @@ compneurovis/
 - WebSocket transport — unlocks remote backends (Unity physics + Python neural
   topology)
 
+### 2026-05-16: Host Layering Fix And Notebook Perf Findings
+
+#### Host class layering — the dependency arrow is law
+
+`core` must never import from `backends` or `frontends` — not even via
+deferred (function-body) imports. The Package Precedence rule
+(`Shared --> Backends/Frontends`) is one-directional.
+
+`BackendHost` and `FrontendHost` had to live in `core/hosts.py` only because
+`ThreadBackendHost` (a backend host) lived there and wanted to derive from
+`BackendHost`. The "fix" of deferring `from compneurovis.backends.base import
+BackendBase` inside methods was a layering violation wearing a disguise — the
+arrow still pointed `core --> backends`, just lazily.
+
+Correct fix: move the host to the package it belongs to.
+
+- `BackendHost` + `ThreadBackendHost` → `backends/host.py`
+  (`ThreadBackendHost(BackendHost)`, plain module-level imports, no hacks)
+- `FrontendHost` → `frontends/host.py`
+- `core/hosts.py` keeps only core-layer constructs: `ActorHost`,
+  `ActorProcess`, `ScriptBackendProcess`, `ConnectionSlotHost`, `AppHandle`
+
+**Rule:** a derived backend host must always be able to derive from
+`BackendHost` with a normal import. If it cannot, the host is in the wrong
+package. Same for frontend hosts and `FrontendHost`.
+
+#### StopBackend was silently ignored in notebooks
+
+`ThreadBackendHost` previously extended `ActorHost`, whose `receive()` does not
+inspect payloads — it just calls `actor.handle(message)`. Only
+`BackendHost.receive()` checks for `StopBackend` and sets `_stop_requested`.
+So in notebooks the Stop button stopped the frontend poll loop but the backend
+thread kept stepping. Fixed structurally: inheriting `BackendHost` gives the
+`StopBackend` handling for free. This is a concrete payoff of the layering fix —
+the bug existed *because* the class was in the wrong place and inherited the
+wrong base.
+
+#### Notebook NEURON: smaller `display_dt` performs *better* (counterintuitive)
+
+Thread model, NEURON HH single soma, vispy offscreen render:
+
+| `display_dt` | backend `update()` wall | vispy `canvas.render()` |
+|---|---|---|
+| `50.0` | ~63 ms (≈2000 sim steps/call) | **6000 ms** (stalled) |
+| `0.1`  | ~0 ms (≈4 sim steps/call)    | ~47 ms (healthy) |
+
+With `display_dt=50.0` the backend thread holds the GIL in long bursts (the
+2000-step batch). NEURON releases the GIL *during* simulation, but the
+per-batch Python overhead between releases is long enough to starve the asyncio
+poll loop, which is what drives the vispy canvas. The render then can't get
+Qt/GL event time and balloons to multiple seconds.
+
+With `display_dt=0.1` the backend releases the GIL constantly, the poll loop
+runs smoothly, and rendering stays at its true cost (~47 ms). **In the thread
+model, GIL-release cadence matters more than message volume.** More frequent,
+smaller backend steps win. (Set in `backends/neuron/attach.py`
+`_AttachBackend.__init__`.)
+
+#### Render offload to a thread is a dead end
+
+Tried moving `canvas.render()` into `asyncio.run_in_executor` so the heavy
+~47 ms render would not block the poll loop. The PyQt6 OpenGL context is
+thread-affine: rendering from a pool thread produces
+`WARNING: Error drawing visual <InstancedMesh ...>` and a corrupt frame. The
+render must run on the thread that created the canvas (the event-loop / main
+thread). True parallelism for notebook morphology requires the separate
+render-process path (`CNV_NOTEBOOK_RENDER_PROCESS`), not threads — recorded so
+this experiment is not repeated.
+
+#### Render-process notebook morphology is viable, but must become first-class
+
+The render-process experiment materially improved the notebook use case and is
+architecturally important: it proves that frontend work can be split across
+actors without changing the backend/source authoring path.
+
+Prototype topology:
+
+```text
+backend thread/process
+  -> field updates
+  -> routed transport
+  -> notebook frontend actor      -> trace widget
+  -> morphology render actor      -> offscreen VisPy render -> encoded frame
+  -> routed transport
+  -> notebook frontend actor      -> ipywidgets.Image
+```
+
+The notebook widget is still the visible frontend, but morphology rendering is
+owned by a separate frontend-role actor. This is not a new backend/source. It is
+a frontend decomposition: one frontend actor owns notebook widgets and another
+frontend actor owns offscreen VisPy rendering. That distinction matters because
+the transport/orchestrator should see a normal multi-actor `RunSpec`, not a
+notebook-specific shortcut.
+
+What the prototype demonstrated:
+
+- Moving morphology rendering out of the notebook actor improves the real
+  interactive notebook path enough to be worth supporting.
+- The routing model is doing useful work: backend updates can fan out to the
+  trace frontend and render frontend; notebook interaction commands can route
+  specifically to the render actor; rendered frames can route back to the
+  notebook frontend.
+- The notebook path continues to justify separating backend, transport, and
+  frontend logic. The backend does not know whether morphology is rendered in
+  the notebook process, a Python subprocess, a browser renderer, or eventually a
+  remote machine.
+- Inline/attach should still compile to a `RunSpec`; the notebook render actor
+  is just another actor declaration in that spec.
+
+What was still ad hoc in the prototype:
+
+- `CNV_NOTEBOOK_RENDER_PROCESS` is an experiment switch, not a real API. This
+  should become a notebook/frontend runtime option, probably selected by inline
+  show configuration or frontend profile.
+- The render-process policy is embedded in `_source_runtime.build_notebook_run_spec`.
+  It should be represented as notebook frontend configuration that expands to
+  actor declarations and routing, not hidden as special-case runtime branching.
+- `CameraCommand` and `RenderedFrame` are useful generic payloads, but the
+  frame-stream policy is not yet explicit. Frame format, quality, max frame
+  rate, queue coalescing, and priority should be configured as part of a
+  frame-stream frontend link.
+- The widget host currently knows too much about morphology-specific remote
+  rendering. Long term, the notebook host should consume generic rendered-frame
+  streams and emit generic camera/interaction commands; morphology-specific
+  scene setup should live with the VisPy render actor.
+- Stop/lifecycle handling for extra frontend actors must be part of the
+  orchestrator story, not a notebook-only "also send StopBackend to renderer"
+  patch.
+
+Performance lessons from interaction testing:
+
+- Jupyter widget callbacks, ipympl updates, and `ipywidgets.Image` updates share
+  a constrained kernel/browser comm path. Moving rendering out of process helps,
+  but it does not make the widget channel behave like a native canvas.
+- Mouse interaction must be coalesced. Dropping events makes the camera feel
+  sticky; accumulating deltas and emitting at a bounded rate preserves intent
+  while protecting the comm channel.
+- Rendered frames must be coalesced. The notebook actor should process semantic
+  field/control/action messages before applying the latest image frame.
+- PNG frames are too heavy for smooth notebook interaction. JPEG frame delivery
+  at modest quality is much more usable for interactive morphology preview.
+- The trace freeze observed during morphology interaction was not primarily a
+  trace bug; the morphology frame/event stream was starving the notebook widget
+  path. Trace-specific fixes (pause redraw while the user pans/zooms, preserve
+  user-set x-limits) are still useful, but the real bottleneck is morphology
+  frame streaming.
+
+Additional run-to-run behavior:
+
+- Runs often start very laggy, then morphology interaction becomes smoother.
+  Likely causes: process startup, first VisPy/Qt/GL initialization, shader/cache
+  warmup, first frame encoding, and first Jupyter comm/widget setup.
+- Morphology smoothing out over time suggests the render pipeline can become
+  usable once warm, but the startup path needs explicit readiness/warmup rather
+  than beginning live backend stepping immediately.
+- The trace can still freeze later in a run. That points to backlog or comm
+  pressure, not just raw render cost. Even if Python coalesces frames before
+  assigning widget values, the browser/kernel widget channel can still become
+  saturated by image/model updates and starve ipympl trace messages.
+- Performance is variable enough that this should be treated as a streaming
+  flow-control problem, not a one-time render optimization problem.
+
+Required next design upgrade: frame-stream backpressure. Throttling is not
+enough. The render actor should not blindly emit frames at a fixed cap; it
+should emit only when the notebook/frontend receiver has capacity or when the
+previous frame has been consumed/acknowledged.
+
+This exposes a broader transport concept: messages need delivery classes or
+delivery policy. Not every message should be treated as a reliable FIFO event.
+
+Initial delivery classes:
+
+| Class | Examples | Semantics | Queue behavior |
+|---|---|---|---|
+| Reliable semantic command/update | `SetControl`, `InvokeAction`, reset, structural `AppSpec`/layout/control patches | Must be delivered in order or fail visibly | Reliable FIFO; do not drop |
+| Latest-state stream | field values for high-rate visualization, camera state, cursor/selection preview | Receiver only needs the newest state | Coalesce by stream key; drop obsolete values |
+| Visual frame stream | `RenderedFrame`, preview images, remote render output | Receiver only needs the newest displayable frame and should not starve semantic traffic | Coalesce, rate-limit, backpressure/ack, drop old frames |
+| Telemetry/diagnostics | perf counters, debug stats, transient status | Useful but non-critical | Drop or sample under pressure |
+
+Transport should still avoid owning payload semantics. The policy should be
+declared by message type, route, or channel metadata so a transport can apply
+generic behavior: reliable FIFO, latest-only coalescing, priority polling, or
+ack/backpressure. The key invariant is that high-volume visual streams are
+lossy state streams, not reliable event logs.
+
+Candidate protocol:
+
+```text
+renderer -> notebook: RenderedFrame(seq)
+notebook -> renderer: FrameAck(seq)
+
+renderer keeps only the latest pending visual state and renders/sends the next
+frame after ack or timeout
+```
+
+Backpressure policy details to design:
+
+- The renderer should keep only the latest pending values/camera state, not a
+  queue of obsolete frames.
+- The notebook actor should acknowledge a frame only after applying it to the
+  widget, or after deciding to drop it.
+- A timeout fallback is needed so a lost ack cannot permanently stall rendering.
+- While the user is actively dragging, prioritize camera preview frames over
+  morphology color/value frames.
+- Field/control/action messages should remain higher priority than rendered
+  frames in notebook polling.
+- Renderer startup should include a warmup/readiness phase: initialize VisPy,
+  set geometry, render one initial frame, then let backend live stepping begin
+  or begin forwarding high-rate updates.
+
+Telemetry needed before this becomes a default mode:
+
+- Backend update cadence and payload count.
+- Renderer receive count, dropped/coalesced update count, render time, encode
+  time, emitted frame count, ack latency.
+- Notebook frontend poll duration, semantic message count, rendered-frame count,
+  dropped/coalesced frame count, widget assignment time, trace draw time.
+- Browser/kernel comm backlog symptoms where measurable.
+
+First-class design target:
+
+```python
+RunSpec(
+    actors=[
+        ActorSpec("backend", BACKEND, ...),
+        ActorSpec("notebook", FRONTEND, host_source=NotebookWidgetHost(...)),
+        ActorSpec("morphology-renderer", FRONTEND,
+                  host_source=ActorProcess(NotebookMorphologyRenderActor, ...)),
+    ],
+    routing=RelaySpec(
+        default_update_targets=("notebook", "morphology-renderer"),
+        # camera commands target morphology-renderer
+        # rendered frames target notebook
+    ),
+)
+```
+
+The exact API should not expose this much machinery to notebook users. The point
+is that the machinery should exist in the same universal actor/routing layer as
+manual `RunSpec` use. Inline sugar should only select this topology.
+
+Open cleanup items:
+
+- Replace `CNV_NOTEBOOK_RENDER_PROCESS` with an explicit frontend/notebook
+  option.
+- Extract a generic frame-stream configuration: format, quality, frame cap,
+  command coalescing, frame coalescing, and priority behavior.
+- Introduce explicit message delivery policy/classes so reliable semantic
+  messages, latest-state streams, visual frame streams, and telemetry do not all
+  share one FIFO behavior.
+- Keep morphology-specific rendering in a render actor module rather than in the
+  widget host.
+- Make frontend-to-frontend routing an explicit supported case in validation.
+- Decide whether notebook render-process mode should be default when morphology
+  is present, or opt-in until the frame-stream policy is stable.
+- Update the app configuration matrix after this is formalized: notebook T3/T2
+  now has a credible local multi-actor frontend topology, even without
+  WebSockets.
+
 ## Validation Questions
 
 Use these when reviewing diagrams or future patches:
@@ -1938,6 +2200,20 @@ Use these when reviewing diagrams or future patches:
 - Are static apps still possible without inventing a fake live backend?
 - Did a new helper create a fourth runtime construct, or is it clearly shared
   substrate or composition code?
+- Does any file in `core/` import from `backends/` or `frontends/` — including
+  deferred imports inside function bodies? A deferred import does not launder a
+  layering violation; the arrow still points the wrong way.
+- Can every backend host derive from `BackendHost` (and every frontend host
+  from `FrontendHost`) with a plain module-level import? If not, the host is in
+  the wrong package.
+- If a frontend is split into multiple actors, is that represented as normal
+  `RunSpec` topology and routing rather than hidden inside one host?
+- Are high-volume rendered-frame streams explicitly coalesced/rate-limited so
+  they cannot starve semantic updates or user controls?
+- Are frontend-to-frontend messages treated as normal routed messages rather
+  than special cases owned by the backend?
+- Does every high-volume message path declare whether it is reliable FIFO,
+  latest-state, visual-frame, or telemetry traffic?
 
 AppRuntime-specific:
 

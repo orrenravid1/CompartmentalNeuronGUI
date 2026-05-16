@@ -51,9 +51,11 @@ from compneurovis.backends.host import ThreadBackendHost
 from compneurovis.core.hosts import AppHandle, ScriptBackendProcess, get_script_backend_endpoint
 from compneurovis.core.messages import (
     CommandMessage,
+    CameraCommand,
     Message,
     MessagePayload,
     MessageType,
+    RenderedFrame,
     UpdateMessage,
     command_message,
     make_message,
@@ -76,6 +78,7 @@ __all__ = [
     "BoolValueSpec",
     "ChoiceValueSpec",
     "CommandMessage",
+    "CameraCommand",
     "ControlPresentationSpec",
     "ControlSpec",
     "DataCatalog",
@@ -100,6 +103,7 @@ __all__ = [
     "Message",
     "MessagePayload",
     "MessageType",
+    "RenderedFrame",
     "MorphologyGeometry",
     "MorphologyViewSpec",
     "OperatorSpec",

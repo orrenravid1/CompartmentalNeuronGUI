@@ -84,6 +84,15 @@ class EntityClicked(CommandPayload):
 
 
 @dataclass(frozen=True, slots=True)
+class CameraCommand(CommandPayload):
+    target_id: str
+    kind: Literal["orbit", "zoom", "reset"]
+    dx: float = 0.0
+    dy: float = 0.0
+    scale: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
 class StopBackend(CommandPayload):
     pass
 
@@ -104,6 +113,15 @@ class FieldAppend(UpdatePayload):
     coord_values: np.ndarray
     max_length: int | None = None
     attrs_update: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class RenderedFrame(UpdatePayload):
+    frame_id: str
+    data: bytes
+    format: str = "png"
+    width: int | None = None
+    height: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,10 +193,12 @@ INVOKE_ACTION = _message_type("invoke_action", InvokeAction, ("command",))
 ROUTED_MESSAGE = _message_type("routed_message", RoutedMessage, ("command", "update"))
 KEY_PRESSED = _message_type("key_pressed", KeyPressed, ("command",))
 ENTITY_CLICKED = _message_type("entity_clicked", EntityClicked, ("command",))
+CAMERA_COMMAND = _message_type("camera_command", CameraCommand, ("command",))
 STOP_BACKEND = _message_type("stop_backend", StopBackend, ("command",))
 
 FIELD_REPLACE = _message_type("field_replace", FieldReplace, ("update",))
 FIELD_APPEND = _message_type("field_append", FieldAppend, ("update",))
+RENDERED_FRAME = _message_type("rendered_frame", RenderedFrame, ("update",))
 APP_SPEC_PATCH = _message_type("app_spec_patch", AppSpecPatch, ("update",))
 STATE_PATCH = _message_type("state_patch", StatePatch, ("update",))
 PANEL_PATCH = _message_type("panel_patch", PanelPatch, ("update",))
@@ -193,9 +213,11 @@ MESSAGE_TYPES: tuple[MessageType[Any], ...] = (
     ROUTED_MESSAGE,
     KEY_PRESSED,
     ENTITY_CLICKED,
+    CAMERA_COMMAND,
     STOP_BACKEND,
     FIELD_REPLACE,
     FIELD_APPEND,
+    RENDERED_FRAME,
     APP_SPEC_PATCH,
     STATE_PATCH,
     PANEL_PATCH,
