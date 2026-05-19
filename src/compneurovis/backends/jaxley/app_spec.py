@@ -5,7 +5,7 @@ import numpy as np
 from compneurovis.core import (
     AppSpec,
     DataCatalog,
-    Field,
+    FieldSpec,
     InteractionCatalog,
     LayoutCatalog,
     LayoutSpec,
@@ -197,16 +197,16 @@ class JaxleyAppSpecBuilder:
         display_field_id = display_field_id or JaxleyAppSpecBuilder.DISPLAY_FIELD_ID
         history_field_id = history_field_id or JaxleyAppSpecBuilder.HISTORY_FIELD_ID
         history_unit = display_unit if history_unit is None else history_unit
-        display_field = Field(
+        display_field = FieldSpec(
             id=display_field_id,
-            values=np.asarray(display_values, dtype=np.float32),
+            initial_values=np.asarray(display_values, dtype=np.float32),
             dims=("segment",),
             coords={"segment": np.asarray(geometry.entity_ids)},
             unit=display_unit,
         )
-        trace_field = Field(
+        trace_field = FieldSpec(
             id=history_field_id,
-            values=np.asarray(trace_values, dtype=np.float32),
+            initial_values=np.asarray(trace_values, dtype=np.float32),
             dims=("segment", "time"),
             coords={
                 "segment": np.asarray(trace_segment_ids),
@@ -254,18 +254,18 @@ class JaxleyAppSpecBuilder:
         history_field_id = history_field_id or JaxleyAppSpecBuilder.HISTORY_FIELD_ID
         history_unit = display_unit if history_unit is None else history_unit
         trace_y_unit = (history_unit or "") if trace_y_unit is None else trace_y_unit
-        display_field = Field(
+        display_field = FieldSpec(
             id=display_field_id,
-            values=np.asarray(display_values, dtype=np.float32),
+            initial_values=np.asarray(display_values, dtype=np.float32),
             dims=("segment",),
             coords={
                 "segment": np.asarray(geometry.entity_ids),
             },
             unit=display_unit,
         )
-        trace_field = Field(
+        trace_field = FieldSpec(
             id=history_field_id,
-            values=np.asarray(trace_values, dtype=np.float32),
+            initial_values=np.asarray(trace_values, dtype=np.float32),
             dims=("segment", "time"),
             coords={
                 "segment": np.asarray(trace_segment_ids),

@@ -6,7 +6,7 @@ from typing import Any, TypeAlias
 
 from compneurovis.core.controls import ActionSpec, ControlSpec
 from compneurovis.core.actor import ActorBase, ActorRole, ActorSource
-from compneurovis.core.field import Field
+from compneurovis.core.field import FieldSpec
 from compneurovis.core.geometry import Geometry
 from compneurovis.core.operators import OperatorSpec
 from compneurovis.core.views import LinePlotViewSpec, StateGraphViewSpec, MorphologyViewSpec, SurfaceViewSpec, ViewSpec
@@ -276,7 +276,7 @@ class LayoutSpec:
 
 @dataclass(slots=True)
 class DataCatalog:
-    fields: dict[str, Field] = field(default_factory=dict)
+    fields: dict[str, FieldSpec] = field(default_factory=dict)
     geometries: dict[str, Geometry] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -341,7 +341,7 @@ class AppSpec:
         interactions: InteractionCatalog | None = None,
         layout_catalog: LayoutCatalog | None = None,
         metadata: dict[str, Any] | None = None,
-        fields: dict[str, Field] | None = None,
+        fields: dict[str, FieldSpec] | None = None,
         geometries: dict[str, Geometry] | None = None,
         views: dict[str, ViewSpec] | None = None,
         controls: dict[str, ControlSpec] | None = None,

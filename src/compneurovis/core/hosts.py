@@ -283,16 +283,40 @@ class AppHandle:
         return self.results.get(actor_id)
 
     def wait(self) -> None:
-        """Block until the foreground actor (e.g. Qt event loop) exits, then stop all actors.
+        """Block until the run finishes, then stop all actors.
 
-        Call from the main thread. No-op if no foreground actor is present (notebook path).
+        Single orchestration lifecycle for every bundled launch — desktop,
+        headless, and pure orchestrator all go through here:
+
+        - Foreground actor present (e.g. Qt): run its event loop on the
+          calling (main) thread; stop everything when it exits.
+        - No foreground actor (headless / all-remote orchestrator): block
+          until stop() is signalled or every hosted subprocess has exited.
+
+        The notebook path never calls wait(): start_app() returns the widget
+        and an asyncio task drives the run inside the kernel.
         """
         fg = [(spec, host) for spec, host in self._items if spec.runs_in_foreground]
-        if not fg:
+        if fg:
+            _, fg_host = fg[0]
+            try:
+                fg_host.run()
+            finally:
+                self.stop()
             return
-        _, fg_host = fg[0]
+
+        processes = [
+            p
+            for p in (getattr(host, "_process", None) for _, host in self._items)
+            if p is not None
+        ]
         try:
-            fg_host.run()
+            while not self._runtime.is_stopped():
+                if processes and not any(p.is_alive() for p in processes):
+                    break
+                time.sleep(0.05)
+        except KeyboardInterrupt:
+            pass
         finally:
             self.stop()
 

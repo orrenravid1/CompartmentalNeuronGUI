@@ -188,8 +188,8 @@ class NotebookFrontend(FrontendBase):
                 break
 
         field = app_spec.data.fields.get(self._display_field_id)
-        if field is not None and field.values is not None:
-            vals = np.asarray(field.values, dtype=np.float32)
+        if field is not None and field.initial_values is not None:
+            vals = np.asarray(field.initial_values, dtype=np.float32)
             if vals.ndim > 1:
                 vals = vals[:, -1]
             self._voltages = vals
@@ -415,8 +415,8 @@ class NotebookMorphologyRenderActor(FrontendBase):
                 break
 
         field = app_spec.data.fields.get(self._display_field_id)
-        if field is not None and field.values is not None:
-            self._render_values(np.asarray(field.values, dtype=np.float32))
+        if field is not None and field.initial_values is not None:
+            self._render_values(np.asarray(field.initial_values, dtype=np.float32))
 
     def handle(self, message: Message) -> None:
         payload = message.payload

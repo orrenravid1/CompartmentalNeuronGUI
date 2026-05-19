@@ -90,7 +90,7 @@ def launch_source(source: InlineSourceProtocol) -> Any:
     from compneurovis.core.run import run_app
 
     script_path = inspect.stack()[-1].filename
-    run_app(build_desktop_run_spec(build_source_run_plan(source), script_path))
+    run_app(build_desktop_run_spec(script_path))
     return None
 
 
@@ -113,15 +113,23 @@ def run_source_backend(source: InlineSourceProtocol, endpoint: Any) -> None:
         host.stop()
 
 
-def build_desktop_run_spec(plan: SourceRunPlan, script_path: str) -> RunSpec:
-    """Build the bundled desktop RunSpec for a lowered source."""
+def build_desktop_run_spec(script_path: str) -> RunSpec:
+    """Build the bundled desktop RunSpec for a source — without building it.
+
+    The backend (ScriptBackendProcess, the re-run script) is authoritative for
+    the AppSpec and announces it via AppSpecSnapshot. The main process no longer
+    builds the model + geometry just to seed the frontend — that was a full
+    duplicate build. ``RelaySpec()`` is empty: the routed transport falls back
+    to role-based routing (backend<->frontend), correct for this 1B:1F path.
+    """
 
     from compneurovis.frontends.vispy.frontend import VispyFrontendWindow
     from compneurovis.frontends.vispy.host import VispyFrontendHost
     from compneurovis.transports import routed_transport
 
+    routing = RelaySpec()
     return RunSpec(
-        app_spec=plan.app_spec,
+        app_spec=None,
         actors=[
             ActorSpec(
                 id="backend",
@@ -135,8 +143,8 @@ def build_desktop_run_spec(plan: SourceRunPlan, script_path: str) -> RunSpec:
                 runs_in_foreground=True,
             ),
         ],
-        transport=routed_transport(plan.routing),
-        routing=plan.routing,
+        transport=routed_transport(routing),
+        routing=routing,
     )
 
 

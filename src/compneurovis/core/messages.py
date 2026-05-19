@@ -5,7 +5,7 @@ from typing import Any, Generic, Literal, TypeVar, cast
 
 import numpy as np
 
-from compneurovis.core.app import PanelSpec
+from compneurovis.core.app import AppSpec, PanelSpec
 
 MessageIntent = Literal["command", "update"]
 PayloadT = TypeVar("PayloadT", bound="MessagePayload")
@@ -169,6 +169,18 @@ class LayoutReplace(UpdatePayload):
 
 
 @dataclass(frozen=True, slots=True)
+class AppSpecSnapshot(UpdatePayload):
+    """Backend announces the authoritative AppSpec at startup.
+
+    The backend owns the AppSpec; a frontend that started without one (the
+    multiprocess desktop path no longer builds it twice) applies this as its
+    blueprint. Idempotent on the receiver: ignored if it already has one.
+    """
+
+    app_spec: AppSpec
+
+
+@dataclass(frozen=True, slots=True)
 class Status(UpdatePayload):
     message: str
     timeout_ms: int | None = None
@@ -203,6 +215,7 @@ APP_SPEC_PATCH = _message_type("app_spec_patch", AppSpecPatch, ("update",))
 STATE_PATCH = _message_type("state_patch", StatePatch, ("update",))
 PANEL_PATCH = _message_type("panel_patch", PanelPatch, ("update",))
 LAYOUT_REPLACE = _message_type("layout_replace", LayoutReplace, ("update",))
+APP_SPEC_SNAPSHOT = _message_type("app_spec_snapshot", AppSpecSnapshot, ("update",))
 STATUS = _message_type("status", Status, ("update",))
 ERROR = _message_type("error", Error, ("update",))
 
@@ -222,6 +235,7 @@ MESSAGE_TYPES: tuple[MessageType[Any], ...] = (
     STATE_PATCH,
     PANEL_PATCH,
     LAYOUT_REPLACE,
+    APP_SPEC_SNAPSHOT,
     STATUS,
     ERROR,
 )

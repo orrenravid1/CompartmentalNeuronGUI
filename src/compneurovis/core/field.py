@@ -214,3 +214,60 @@ class Field:
             unit=self.unit,
             attrs=dict(self.attrs),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class FieldSpec:
+    """Declarative blueprint for a field — schema plus declared initial condition.
+
+    A spec is composed of specs: ``FieldSpec`` lives in ``AppSpec`` alongside
+    ``ViewSpec``/``ControlSpec``/``PanelSpec``. It declares the axes (``dims``),
+    the coordinate schema (``coords``), ``unit``/``attrs``, and the *initial*
+    values the app starts from — the same role ``default_value`` plays for a
+    control. It carries no runtime mutation behaviour: the evolving array is
+    state, owned by ``AppState`` as the materialized :class:`Field` value view.
+    ``FieldSpec`` is never rebound at runtime.
+    """
+
+    id: str
+    initial_values: np.ndarray
+    dims: tuple[str, ...]
+    coords: dict[str, np.ndarray]
+    unit: str | None = None
+    attrs: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        initial_values = np.asarray(self.initial_values)
+        dims = tuple(self.dims)
+        coords = {str(name): _coerce_coord(coord) for name, coord in self.coords.items()}
+
+        if initial_values.ndim != len(dims):
+            raise ValueError(
+                f"FieldSpec '{self.id}' has {initial_values.ndim} dimensions but dims={dims}"
+            )
+        if set(coords.keys()) != set(dims):
+            raise ValueError(
+                f"FieldSpec '{self.id}' coords keys must exactly match dims {dims}"
+            )
+        for axis, dim in enumerate(dims):
+            if len(coords[dim]) != initial_values.shape[axis]:
+                raise ValueError(
+                    f"FieldSpec '{self.id}' coord '{dim}' has length {len(coords[dim])}, "
+                    f"expected {initial_values.shape[axis]}"
+                )
+
+        object.__setattr__(self, "initial_values", initial_values)
+        object.__setattr__(self, "dims", dims)
+        object.__setattr__(self, "coords", coords)
+        object.__setattr__(self, "attrs", dict(self.attrs))
+
+    def materialize(self) -> Field:
+        """Build the runtime value view from the declared initial condition."""
+        return Field(
+            id=self.id,
+            values=np.array(self.initial_values, copy=True),
+            dims=self.dims,
+            coords={name: np.array(coord, copy=True) for name, coord in self.coords.items()},
+            unit=self.unit,
+            attrs=dict(self.attrs),
+        )

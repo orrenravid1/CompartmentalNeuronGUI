@@ -88,8 +88,8 @@ class NotebookFrontendHost:
         # Initial colors from field in AppSpec
         if self._display_field_id:
             field = app_spec.data.fields.get(self._display_field_id)
-            if field is not None and field.values is not None:
-                values = np.asarray(field.values, dtype=np.float32)
+            if field is not None and field.initial_values is not None:
+                values = np.asarray(field.initial_values, dtype=np.float32)
                 if values.ndim > 1:
                     values = values[:, -1]
                 self._renderer.update_colors(

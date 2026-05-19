@@ -15,7 +15,7 @@ from compneurovis.core.app import (
     RunSpec,
     ViewCatalog,
 )
-from compneurovis.core.field import Field
+from compneurovis.core.field import Field, FieldSpec
 from compneurovis.core.geometry import Geometry, GridGeometry, MorphologyGeometry
 from compneurovis.core.operators import GridSliceOperatorSpec, OperatorSpec
 from compneurovis.core.runtime import AppRuntime
@@ -37,6 +37,7 @@ __all__ = [
     "DataCatalog",
     "DiagnosticsSpec",
     "Field",
+    "FieldSpec",
     "Geometry",
     "GridGeometry",
     "GridSliceOperatorSpec",

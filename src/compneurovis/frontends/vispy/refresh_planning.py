@@ -156,15 +156,19 @@ def _target_kind_counts(targets: set[RefreshTarget]) -> dict[str, int]:
 
 
 class RefreshPlanner:
-    def __init__(self, app_spec: AppSpec):
+    def __init__(self, app_spec: AppSpec, active_layout):
+        # app_spec: structural blueprint (views/operators) — working copy.
+        # active_layout: zero-arg resolver for the live active LayoutSpec
+        # (AppState-owned, so layout switches are reflected here).
         self.app_spec = app_spec
+        self._active_layout = active_layout
 
     # ------------------------------------------------------------------
     # Full refresh
 
     def full_refresh_targets(self) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = {RefreshTarget.CONTROLS}
-        for panel in self.app_spec.active_layout().resolved_panels():
+        for panel in self._active_layout().resolved_panels():
             for view_id in panel.view_ids:
                 view = self.app_spec.view_catalog.views.get(view_id)
                 for kind in _VIEW_FULL_REFRESH_KINDS.get(type(view), ()):
@@ -185,7 +189,7 @@ class RefreshPlanner:
 
     def targets_for_state_change(self, state_key: str) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
-        for panel in self.app_spec.active_layout().resolved_panels():
+        for panel in self._active_layout().resolved_panels():
             for view_id in panel.view_ids:
                 view = self.app_spec.view_catalog.views.get(view_id)
                 # Static prop → target mapping
@@ -221,7 +225,7 @@ class RefreshPlanner:
 
     def targets_for_field_replace(self, field_id: str, coords_changed: bool = True) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
-        for panel in self.app_spec.active_layout().resolved_panels():
+        for panel in self._active_layout().resolved_panels():
             for view_id in panel.view_ids:
                 view = self.app_spec.view_catalog.views.get(view_id)
                 # Schema-driven field-id prop checks
@@ -253,7 +257,7 @@ class RefreshPlanner:
     def targets_for_operator_patch(self, operator_id: str, changed_props: set[str]) -> set[RefreshTarget]:
         targets: set[RefreshTarget] = set()
         op = self.app_spec.view_catalog.operators.get(operator_id)
-        for panel in self.app_spec.active_layout().panels_of_kind(PANEL_KIND_VIEW_3D):
+        for panel in self._active_layout().panels_of_kind(PANEL_KIND_VIEW_3D):
             if operator_id not in panel.operator_ids:
                 continue
             for view_id in panel.view_ids:
@@ -265,7 +269,7 @@ class RefreshPlanner:
                     and op.geometry_id in {None, view.geometry_id}
                 ):
                     targets.add(RefreshTarget.operator_overlay(view_id))
-        for panel in self.app_spec.active_layout().resolved_panels():
+        for panel in self._active_layout().resolved_panels():
             for view_id in panel.view_ids:
                 view = self.app_spec.view_catalog.views.get(view_id)
                 if (

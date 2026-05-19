@@ -13,7 +13,7 @@ from compneurovis.core.app import (
     PANEL_KIND_CONTROLS,
 )
 from compneurovis.core.controls import ActionSpec, ControlSpec, ScalarValueSpec
-from compneurovis.core.field import Field
+from compneurovis.core.field import FieldSpec
 from compneurovis.core.messages import FieldAppend, FieldReplace, update_message
 from compneurovis.core.views import LinePlotViewSpec
 
@@ -74,11 +74,11 @@ class TraceBinding:
             )
         )
 
-    def _initial_field(self) -> Field:
+    def _field_spec(self) -> FieldSpec:
         series = self._series()
-        return Field(
+        return FieldSpec(
             id=self._field_id,
-            values=np.array([[fn()] for fn in series.values()], dtype=np.float32),
+            initial_values=np.array([[fn()] for fn in series.values()], dtype=np.float32),
             dims=("series", "time"),
             coords={
                 "series": np.array(list(series.keys())),
@@ -223,7 +223,7 @@ def append_bindings_to_app_spec(
     """Add generic inline bindings to an AppSpec built by any backend."""
 
     for trace in traces:
-        app_spec.data.fields[trace._field_id] = trace._initial_field()
+        app_spec.data.fields[trace._field_id] = trace._field_spec()
         app_spec.view_catalog.views[trace._view_id] = trace._view_spec()
 
     for control in controls:

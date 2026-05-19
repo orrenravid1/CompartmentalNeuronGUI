@@ -26,8 +26,8 @@ def run_orchestrator(run_spec: RunSpec) -> None:
     """Pure orchestrator: transport fabric + AppSpec authority + lifecycle.
 
     All ActorSpec.host_source must be None — actors connect independently via
-    their own run_as_backend / run_as_frontend calls. Use run_app when all
-    actors are launched from the same process.
+    their own run_as_backend / run_as_frontend calls. Sugar over
+    start_app().wait(); use run_app when all actors launch from this process.
     """
     if mp.current_process().name != "MainProcess":
         return
@@ -39,27 +39,7 @@ def run_orchestrator(run_spec: RunSpec) -> None:
             f"Hosted actors: {[s.id for s in hosted]}"
         )
 
-    configure_multiprocessing()
-
-    if run_spec.app_spec is None:
-        raise ValueError("RunSpec.app_spec is required.")
-
-    runtime = AppRuntime(app_spec=run_spec.app_spec, diagnostics=run_spec.diagnostics)
-    configure_diagnostics(runtime.diagnostics)
-
-    endpoints = run_spec.transport(run_spec.actors) if run_spec.transport is not None else {}
-    items: list[tuple[ActorSpec, Any]] = [
-        (spec, ConnectionSlotHost(endpoints.get(spec.id)))
-        for spec in run_spec.actors
-    ]
-
-    for _, s in items:
-        s.start()
-    try:
-        runtime.wait(items)
-    finally:
-        for _, s in reversed(items):
-            s.stop()
+    start_app(run_spec).wait()
 
 
 def start_app(run_spec: RunSpec) -> AppHandle:
@@ -72,9 +52,9 @@ def start_app(run_spec: RunSpec) -> AppHandle:
     For notebooks: no foreground actor — widget is in AppHandle.results.
     For desktop: call AppHandle.wait() (or use run_app which does this).
     """
-    if run_spec.app_spec is None:
-        raise ValueError("RunSpec.app_spec is required.")
-
+    # app_spec may be None: the backend can be authoritative and announce it
+    # at startup via AppSpecSnapshot (multiprocess desktop path). Frontends
+    # start in a loading state until the snapshot arrives.
     configure_multiprocessing()
 
     fg_actors = [s for s in run_spec.actors if s.runs_in_foreground]
